@@ -21,12 +21,13 @@ export const PLAN_NIGHTS: Record<PlanTier, number> = {
   [PlanTier.Plan_5N]: 5,
 };
 
-/** Credit per canceled night in cents (weekly_price / nights). */
-export const PLAN_CREDIT_PER_NIGHT: Record<PlanTier, number> = {
-  [PlanTier.Plan_3N]: 10000, // $100
-  [PlanTier.Plan_4N]: 9000,  // $90
-  [PlanTier.Plan_5N]: 8500,  // $85
-};
+/** Credit per canceled night in cents — derived from PLAN_PRICES / PLAN_NIGHTS. */
+export const PLAN_CREDIT_PER_NIGHT: Record<PlanTier, number> = Object.fromEntries(
+  Object.values(PlanTier).map((tier) => [
+    tier,
+    Math.floor(PLAN_PRICES[tier] / PLAN_NIGHTS[tier]),
+  ])
+) as Record<PlanTier, number>;
 
 /** Human-readable label for each tier. */
 export const PLAN_LABELS: Record<PlanTier, string> = {
@@ -45,12 +46,12 @@ export type ReservationStatus =
   | "pending_payment"
   | "confirmed"
   | "locked"
+  | "canceled"
   | "canceled_low_enrollment";
 
 export interface ParentSubscription {
-  id: number;
+  id: string; // uuid
   parent_id: string;
-  stripe_customer_id: string;
   stripe_subscription_id: string | null;
   plan_tier: PlanTier;
   status: SubscriptionStatus;

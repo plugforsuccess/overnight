@@ -1,7 +1,12 @@
 import { getStripe } from "./stripe-client";
 import { getPriceId } from "./plans";
-import { getDb } from "../db/connection";
+import knexDb from "../db";
 import { PlanTier, SubscriptionStatus } from "../types/billing";
+
+/** Local alias — the Knex db singleton. */
+function getDb() {
+  return knexDb;
+}
 
 // ---------------------------------------------------------------------------
 // Mid-cycle change policy: APPLY AT NEXT BILLING WEEK
@@ -89,7 +94,7 @@ export async function createSubscription(
   tier: PlanTier
 ): Promise<CreateSubscriptionResult> {
   const stripe = getStripe();
-  const priceId = await getPriceId(tier);
+  const priceId = await getPriceId(tier, knexDb);
 
   const anchor = nextFridayNoon();
   const anchorUnix = Math.floor(anchor.getTime() / 1000);
@@ -138,7 +143,7 @@ export async function requestPlanChange(
       "SELECT id, plan_tier, next_billing_date FROM subscriptions WHERE parent_id = ? AND status = 'active'"
     )
     .get(parentId) as
-    | { id: number; plan_tier: string; next_billing_date: string }
+    | { id: string; plan_tier: string; next_billing_date: string }
     | undefined;
 
   if (!sub) throw new Error("No active subscription found for this parent.");
@@ -174,14 +179,14 @@ export async function applyPendingChanges(): Promise<number> {
        WHERE pc.effective_date <= datetime('now')`
     )
     .all() as Array<{
-    id: number;
-    subscription_id: number;
+    id: string;
+    subscription_id: string;
     new_plan_tier: PlanTier;
     stripe_subscription_id: string;
   }>;
 
   for (const change of pending) {
-    const newPriceId = await getPriceId(change.new_plan_tier);
+    const newPriceId = await getPriceId(change.new_plan_tier, knexDb);
 
     // Get current subscription item to swap the price.
     const stripeSub = await stripe.subscriptions.retrieve(
@@ -246,4 +251,42 @@ export function getActiveSubscription(parentId: string) {
 export function canReserve(parentId: string): boolean {
   const sub = getActiveSubscription(parentId);
   return !!sub;
+}
+
+// ── Webhook-scoped pending change application ───────────────────────────
+
+/**
+ * Apply pending plan changes for a single subscription (called from webhook handler).
+ * Uses the provided Knex transaction so everything is atomic with the webhook processing.
+ */
+export async function applyPendingChangesForSubscription(
+  trx: import("knex").Knex,
+  stripeSubscriptionId: string
+): Promise<void> {
+  const stripe = getStripe();
+
+  const pending = await trx("pending_plan_changes as pc")
+    .join("subscriptions as s", "s.id", "pc.subscription_id")
+    .where("s.stripe_subscription_id", stripeSubscriptionId)
+    .where("pc.effective_date", "<=", trx.fn.now())
+    .select("pc.id", "pc.subscription_id", "pc.new_plan_tier", "s.stripe_subscription_id");
+
+  for (const change of pending) {
+    const newPriceId = await getPriceId(change.new_plan_tier as PlanTier, trx);
+
+    const stripeSub = await stripe.subscriptions.retrieve(change.stripe_subscription_id);
+    const itemId = stripeSub.items.data[0].id;
+
+    await stripe.subscriptions.update(change.stripe_subscription_id, {
+      items: [{ id: itemId, price: newPriceId }],
+      proration_behavior: "none",
+      metadata: { plan_tier: change.new_plan_tier },
+    });
+
+    await trx("subscriptions")
+      .where({ id: change.subscription_id })
+      .update({ plan_tier: change.new_plan_tier, updated_at: trx.fn.now() });
+
+    await trx("pending_plan_changes").where({ id: change.id }).del();
+  }
 }
