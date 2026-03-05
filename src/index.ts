@@ -1,6 +1,6 @@
 import "dotenv/config";
 import express from "express";
-import { initDb } from "./db/connection";
+import { knexConfig } from "./db/connection";
 import { billingRouter } from "./routes/billing";
 import { requireActiveSubscription } from "./middleware/require-subscription";
 
@@ -47,7 +47,6 @@ app.get("/health", (_req, res) => {
 });
 
 // ── Start ───────────────────────────────────────────────────────────────
-initDb();
 app.listen(PORT, () => {
   console.log(`Overnight billing server running on port ${PORT}`);
 });

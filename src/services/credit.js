@@ -1,7 +1,8 @@
 const crypto = require('crypto');
 const db = require('../db');
 
-// Plan pricing in cents (matches PRD)
+// Plan pricing in cents (matches PRD) — used as fallback only.
+// Prefer getCreditAmountFromSnapshot() which uses the block's pricing snapshot.
 const PLAN_PRICES = {
   3: 30000, // $300
   4: 36000, // $360
@@ -9,8 +10,8 @@ const PLAN_PRICES = {
 };
 
 /**
- * Calculate credit amount for a canceled night based on the plan.
- * Credit = weekly_plan_price / nights_in_plan
+ * Calculate credit from hardcoded plan prices (fallback).
+ * Prefer getCreditAmountFromSnapshot() for accuracy.
  */
 function getCreditAmount(nightsPerWeek) {
   const price = PLAN_PRICES[nightsPerWeek];
@@ -19,9 +20,19 @@ function getCreditAmount(nightsPerWeek) {
 }
 
 /**
+ * Calculate credit from the block's pricing snapshot.
+ * This ensures credits reflect the price the parent actually paid,
+ * even if plan pricing has changed since.
+ */
+function getCreditAmountFromSnapshot(weeklyPriceCents, nightsPerWeek) {
+  if (!weeklyPriceCents || !nightsPerWeek) return 0;
+  return Math.round(weeklyPriceCents / nightsPerWeek);
+}
+
+/**
  * Issue a credit to a parent for a canceled night.
  */
-async function issueCredit({ parentId, amountCents, reason, relatedBlockId, relatedDate }) {
+async function issueCredit({ parentId, amountCents, reason, relatedBlockId, relatedDate, sourceWeeklyPriceCents, sourcePlanNights }) {
   const credit = {
     id: crypto.randomUUID(),
     parent_id: parentId,
@@ -29,6 +40,8 @@ async function issueCredit({ parentId, amountCents, reason, relatedBlockId, rela
     reason,
     related_block_id: relatedBlockId || null,
     related_date: relatedDate || null,
+    source_weekly_price_cents: sourceWeeklyPriceCents || null,
+    source_plan_nights: sourcePlanNights || null,
     applied: false,
   };
   await db('credits').insert(credit);
@@ -43,7 +56,7 @@ async function getCreditBalance(parentId) {
     .where({ parent_id: parentId, applied: false })
     .sum('amount_cents as total')
     .first();
-  return result.total || 0;
+  return Number(result.total) || 0;
 }
 
 /**
@@ -57,27 +70,31 @@ async function getCredits(parentId) {
 
 /**
  * Apply credits to a billing cycle. Marks credits as applied.
+ * HARDENED: uses transaction + FOR UPDATE to prevent double-application.
  * Returns total amount applied in cents.
  */
 async function applyCredits(parentId) {
-  const unapplied = await db('credits')
-    .where({ parent_id: parentId, applied: false });
+  return db.transaction(async (trx) => {
+    const unapplied = await trx('credits')
+      .where({ parent_id: parentId, applied: false })
+      .forUpdate();
 
-  if (unapplied.length === 0) return 0;
+    if (unapplied.length === 0) return 0;
 
-  const total = unapplied.reduce((sum, c) => sum + c.amount_cents, 0);
-  const ids = unapplied.map(c => c.id);
-  const now = new Date().toISOString();
+    const total = unapplied.reduce((sum, c) => sum + c.amount_cents, 0);
+    const ids = unapplied.map(c => c.id);
 
-  await db('credits')
-    .whereIn('id', ids)
-    .update({ applied: true, applied_at: now });
+    await trx('credits')
+      .whereIn('id', ids)
+      .update({ applied: true, applied_at: trx.fn.now() });
 
-  return total;
+    return total;
+  });
 }
 
 module.exports = {
   getCreditAmount,
+  getCreditAmountFromSnapshot,
   issueCredit,
   getCreditBalance,
   getCredits,

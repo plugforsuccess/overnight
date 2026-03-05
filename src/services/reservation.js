@@ -132,6 +132,12 @@ async function createReservation({ childId, parentId, weekStart, nightsPerWeek, 
   const child = await db('children').where({ id: childId, parent_id: parentId }).first();
   if (!child) return { error: 'Child not found for this parent' };
 
+  // Look up the plan for pricing snapshot
+  const plan = await db('plans')
+    .where({ nights_per_week: Number(nightsPerWeek), active: true })
+    .first();
+  if (!plan) return { error: `No active plan found for ${nightsPerWeek} nights/week` };
+
   // Perform everything atomically
   try {
     const result = await db.transaction(async (trx) => {
@@ -148,17 +154,18 @@ async function createReservation({ childId, parentId, weekStart, nightsPerWeek, 
       await ensureNightRows(trx, dates);
       for (const date of dates) await lockNight(trx, date);
 
-      // Create overnight block
+      // Create overnight block with pricing snapshot
       const blockId = crypto.randomUUID();
 
-      // IMPORTANT: This should be 'pending' until Stripe confirms. If you are already confirming payment
-      // before calling this, set to 'confirmed'.
+      // Payment starts as 'pending' until Stripe confirms.
       const payment_status = 'pending';
 
       await trx('overnight_blocks').insert({
         id: blockId,
         week_start: weekStart,
         nights_per_week: nightsPerWeek,
+        weekly_price_cents: plan.weekly_price_cents,
+        plan_id: plan.id,
         parent_id: parentId,
         child_id: childId,
         status: 'active',

@@ -8,69 +8,94 @@ const reservationService = require('./reservation');
  * Check enrollment for a specific night and cancel if below minimum.
  * Called as part of the Friday 1PM enrollment cutoff job.
  *
+ * HARDENED:
+ * - Uses transaction + advisory lock to prevent races
+ * - Credits computed from the block's pricing snapshot (not hardcoded)
+ * - Uses nightly_capacity table (fixed from nonexistent nightly_status)
+ * - Notifications sent after commit to avoid notifying on rollback
+ *
  * Returns { canceled: boolean, date, count, minimum }
  */
 async function enforceMinimumEnrollment(date) {
   const minimum = (await configService.getInt('min_enrollment_per_night')) || 4;
+  const notifyQueue = [];
 
-  // Count confirmed reservations for this date
-  const result = await db('reservations')
-    .where({ date })
-    .whereNot({ status: 'canceled_low_enrollment' })
-    .count('* as count')
-    .first();
-  const count = result.count;
+  const result = await db.transaction(async (trx) => {
+    // Lock the night row to prevent concurrent enrollment changes
+    await trx.raw('SELECT pg_advisory_xact_lock(hashtext(?))', [date]);
 
-  if (count >= minimum) {
-    return { canceled: false, date, count, minimum };
-  }
+    // Ensure nightly_capacity row exists
+    await trx('nightly_capacity').insert({ date }).onConflict('date').ignore();
 
-  // Night is under-enrolled — cancel all reservations
-  const reservations = await db('reservations')
-    .where({ date })
-    .whereNot({ status: 'canceled_low_enrollment' });
+    await trx('nightly_capacity').where({ date }).forUpdate().first();
 
-  for (const res of reservations) {
-    // Update reservation status
-    await db('reservations')
-      .where({ id: res.id })
-      .update({ status: 'canceled_low_enrollment' });
-
-    // Get the block to determine credit amount
-    const block = await db('overnight_blocks')
-      .where({ id: res.overnight_block_id })
+    // Count non-canceled reservations for this date
+    const countResult = await trx('reservations')
+      .where({ date })
+      .whereNot({ status: 'canceled_low_enrollment' })
+      .count('* as count')
       .first();
+    const count = Number(countResult.count);
 
-    if (block) {
-      const creditAmount = creditService.getCreditAmount(block.nights_per_week);
+    if (count >= minimum) {
+      return { canceled: false, date, count, minimum };
+    }
 
-      // Issue credit to the parent
-      await creditService.issueCredit({
-        parentId: block.parent_id,
-        amountCents: creditAmount,
-        reason: 'canceled_low_enrollment',
-        relatedBlockId: block.id,
-        relatedDate: date,
-      });
+    // Night is under-enrolled — cancel all non-canceled reservations
+    const reservations = await trx('reservations')
+      .where({ date })
+      .whereNot({ status: 'canceled_low_enrollment' });
 
-      // Notify parent
-      const parent = await db('parents').where({ id: block.parent_id }).first();
-      const child = await db('children').where({ id: res.child_id }).first();
-      if (parent && child) {
-        await notifications.notifyNightCanceled(parent, child, date, creditAmount);
+    for (const res of reservations) {
+      await trx('reservations')
+        .where({ id: res.id })
+        .update({ status: 'canceled_low_enrollment', updated_at: trx.fn.now() });
+
+      // Get block for pricing snapshot (credit = weekly_price / nights_per_week)
+      const block = await trx('overnight_blocks')
+        .where({ id: res.overnight_block_id })
+        .first();
+
+      if (block) {
+        const creditAmount = creditService.getCreditAmountFromSnapshot(
+          block.weekly_price_cents,
+          block.nights_per_week
+        );
+
+        await trx('credits').insert({
+          parent_id: block.parent_id,
+          amount_cents: creditAmount,
+          reason: 'canceled_low_enrollment',
+          related_block_id: block.id,
+          related_date: date,
+          source_weekly_price_cents: block.weekly_price_cents,
+          source_plan_nights: block.nights_per_week,
+          applied: false,
+        });
+
+        // Queue notification (send after commit)
+        const parent = await trx('parents').where({ id: block.parent_id }).first();
+        const child = await trx('children').where({ id: res.child_id }).first();
+        if (parent && child) {
+          notifyQueue.push({ parent, child, date, creditAmount });
+        }
       }
     }
+
+    // Mark the night as canceled in nightly_capacity
+    await trx('nightly_capacity')
+      .where({ date })
+      .update({ status: 'canceled_low_enrollment', confirmed_count: 0, updated_at: trx.fn.now() });
+
+    return { canceled: true, date, count, minimum, canceledReservations: reservations.length };
+  });
+
+  // Send notifications after successful commit
+  for (const n of notifyQueue) {
+    await notifications.notifyNightCanceled(n.parent, n.child, n.date, n.creditAmount);
   }
 
-  // Mark the night as canceled
-  const existing = await db('nightly_status').where({ date }).first();
-  if (existing) {
-    await db('nightly_status').where({ date }).update({ status: 'canceled_low_enrollment' });
-  } else {
-    await db('nightly_status').insert({ date, status: 'canceled_low_enrollment' });
-  }
-
-  return { canceled: true, date, count, minimum, canceledReservations: reservations.length };
+  return result;
 }
 
 /**
@@ -99,16 +124,16 @@ async function getEnrollmentStatus(date) {
     .whereNot({ status: 'canceled_low_enrollment' })
     .count('* as count')
     .first();
-  const count = result.count;
+  const count = Number(result.count);
 
-  const nightStatus = await db('nightly_status').where({ date }).first();
+  const night = await db('nightly_capacity').where({ date }).first();
 
   return {
     date,
     enrolled: count,
     minimum,
     meetsMinimum: count >= minimum,
-    status: nightStatus ? nightStatus.status : 'open',
+    status: night ? night.status : 'open',
   };
 }
 
