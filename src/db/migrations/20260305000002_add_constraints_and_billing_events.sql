@@ -32,8 +32,8 @@ ALTER TABLE plans
   ADD CONSTRAINT chk_plans_nights
     CHECK (nights_per_week BETWEEN 1 AND 7);
 
--- Replace full unique index with partial unique index (only non-canceled reservations block double-booking)
-DROP INDEX IF EXISTS uniq_reservations_child_date;
+-- Replace full unique constraint with partial unique index (only non-canceled reservations block double-booking)
+ALTER TABLE reservations DROP CONSTRAINT IF EXISTS uniq_reservations_child_date;
 CREATE UNIQUE INDEX uniq_reservations_child_date_confirmed
   ON reservations (child_id, date)
   WHERE status NOT IN ('canceled_low_enrollment');
