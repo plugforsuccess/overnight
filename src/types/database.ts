@@ -15,13 +15,11 @@ export interface Profile {
 export interface Child {
   id: string;
   parent_id: string;
-  full_name: string;
+  first_name: string;
+  last_name: string;
   date_of_birth: string;
-  allergies: string | null;
+  photo_url: string | null;
   medical_notes: string | null;
-  emergency_contact_name: string;
-  emergency_contact_phone: string;
-  authorized_pickup: string;
   created_at: string;
   updated_at: string;
 }

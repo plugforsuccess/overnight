@@ -1,0 +1,97 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { authenticateRequest, unauthorized, badRequest, notFound, logAuditEvent } from '@/lib/api-auth';
+import { authorizedPickupUpdateSchema } from '@/lib/validation/children';
+import { hashPin } from '@/lib/pin-hash';
+
+/**
+ * PATCH /api/authorized-pickups/:id
+ */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const auth = await authenticateRequest(req);
+  if (!auth) return unauthorized();
+
+  const pickupId = params.id;
+
+  // Verify ownership
+  const { data: existing } = await auth.supabase
+    .from('child_authorized_pickups')
+    .select('*, children!inner(parent_id)')
+    .eq('id', pickupId)
+    .single();
+
+  if (!existing || (existing as any).children?.parent_id !== auth.userId) {
+    return notFound('Authorized pickup not found');
+  }
+
+  const body = await req.json();
+  const parsed = authorizedPickupUpdateSchema.safeParse(body);
+  if (!parsed.success) {
+    return badRequest(parsed.error.errors.map(e => e.message).join(', '));
+  }
+
+  const updateData: Record<string, unknown> = {
+    first_name: parsed.data.first_name,
+    last_name: parsed.data.last_name,
+    relationship: parsed.data.relationship,
+    phone: parsed.data.phone.replace(/\D/g, ''),
+    notes: parsed.data.notes || null,
+  };
+
+  // Only update PIN if provided (reset PIN action)
+  if (parsed.data.pickup_pin) {
+    updateData.pickup_pin_hash = hashPin(parsed.data.pickup_pin);
+  }
+
+  const { data, error } = await auth.supabase
+    .from('child_authorized_pickups')
+    .update(updateData)
+    .eq('id', pickupId)
+    .select('id, child_id, first_name, last_name, relationship, phone, id_verified, id_verified_at, notes, created_at, updated_at')
+    .single();
+
+  if (error) return badRequest(error.message);
+
+  await logAuditEvent(auth.supabase, auth.userId, 'update_authorized_pickup', 'child_authorized_pickup', pickupId, {
+    pin_reset: !!parsed.data.pickup_pin,
+  });
+
+  return NextResponse.json({ pickup: data });
+}
+
+/**
+ * DELETE /api/authorized-pickups/:id
+ */
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const auth = await authenticateRequest(req);
+  if (!auth) return unauthorized();
+
+  const pickupId = params.id;
+
+  // Verify ownership
+  const { data: existing } = await auth.supabase
+    .from('child_authorized_pickups')
+    .select('*, children!inner(parent_id)')
+    .eq('id', pickupId)
+    .single();
+
+  if (!existing || (existing as any).children?.parent_id !== auth.userId) {
+    return notFound('Authorized pickup not found');
+  }
+
+  const { error } = await auth.supabase
+    .from('child_authorized_pickups')
+    .delete()
+    .eq('id', pickupId);
+
+  if (error) return badRequest(error.message);
+
+  await logAuditEvent(auth.supabase, auth.userId, 'delete_authorized_pickup', 'child_authorized_pickup', pickupId, {});
+
+  return NextResponse.json({ success: true });
+}

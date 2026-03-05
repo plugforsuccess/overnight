@@ -27,10 +27,71 @@ export interface Parent {
 export interface Child {
   id: string;
   parent_id: string;
-  name: string;
-  date_of_birth: string | null;
-  allergies: string | null;
+  first_name: string;
+  last_name: string;
+  date_of_birth: string;
+  photo_url: string | null;
   medical_notes: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// ─── child_allergies ─────────────────────────────────────────────────────────
+export interface ChildAllergy {
+  id: string;
+  child_id: string;
+  allergen: string;
+  custom_label: string | null;
+  severity: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// ─── child_allergy_action_plans ──────────────────────────────────────────────
+export interface ChildAllergyActionPlan {
+  id: string;
+  child_allergy_id: string;
+  treatment_first_line: string;
+  dose_instructions: string | null;
+  symptoms_watch: unknown;
+  med_location: string | null;
+  requires_med_on_site: boolean;
+  medication_expires_on: string | null;
+  physician_name: string | null;
+  parent_confirmed: boolean;
+  parent_confirmed_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// ─── child_emergency_contacts ────────────────────────────────────────────────
+export interface ChildEmergencyContact {
+  id: string;
+  child_id: string;
+  first_name: string;
+  last_name: string;
+  relationship: string;
+  phone: string;
+  phone_alt: string | null;
+  priority: number;
+  authorized_for_pickup: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// ─── child_authorized_pickups ────────────────────────────────────────────────
+export interface ChildAuthorizedPickup {
+  id: string;
+  child_id: string;
+  first_name: string;
+  last_name: string;
+  relationship: string;
+  phone: string;
+  pickup_pin_hash: string;
+  id_verified: boolean;
+  id_verified_at: Date | null;
+  id_verified_by: string | null;
+  notes: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -185,6 +246,10 @@ export interface BillingEvent {
 export interface Tables {
   parents: Parent;
   children: Child;
+  child_allergies: ChildAllergy;
+  child_allergy_action_plans: ChildAllergyActionPlan;
+  child_emergency_contacts: ChildEmergencyContact;
+  child_authorized_pickups: ChildAuthorizedPickup;
   plans: Plan;
   overnight_blocks: OvernightBlock;
   reservations: Reservation;
