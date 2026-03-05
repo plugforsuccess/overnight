@@ -158,34 +158,42 @@ export default function SignupPage() {
     if (step === 'account') {
       setLoading(true);
       try {
-        const { error: authError } = await supabase.auth.signUp({
-          email: account.email.trim(),
-          password: account.password,
-          options: {
-            data: {
-              full_name: account.fullName,
-              role: 'parent',
+        // Skip signUp if user already created (e.g. navigated back to this step)
+        if (!userId) {
+          const { error: authError } = await supabase.auth.signUp({
+            email: account.email.trim(),
+            password: account.password,
+            options: {
+              data: {
+                full_name: account.fullName,
+                role: 'parent',
+              },
             },
-          },
-        });
+          });
 
-        if (authError) {
-          setError(authError.message);
-          setLoading(false);
-          return;
+          if (authError) {
+            if (authError.message.toLowerCase().includes('rate limit')) {
+              setError('Too many signup attempts. Please wait a minute and try again.');
+            } else {
+              setError(authError.message);
+            }
+            setLoading(false);
+            return;
+          }
+
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) {
+            setError('Account created but session could not be established. Please try logging in.');
+            setLoading(false);
+            return;
+          }
+          setUserId(user.id);
         }
 
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          setError('Account created but session could not be established. Please try logging in.');
-          setLoading(false);
-          return;
-        }
-        setUserId(user.id);
         await supabase.from('profiles').update({
           phone: account.phone.replace(/\D/g, ''),
           address: account.address,
-        }).eq('id', user.id);
+        }).eq('id', userId!);
         setLoading(false);
         setStep('child');
       } catch {
