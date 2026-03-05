@@ -1,143 +1,149 @@
 /**
- * SQLite schema for local dev / billing state.
+ * TypeScript type definitions for the Postgres database schema.
  *
- * Mirrors the Postgres schema in supabase-schema.sql.
- * Uses SQLite (via better-sqlite3) for simplicity in dev/test.
+ * @deprecated DDL is no longer defined here. All schema changes MUST go through
+ *   Knex migrations in src/db/migrations/.
+ *
+ * These types mirror the tables created by the migration files and are intended
+ * for use in application code (services, routes, etc.) when raw Knex results
+ * need type annotations.
  */
-export const SCHEMA = `
--- Users (parents + admins)
-CREATE TABLE IF NOT EXISTS users (
-  id                 TEXT PRIMARY KEY,
-  email              TEXT NOT NULL UNIQUE,
-  full_name          TEXT NOT NULL,
-  phone              TEXT,
-  role               TEXT NOT NULL DEFAULT 'parent'
-                     CHECK (role IN ('parent', 'admin')),
-  stripe_customer_id TEXT UNIQUE,
-  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
-);
 
--- Children (belongs_to user)
-CREATE TABLE IF NOT EXISTS children (
-  id                      TEXT PRIMARY KEY,
-  user_id                 TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  full_name               TEXT NOT NULL,
-  date_of_birth           TEXT NOT NULL,
-  allergies               TEXT,
-  medical_notes           TEXT,
-  emergency_contact_name  TEXT NOT NULL,
-  emergency_contact_phone TEXT NOT NULL,
-  created_at              TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at              TEXT NOT NULL DEFAULT (datetime('now'))
-);
+// ─── parents ──────────────────────────────────────────────────────────────────
+export interface Parent {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  address: string | null;
+  role: string;
+  is_admin: boolean;
+  stripe_customer_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
 
-CREATE INDEX IF NOT EXISTS idx_children_user_id ON children(user_id);
+// ─── children ─────────────────────────────────────────────────────────────────
+export interface Child {
+  id: string;
+  parent_id: string;
+  name: string;
+  date_of_birth: string | null;
+  allergies: string | null;
+  medical_notes: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
 
--- Plans (catalog of subscription tiers)
-CREATE TABLE IF NOT EXISTS plans (
-  id                 TEXT PRIMARY KEY,
-  plan_key           TEXT NOT NULL UNIQUE,
-  nights_per_week    INTEGER NOT NULL CHECK (nights_per_week BETWEEN 1 AND 5),
-  weekly_price_cents INTEGER NOT NULL,
-  active             INTEGER NOT NULL DEFAULT 1,
-  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
-);
+// ─── plans ────────────────────────────────────────────────────────────────────
+export interface Plan {
+  id: string;
+  name: string;
+  nights_per_week: number;
+  weekly_price_cents: number;
+  active: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
 
--- Subscriptions
-CREATE TABLE IF NOT EXISTS subscriptions (
-  id                       TEXT PRIMARY KEY,
-  user_id                  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  stripe_customer_id       TEXT,
-  stripe_subscription_id   TEXT UNIQUE,
-  plan_key                 TEXT NOT NULL REFERENCES plans(plan_key),
-  status                   TEXT NOT NULL DEFAULT 'active'
-                           CHECK (status IN ('active','past_due','canceled','incomplete','paused')),
-  current_period_start     TEXT,
-  current_period_end       TEXT,
-  next_bill_at             TEXT,
-  created_at               TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at               TEXT NOT NULL DEFAULT (datetime('now'))
-);
+// ─── overnight_blocks ─────────────────────────────────────────────────────────
+export interface OvernightBlock {
+  id: string;
+  week_start: string;
+  parent_id: string;
+  child_id: string;
+  plan_id: string;
+  nights_per_week: number;
+  weekly_price_cents: number;
+  multi_child_discount_pct: number;
+  status: 'active' | 'cancelled' | 'canceled_low_enrollment';
+  payment_status: 'pending' | 'confirmed' | 'locked';
+  stripe_subscription_id: string | null;
+  stripe_invoice_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
 
-CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_status  ON subscriptions(status);
+// ─── reservations ─────────────────────────────────────────────────────────────
+export interface Reservation {
+  id: string;
+  child_id: string;
+  date: string;
+  overnight_block_id: string;
+  status: 'pending_payment' | 'confirmed' | 'locked' | 'canceled_low_enrollment';
+  admin_override: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
 
--- Reservation Weeks (one row per user per booking week)
-CREATE TABLE IF NOT EXISTS reservation_weeks (
-  id              TEXT PRIMARY KEY,
-  user_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  week_start_date TEXT NOT NULL,
-  plan_key        TEXT NOT NULL REFERENCES plans(plan_key),
-  status          TEXT NOT NULL DEFAULT 'active'
-                  CHECK (status IN ('active', 'cancelled')),
-  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE (user_id, week_start_date)
-);
+// ─── nightly_capacity ─────────────────────────────────────────────────────────
+export interface NightlyCapacity {
+  date: string;
+  capacity: number;
+  min_enrollment: number;
+  confirmed_count: number;
+  status: 'open' | 'full' | 'canceled_low_enrollment' | 'canceled_admin';
+  override_capacity: number | null;
+  created_at: Date;
+  updated_at: Date;
+}
 
-CREATE INDEX IF NOT EXISTS idx_reservation_weeks_user_id ON reservation_weeks(user_id);
+// ─── waitlist ─────────────────────────────────────────────────────────────────
+export interface WaitlistEntry {
+  id: string;
+  date: string;
+  child_id: string;
+  parent_id: string;
+  status: 'waiting' | 'offered' | 'accepted' | 'expired' | 'removed';
+  offered_at: Date | null;
+  expires_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
 
--- Reservations (individual night bookings)
-CREATE TABLE IF NOT EXISTS reservations (
-  id                  TEXT PRIMARY KEY,
-  reservation_week_id TEXT NOT NULL REFERENCES reservation_weeks(id) ON DELETE CASCADE,
-  child_id            TEXT NOT NULL REFERENCES children(id) ON DELETE CASCADE,
-  date                TEXT NOT NULL,
-  status              TEXT NOT NULL DEFAULT 'confirmed'
-                      CHECK (status IN ('confirmed', 'cancelled', 'completed')),
-  created_at          TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at          TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE (child_id, date)
-);
+// ─── credits ──────────────────────────────────────────────────────────────────
+export interface Credit {
+  id: string;
+  parent_id: string;
+  amount_cents: number;
+  reason: 'canceled_low_enrollment' | 'admin_manual' | 'refund';
+  related_block_id: string | null;
+  related_date: string | null;
+  source_weekly_price_cents: number | null;
+  source_plan_nights: number | null;
+  applied: boolean;
+  applied_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
 
-CREATE INDEX IF NOT EXISTS idx_reservations_date ON reservations(date);
+// ─── audit_log ────────────────────────────────────────────────────────────────
+export interface AuditLogEntry {
+  id: string;
+  actor_id: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: Date;
+}
 
--- Night Capacity
-CREATE TABLE IF NOT EXISTS night_capacity (
-  date       TEXT PRIMARY KEY,
-  capacity   INTEGER NOT NULL DEFAULT 6,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
+// ─── config ───────────────────────────────────────────────────────────────────
+export interface ConfigRow {
+  key: string;
+  value: string;
+}
 
--- Waitlist
-CREATE TABLE IF NOT EXISTS waitlist (
-  id                 TEXT PRIMARY KEY,
-  date               TEXT NOT NULL,
-  child_id           TEXT NOT NULL REFERENCES children(id) ON DELETE CASCADE,
-  user_id            TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  status             TEXT NOT NULL DEFAULT 'waiting'
-                     CHECK (status IN ('waiting', 'offered', 'confirmed', 'expired', 'cancelled')),
-  offered_expires_at TEXT,
-  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at         TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_waitlist_date_created ON waitlist(date, created_at);
-
--- Audit Log (admin overrides, cancellations, swaps)
-CREATE TABLE IF NOT EXISTS audit_log (
-  id          TEXT PRIMARY KEY,
-  actor_id    TEXT NOT NULL REFERENCES users(id),
-  action      TEXT NOT NULL,
-  entity_type TEXT NOT NULL,
-  entity_id   TEXT,
-  metadata    TEXT DEFAULT '{}',
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_audit_log_actor   ON audit_log(actor_id);
-CREATE INDEX IF NOT EXISTS idx_audit_log_entity  ON audit_log(entity_type, entity_id);
-CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at);
-
--- Billing events log (Stripe webhook idempotency)
-CREATE TABLE IF NOT EXISTS billing_events (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  stripe_event_id TEXT NOT NULL UNIQUE,
-  event_type      TEXT NOT NULL,
-  subscription_id TEXT REFERENCES subscriptions(id),
-  payload         TEXT NOT NULL,
-  processed_at    TEXT NOT NULL DEFAULT (datetime('now'))
-);
-`;
+// ─── Knex table-name → row-type mapping (for knex<TableType>('table')) ───────
+export interface Tables {
+  parents: Parent;
+  children: Child;
+  plans: Plan;
+  overnight_blocks: OvernightBlock;
+  reservations: Reservation;
+  nightly_capacity: NightlyCapacity;
+  waitlist: WaitlistEntry;
+  credits: Credit;
+  audit_log: AuditLogEntry;
+  config: ConfigRow;
+}
