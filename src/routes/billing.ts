@@ -8,11 +8,17 @@ import {
   getActiveSubscription,
 } from "../billing/subscription-service";
 import { handleWebhook } from "../billing/webhooks";
+import { authenticate, requireAdmin } from "../middleware/auth";
 
 export const billingRouter = Router();
 
-// ── List available plans ────────────────────────────────────────────────
+// All billing actions require auth (except webhook)
+billingRouter.use((req, res, next) => {
+  if (req.path === "/webhook") return next();
+  return authenticate(req as any, res, next);
+});
 
+// ── List available plans ────────────────────────────────────────────────
 billingRouter.get("/plans", (_req: Request, res: Response) => {
   const plans = Object.values(PlanTier).map((tier) => ({
     tier,
@@ -24,23 +30,26 @@ billingRouter.get("/plans", (_req: Request, res: Response) => {
 });
 
 // ── Subscribe to a plan ─────────────────────────────────────────────────
-
-billingRouter.post("/subscribe", async (req: Request, res: Response) => {
+billingRouter.post("/subscribe", async (req: any, res: Response) => {
   try {
-    const { parent_id, email, name, plan_tier } = req.body;
+    const { plan_tier } = req.body;
+    const parent = req.parent; // from auth
 
-    if (!parent_id || !email || !name || !plan_tier) {
-      res.status(400).json({ error: "Missing required fields: parent_id, email, name, plan_tier" });
+    if (!plan_tier) {
+      res.status(400).json({ error: "Missing required field: plan_tier" });
       return;
     }
-
     if (!Object.values(PlanTier).includes(plan_tier)) {
-      res.status(400).json({ error: `Invalid plan_tier. Must be one of: ${Object.values(PlanTier).join(", ")}` });
+      res.status(400).json({ error: `Invalid plan_tier.` });
       return;
     }
 
-    const customerId = await ensureStripeCustomer(parent_id, email, name);
-    const result = await createSubscription(parent_id, customerId, plan_tier);
+    // derive email/name from parent record (server-trusted)
+    const email = parent.email;
+    const name = parent.name;
+
+    const customerId = await ensureStripeCustomer(parent.id, email, name);
+    const result = await createSubscription(parent.id, customerId, plan_tier);
 
     res.json({
       subscription_id: result.subscriptionId,
@@ -48,28 +57,26 @@ billingRouter.post("/subscribe", async (req: Request, res: Response) => {
       message: "Subscription created. Use client_secret to confirm payment on the frontend.",
     });
   } catch (err: any) {
-    console.error("Subscribe error:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Subscription creation failed" });
   }
 });
 
 // ── Change plan (queued for next billing cycle) ─────────────────────────
-
-billingRouter.post("/change-plan", async (req: Request, res: Response) => {
+billingRouter.post("/change-plan", async (req: any, res: Response) => {
   try {
-    const { parent_id, new_plan_tier } = req.body;
+    const { new_plan_tier } = req.body;
+    const parent = req.parent;
 
-    if (!parent_id || !new_plan_tier) {
-      res.status(400).json({ error: "Missing required fields: parent_id, new_plan_tier" });
+    if (!new_plan_tier) {
+      res.status(400).json({ error: "Missing required field: new_plan_tier" });
       return;
     }
-
     if (!Object.values(PlanTier).includes(new_plan_tier)) {
-      res.status(400).json({ error: `Invalid plan tier.` });
+      res.status(400).json({ error: "Invalid plan tier." });
       return;
     }
 
-    const { effectiveDate } = await requestPlanChange(parent_id, new_plan_tier);
+    const { effectiveDate } = await requestPlanChange(parent.id, new_plan_tier);
 
     res.json({
       message: `Plan change queued. New tier (${new_plan_tier}) takes effect on ${effectiveDate}.`,
@@ -81,16 +88,11 @@ billingRouter.post("/change-plan", async (req: Request, res: Response) => {
 });
 
 // ── Cancel subscription (at period end) ─────────────────────────────────
-
-billingRouter.post("/cancel", async (req: Request, res: Response) => {
+billingRouter.post("/cancel", async (req: any, res: Response) => {
   try {
-    const { parent_id } = req.body;
-    if (!parent_id) {
-      res.status(400).json({ error: "Missing required field: parent_id" });
-      return;
-    }
+    const parent = req.parent;
 
-    const accessUntil = await cancelSubscription(parent_id);
+    const accessUntil = await cancelSubscription(parent.id);
 
     res.json({
       message: `Subscription will cancel at period end. Reservations valid until ${accessUntil}.`,
@@ -102,9 +104,9 @@ billingRouter.post("/cancel", async (req: Request, res: Response) => {
 });
 
 // ── Get current subscription status ─────────────────────────────────────
-
-billingRouter.get("/status/:parentId", (req: Request, res: Response) => {
-  const sub = getActiveSubscription(req.params.parentId as string);
+billingRouter.get("/status", async (req: any, res: Response) => {
+  const parent = req.parent;
+  const sub = await getActiveSubscription(parent.id);
   if (!sub) {
     res.json({ active: false, subscription: null });
     return;
@@ -112,8 +114,11 @@ billingRouter.get("/status/:parentId", (req: Request, res: Response) => {
   res.json({ active: true, subscription: sub });
 });
 
-// ── Stripe webhook endpoint ─────────────────────────────────────────────
-// NOTE: This route uses raw body parsing — mounted separately in index.ts
-// with express.raw(). Do not use express.json() on this route.
+// Optional admin lookup
+billingRouter.get("/admin/status/:parentId", requireAdmin, async (req: any, res: Response) => {
+  const sub = await getActiveSubscription(req.params.parentId);
+  res.json({ active: Boolean(sub), subscription: sub || null });
+});
 
+// ── Stripe webhook endpoint ─────────────────────────────────────────────
 billingRouter.post("/webhook", handleWebhook);
