@@ -232,17 +232,33 @@ export default function SignupPage() {
       }
       setLoading(true);
       try {
+        // Look up the parent row by auth_user_id to get the correct parent_id FK
+        const { data: parentRow, error: parentLookupError } = await supabase
+          .from('parents')
+          .select('id')
+          .eq('auth_user_id', userId)
+          .single();
+
+        if (parentLookupError || !parentRow) {
+          setError('Could not find your parent profile. Please contact support.');
+          setLoading(false);
+          return;
+        }
+
+        const emergencyInfo = [
+          `Emergency Contact: ${emergency.contactName} (${emergency.relationship})`,
+          `Phone: ${emergency.phone.replace(/\D/g, '')}`,
+          emergency.pickupPerson ? `Authorized Pickup: ${emergency.pickupPerson}` : '',
+        ].filter(Boolean).join('\n');
+
         const { error: childError } = await supabase
           .from('children')
           .insert({
-            parent_id: userId,
-            full_name: child.fullName,
+            parent_id: parentRow.id,
+            name: child.fullName,
             date_of_birth: child.dateOfBirth,
             allergies: child.hasAllergies ? child.allergyNotes : null,
-            medical_notes: null,
-            emergency_contact_name: emergency.contactName,
-            emergency_contact_phone: emergency.phone.replace(/\D/g, ''),
-            authorized_pickup: emergency.pickupPerson || '',
+            medical_notes: emergencyInfo,
           });
 
         if (childError) {
