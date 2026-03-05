@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Moon, Shield, Clock, Users, Star, Calendar } from 'lucide-react';
+import { Moon, Shield, Clock, Users, Star, Calendar, Heart, BedDouble } from 'lucide-react';
 import { DEFAULT_PRICING_TIERS, formatCents, OVERNIGHT_START, OVERNIGHT_END } from '@/lib/constants';
 
 export default function HomePage() {
@@ -14,7 +14,7 @@ export default function HomePage() {
               <span className="text-night-300 font-medium">Licensed FCCLH in Georgia</span>
             </div>
             <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
-              Overnight Childcare You Can Trust
+              Overnight Childcare for Night-Shift Parents
             </h1>
             <p className="text-xl text-gray-300 mb-8 leading-relaxed">
               Working late shifts? Need reliable overnight care? DreamWatch provides safe, licensed
@@ -22,8 +22,8 @@ export default function HomePage() {
               Flexible weekly plans starting at just {formatCents(DEFAULT_PRICING_TIERS[0].price_cents)}/week.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
-              <Link href="/signup" className="btn-primary text-lg px-8 py-3 text-center">
-                Get Started
+              <Link href="/schedule" className="btn-primary text-lg px-8 py-3 text-center">
+                Check Availability
               </Link>
               <Link href="/pricing" className="btn-secondary text-lg px-8 py-3 text-center bg-white/10 border-white/20 text-white hover:bg-white/20">
                 View Pricing
@@ -34,6 +34,30 @@ export default function HomePage() {
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -top-40 -right-40 w-96 h-96 bg-night-600/20 rounded-full blur-3xl" />
           <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-brand-600/20 rounded-full blur-3xl" />
+        </div>
+      </section>
+
+      {/* Trust Blocks */}
+      <section className="py-12 bg-white border-b border-gray-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="flex items-center gap-3 justify-center">
+              <Shield className="h-8 w-8 text-night-600 flex-shrink-0" />
+              <span className="font-semibold text-gray-900">Licensed FCCLH</span>
+            </div>
+            <div className="flex items-center gap-3 justify-center">
+              <Heart className="h-8 w-8 text-red-500 flex-shrink-0" />
+              <span className="font-semibold text-gray-900">CPR Certified</span>
+            </div>
+            <div className="flex items-center gap-3 justify-center">
+              <BedDouble className="h-8 w-8 text-night-600 flex-shrink-0" />
+              <span className="font-semibold text-gray-900">Safe Sleep Environment</span>
+            </div>
+            <div className="flex items-center gap-3 justify-center">
+              <Users className="h-8 w-8 text-brand-600 flex-shrink-0" />
+              <span className="font-semibold text-gray-900">Limited Spots (6 Max)</span>
+            </div>
+          </div>
         </div>
       </section>
 
