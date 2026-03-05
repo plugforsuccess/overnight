@@ -2,21 +2,19 @@ import "dotenv/config";
 import express from "express";
 import { knexConfig } from "./db/connection";
 import { billingRouter } from "./routes/billing";
+import { handleWebhook } from "./billing/webhooks";
 import { requireActiveSubscription } from "./middleware/require-subscription";
 
 const app = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
-// ── Stripe webhook route needs raw body ─────────────────────────────────
+// ── Stripe webhook needs the raw body for signature verification ────────
+// This route MUST be registered before express.json() so the body remains
+// an unparsed Buffer when handleWebhook calls stripe.webhooks.constructEvent.
 app.post(
   "/api/billing/webhook",
   express.raw({ type: "application/json" }),
-  (req, res) => {
-    // Forward to the billing router's webhook handler directly.
-    import("./billing/webhooks").then(({ handleWebhook }) =>
-      handleWebhook(req, res)
-    );
-  }
+  handleWebhook
 );
 
 // ── JSON parsing for all other routes ───────────────────────────────────
@@ -34,7 +32,6 @@ app.use("/api/billing", billingRouter);
 // For now, expose a test endpoint:
 app.post(
   "/api/reservations/test",
-  express.json(),
   requireActiveSubscription,
   (_req, res) => {
     res.json({ ok: true, message: "Subscription is active — reservation allowed." });
