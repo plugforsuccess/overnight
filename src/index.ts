@@ -1,42 +1,40 @@
 import "dotenv/config";
 import express from "express";
-import { knexConfig } from "./db/connection";
 import { billingRouter } from "./routes/billing";
-import { handleWebhook } from "./billing/webhooks";
 import { requireActiveSubscription } from "./middleware/require-subscription";
 
 const app = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
-// ── Stripe webhook needs the raw body for signature verification ────────
-// This route MUST be registered before express.json() so the body remains
-// an unparsed Buffer when handleWebhook calls stripe.webhooks.constructEvent.
+// ── Stripe webhook route needs raw body ─────────────────────────────────
 app.post(
   "/api/billing/webhook",
-  express.raw({ type: "application/json" }),
-  handleWebhook
+  express.raw({ type: "application/json", limit: "2mb" }),
+  async (req, res) => {
+    try {
+      if (!Buffer.isBuffer(req.body)) {
+        res.status(400).send("Webhook error: expected raw body Buffer");
+        return;
+      }
+      const { handleWebhook } = await import("./billing/webhooks");
+      await handleWebhook(req, res);
+    } catch (err) {
+      // Never leak internal details to Stripe response
+      res.status(500).send("Webhook handler error");
+    }
+  }
 );
 
 // ── JSON parsing for all other routes ───────────────────────────────────
-app.use(express.json());
+app.use(express.json({ limit: "1mb" }));
 
 // ── Billing API ─────────────────────────────────────────────────────────
 app.use("/api/billing", billingRouter);
 
-// ── Example: protect reservation routes ─────────────────────────────────
-// Uncomment and adapt when reservation routes are built:
-//
-// import { reservationRouter } from "./routes/reservations";
-// app.use("/api/reservations", requireActiveSubscription, reservationRouter);
-//
-// For now, expose a test endpoint:
-app.post(
-  "/api/reservations/test",
-  requireActiveSubscription,
-  (_req, res) => {
-    res.json({ ok: true, message: "Subscription is active — reservation allowed." });
-  }
-);
+// ── Reservation test endpoint (no extra json middleware needed) ─────────
+app.post("/api/reservations/test", requireActiveSubscription, (_req, res) => {
+  res.json({ ok: true, message: "Subscription is active — reservation allowed." });
+});
 
 // ── Health check ────────────────────────────────────────────────────────
 app.get("/health", (_req, res) => {
