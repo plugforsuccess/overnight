@@ -66,9 +66,11 @@ CREATE TABLE IF NOT EXISTS public.child_allergies (
   custom_label text NULL,
   severity public.allergy_severity NOT NULL DEFAULT 'UNKNOWN',
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (child_id, allergen, COALESCE(custom_label, ''))
+  updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_child_allergies_unique
+  ON public.child_allergies (child_id, allergen, COALESCE(custom_label, ''));
 
 CREATE INDEX IF NOT EXISTS idx_child_allergies_child_id ON public.child_allergies(child_id);
 
