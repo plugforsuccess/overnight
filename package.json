@@ -1,24 +1,35 @@
 {
-  "name": "overnight",
-  "version": "1.0.0",
-  "description": "",
-  "main": "src/server.js",
+  "name": "overnight-childcare",
+  "version": "0.1.0",
+  "private": true,
   "scripts": {
-    "start": "node src/server.js",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
     "migrate": "npx knex migrate:latest",
     "test": "NODE_ENV=test jest --forceExit --detectOpenHandles"
   },
-  "repository": {
-    "type": "git",
-    "url": "http://local_proxy@127.0.0.1:51761/git/plugforsuccess/overnight"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
+    "@stripe/stripe-js": "^8.9.0",
+    "@supabase/auth-helpers-nextjs": "^0.15.0",
+    "@supabase/supabase-js": "^2.98.0",
+    "@types/node": "^25.3.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.4.27",
     "better-sqlite3": "^12.6.2",
+    "date-fns": "^4.1.0",
     "express": "^5.2.1",
-    "knex": "^3.1.0"
+    "knex": "^3.1.0",
+    "lucide-react": "^0.577.0",
+    "next": "^14.2.35",
+    "postcss": "^8.5.8",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "stripe": "^20.4.0",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^5.9.3"
   },
   "devDependencies": {
     "jest": "^30.2.0",
