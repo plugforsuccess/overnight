@@ -100,7 +100,7 @@ export default function SignupPage() {
     clearFieldError(field);
     switch (field) {
       case 'email':
-        if (value && !validateEmail(value)) setFieldError('email', 'Please enter a valid email address');
+        if (value && !validateEmail(value.trim())) setFieldError('email', 'Please enter a valid email address');
         break;
       case 'phone':
         if (value && !validatePhone(value)) setFieldError('phone', 'Please enter a valid 10-digit phone number');
@@ -123,7 +123,7 @@ export default function SignupPage() {
     if (step === 'account') {
       if (!account.fullName.trim()) errors.fullName = 'Full name is required';
       if (!account.email.trim()) errors.email = 'Email is required';
-      else if (!validateEmail(account.email)) errors.email = 'Please enter a valid email address';
+      else if (!validateEmail(account.email.trim())) errors.email = 'Please enter a valid email address';
       if (!account.phone.trim()) errors.phone = 'Phone number is required';
       else if (!validatePhone(account.phone)) errors.phone = 'Please enter a valid 10-digit phone number';
       if (!account.address.trim()) errors.address = 'Address or ZIP code is required';
@@ -159,7 +159,7 @@ export default function SignupPage() {
       setLoading(true);
       try {
         const { error: authError } = await supabase.auth.signUp({
-          email: account.email,
+          email: account.email.trim(),
           password: account.password,
           options: {
             data: {
