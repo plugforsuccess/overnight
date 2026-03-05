@@ -83,7 +83,7 @@ export default function HomePage() {
               {
                 icon: Clock,
                 title: 'Overnight Hours',
-                description: `Care from ${OVERNIGHT_START} to ${OVERNIGHT_END}. Perfect for nurses, first responders, hospitality workers, and anyone with evening shifts.`,
+                description: `Care from ${OVERNIGHT_START} to ${OVERNIGHT_END}. Perfect for nurses, first responders, hospitality workers, and anyone with evening and night shifts.`,
               },
               {
                 icon: Users,
