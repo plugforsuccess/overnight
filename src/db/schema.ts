@@ -70,9 +70,17 @@ export interface Reservation {
   child_id: string;
   date: string;
   overnight_block_id: string;
-  status: 'pending_payment' | 'confirmed' | 'locked' | 'canceled_low_enrollment';
+  status: 'pending_payment' | 'confirmed' | 'locked' | 'canceled' | 'canceled_low_enrollment';
   admin_override: boolean;
   created_at: Date;
+  updated_at: Date;
+}
+
+// ─── stripe_prices ───────────────────────────────────────────────────────────
+export interface StripePriceCache {
+  tier: string;
+  price_id: string;
+  mode: 'test' | 'live';
   updated_at: Date;
 }
 
@@ -183,6 +191,7 @@ export interface Tables {
   nightly_capacity: NightlyCapacity;
   waitlist: WaitlistEntry;
   credits: Credit;
+  stripe_prices: StripePriceCache;
   audit_log: AuditLogEntry;
   config: ConfigRow;
   subscriptions: Subscription;

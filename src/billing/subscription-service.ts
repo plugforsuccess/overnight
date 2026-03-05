@@ -132,7 +132,7 @@ export async function createSubscription(
     }
 
     const stripe = getStripe();
-    const priceId = await getPriceId(tier);
+    const priceId = await getPriceId(tier, db);
 
     const anchor = nextFridayNoon();
     const anchorUnix = Math.floor(anchor.getTime() / 1000);
@@ -232,7 +232,7 @@ export async function applyPendingChangesForSubscription(
   if (!pending) return;
 
   const stripe = getStripe();
-  const newPriceId = await getPriceId(pending.new_plan_tier);
+  const newPriceId = await getPriceId(pending.new_plan_tier, trx);
 
   const stripeSub = await stripe.subscriptions.retrieve(stripeSubId);
   const itemId = stripeSub.items.data[0]?.id;
