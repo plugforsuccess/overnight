@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "migrate": "npx knex migrate:latest",
+    "migrate:billing": "ts-node src/db/migrate.ts",
     "test": "NODE_ENV=test jest --forceExit --detectOpenHandles"
   },
   "dependencies": {
@@ -20,6 +21,7 @@
     "autoprefixer": "^10.4.27",
     "better-sqlite3": "^12.6.2",
     "date-fns": "^4.1.0",
+    "dotenv": "^16.3.1",
     "express": "^5.2.1",
     "knex": "^3.1.0",
     "lucide-react": "^0.577.0",
@@ -32,7 +34,9 @@
     "typescript": "^5.9.3"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.8",
     "jest": "^30.2.0",
-    "supertest": "^7.2.2"
+    "supertest": "^7.2.2",
+    "ts-node": "^10.9.2"
   }
 }
