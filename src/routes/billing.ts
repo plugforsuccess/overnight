@@ -42,17 +42,17 @@ billingRouter.post("/subscribe", async (req: any, res: Response) => {
       return;
     }
 
-    // derive email/name from parent record (server-trusted)
-    const email = parent.email;
-    const name = parent.name;
-
-    const customerId = await ensureStripeCustomer(parent.id, email, name);
-    const result = await createSubscription(parent.id, customerId, plan_tier);
+    // ensureStripeCustomer sources email/name from the DB record (server-trusted)
+    await ensureStripeCustomer(parent.id);
+    const result = await createSubscription(parent.id, plan_tier);
 
     res.json({
       subscription_id: result.subscriptionId,
       client_secret: result.clientSecret,
-      message: "Subscription created. Use client_secret to confirm payment on the frontend.",
+      already_exists: result.alreadyExists ?? false,
+      message: result.alreadyExists
+        ? "An active subscription already exists."
+        : "Subscription created. Use client_secret to confirm payment on the frontend.",
     });
   } catch (err: any) {
     res.status(500).json({ error: "Subscription creation failed" });

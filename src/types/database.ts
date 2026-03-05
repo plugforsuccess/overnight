@@ -118,3 +118,41 @@ export interface Payment {
   week_start: string | null;
   created_at: string;
 }
+
+// ─── subscriptions (billing-hardened) ────────────────────────────────────────
+export interface Subscription {
+  id: string;
+  parent_id: string;
+  stripe_subscription_id: string;
+  plan_tier: string;
+  status: 'active' | 'past_due' | 'canceled' | 'incomplete';
+  stripe_status: string;
+  next_billing_date: string | null;
+  current_period_end: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── pending_plan_changes ────────────────────────────────────────────────────
+export interface PendingPlanChange {
+  id: string;
+  subscription_id: string;
+  new_plan_tier: string;
+  effective_date: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── billing_events (Stripe webhook idempotency) ────────────────────────────
+export interface BillingEvent {
+  id: string;
+  stripe_event_id: string;
+  event_type: string;
+  subscription_id: string | null;
+  payload: Record<string, unknown>;
+  livemode: boolean;
+  stripe_created_at: string | null;
+  status: 'received' | 'processed' | 'failed' | 'skipped';
+  error: string | null;
+  processed_at: string;
+}
