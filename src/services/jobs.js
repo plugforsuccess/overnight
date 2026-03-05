@@ -2,6 +2,7 @@ const db = require('../db');
 const enrollmentService = require('./enrollment');
 const waitlistService = require('./waitlist');
 const creditService = require('./credit');
+const capacityService = require('./capacity');
 const reservationService = require('./reservation');
 const notifications = require('./notifications');
 
@@ -97,12 +98,11 @@ async function runWaitlistPromotion() {
     if (activeOffer) continue; // Already an active offer
 
     // Check if the night is canceled
-    const nightStatus = await db('nightly_status').where({ date }).first();
-    if (nightStatus && nightStatus.status !== 'open') continue;
+    const night = await db('nightly_capacity').where({ date }).first();
+    if (night && night.status !== 'open') continue;
 
     // Check capacity
-    const capacity = require('./capacity');
-    const hasRoom = await capacity.hasCapacity(date);
+    const hasRoom = await capacityService.hasCapacity(date);
     if (!hasRoom) continue;
 
     // Offer to next in line
