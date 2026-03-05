@@ -177,7 +177,7 @@ export default function SignupPage() {
           if (!res.ok) {
             const msg = (result.error || '').toLowerCase();
             if (msg.includes('rate limit')) {
-              setError('Too many attempts. Please wait 5 minutes before trying again.');
+              setError('Too many sign up attempts. Please wait a few minutes and try again.');
             } else if (msg.includes('already registered') || msg.includes('already been registered') || msg.includes('already exists')) {
               setError('This email is already registered. Please sign in instead.');
             } else {
