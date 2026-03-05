@@ -176,13 +176,16 @@ export default function SignupPage() {
         }
 
         const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          setUserId(user.id);
-          await supabase.from('profiles').update({
-            phone: account.phone.replace(/\D/g, ''),
-            address: account.address,
-          }).eq('id', user.id);
+        if (!user) {
+          setError('Account created but session could not be established. Please try logging in.');
+          setLoading(false);
+          return;
         }
+        setUserId(user.id);
+        await supabase.from('profiles').update({
+          phone: account.phone.replace(/\D/g, ''),
+          address: account.address,
+        }).eq('id', user.id);
         setLoading(false);
         setStep('child');
       } catch {
@@ -197,15 +200,7 @@ export default function SignupPage() {
         setError('Account not found. Please go back and try again.');
         return;
       }
-      setLoading(true);
-      try {
-        // We'll create the child + emergency contact together in the next step
-        setLoading(false);
-        setStep('emergency');
-      } catch {
-        setError('Something went wrong. Please try again.');
-        setLoading(false);
-      }
+      setStep('emergency');
       return;
     }
 
