@@ -174,7 +174,7 @@ export default function SignupPage() {
           if (authError) {
             const msg = authError.message.toLowerCase();
             if (msg.includes('rate limit')) {
-              setError('Too many signup attempts for this email. Please wait a few minutes before trying again, even on other devices.');
+              setError('Too many attempts. Please wait 5 minutes before trying again.');
             } else if (msg.includes('already registered') || msg.includes('already been registered')) {
               setError('This email is already registered. Please sign in instead.');
             } else {
