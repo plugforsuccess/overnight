@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { createClient } from '@supabase/supabase-js';
+import { priceCentsForNights } from '@/lib/stripe';
 
 function getUserClient(req: NextRequest) {
   const authHeader = req.headers.get('Authorization');
@@ -47,7 +48,26 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { childId, nightsPerWeek, priceCents, selectedNights, weekStart } = await req.json();
+  const { childId, nightsPerWeek, selectedNights, weekStart } = await req.json();
+
+  // Subscription guard: no active plan = cannot reserve nights.
+  const { data: activePlan } = await supabaseAdmin
+    .from('plans')
+    .select('id, status')
+    .eq('parent_id', user.id)
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle();
+
+  if (!activePlan) {
+    return NextResponse.json(
+      { error: 'Active subscription required to reserve nights.', code: 'NO_ACTIVE_SUBSCRIPTION' },
+      { status: 403 }
+    );
+  }
+
+  // Look up price server-side — never trust client-supplied price.
+  const priceCents = priceCentsForNights(nightsPerWeek);
 
   // Get admin settings for capacity
   const { data: settings } = await supabaseAdmin

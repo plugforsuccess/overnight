@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { stripe, getOrCreateCustomer } from '@/lib/stripe';
+import { stripe, getOrCreateCustomer, priceCentsForNights } from '@/lib/stripe';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { createClient } from '@supabase/supabase-js';
 
@@ -18,7 +18,14 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { planId, priceCents } = await req.json();
+  const { planId, nightsPerWeek } = await req.json();
+
+  if (!nightsPerWeek || nightsPerWeek < 1 || nightsPerWeek > 5) {
+    return NextResponse.json({ error: 'nightsPerWeek must be 1–5' }, { status: 400 });
+  }
+
+  // Look up price server-side — never trust client-supplied amount.
+  const priceCents = priceCentsForNights(nightsPerWeek);
 
   // Get user profile
   const { data: profile } = await supabaseAdmin
@@ -33,6 +40,7 @@ export async function POST(req: NextRequest) {
   const customerId = await getOrCreateCustomer(
     profile.email,
     profile.full_name,
+    user.id,
     profile.stripe_customer_id
   );
 
@@ -58,13 +66,20 @@ export async function POST(req: NextRequest) {
           unit_amount: priceCents,
           recurring: { interval: 'week', interval_count: 1 },
           product_data: {
-            name: 'DreamWatch Overnight - Weekly Plan',
+            name: `DreamWatch Overnight – ${nightsPerWeek} Night${nightsPerWeek > 1 ? 's' : ''}/Week`,
             description: 'Weekly overnight childcare subscription',
           },
         },
         quantity: 1,
       },
     ],
+    subscription_data: {
+      metadata: {
+        plan_id: planId,
+        user_id: user.id,
+        nights_per_week: String(nightsPerWeek),
+      },
+    },
     metadata: {
       plan_id: planId,
       user_id: user.id,

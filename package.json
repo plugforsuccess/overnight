@@ -8,7 +8,6 @@
     "start": "next start",
     "lint": "next lint",
     "migrate": "npx knex migrate:latest",
-    "migrate:billing": "ts-node src/db/migrate.ts",
     "test": "NODE_ENV=test jest --forceExit --detectOpenHandles"
   },
   "dependencies": {

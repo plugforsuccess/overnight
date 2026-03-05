@@ -212,3 +212,49 @@ create policy "Admins can manage all payments"
   on public.payments for all using (
     exists (select 1 from public.profiles where id = auth.uid() and role = 'admin')
   );
+
+-- ============================================================
+-- BILLING EVENTS (immutable webhook audit trail + idempotency)
+-- ============================================================
+create table public.billing_events (
+  id uuid primary key default uuid_generate_v4(),
+  stripe_event_id text not null unique,  -- idempotency key
+  event_type text not null,
+  plan_id uuid references public.plans(id) on delete set null,
+  payload jsonb not null,
+  processed_at timestamptz not null default now()
+);
+
+alter table public.billing_events enable row level security;
+
+create policy "Admins can view billing events"
+  on public.billing_events for select using (
+    exists (select 1 from public.profiles where id = auth.uid() and role = 'admin')
+  );
+
+-- ============================================================
+-- PENDING PLAN CHANGES (queued tier changes for next billing cycle)
+-- ============================================================
+create table public.pending_plan_changes (
+  id uuid primary key default uuid_generate_v4(),
+  plan_id uuid not null unique references public.plans(id) on delete cascade,
+  new_nights_per_week int not null check (new_nights_per_week between 1 and 5),
+  new_price_cents int not null,
+  effective_date date not null,  -- the next Friday when change takes effect
+  created_at timestamptz not null default now()
+);
+
+alter table public.pending_plan_changes enable row level security;
+
+create policy "Parents can view own pending changes"
+  on public.pending_plan_changes for select using (
+    exists (
+      select 1 from public.plans
+      where plans.id = pending_plan_changes.plan_id
+        and plans.parent_id = auth.uid()
+    )
+  );
+create policy "Admins can manage pending changes"
+  on public.pending_plan_changes for all using (
+    exists (select 1 from public.profiles where id = auth.uid() and role = 'admin')
+  );
