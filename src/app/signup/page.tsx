@@ -73,7 +73,7 @@ export default function SignupPage() {
     <div className="min-h-[80vh] flex items-center justify-center py-12 px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Moon className="h-12 w-12 text-night-600 mx-auto mb-4" />
+          <Moon className="h-12 w-12 text-accent-500 mx-auto mb-4" />
           <h1 className="text-3xl font-bold text-gray-900">Create Your Account</h1>
           <p className="text-gray-600 mt-2">Join DreamWatch Overnight</p>
         </div>
@@ -169,7 +169,7 @@ export default function SignupPage() {
           </form>
           <div className="mt-4 text-center text-sm text-gray-600">
             Already have an account?{' '}
-            <Link href="/login" className="text-brand-600 hover:text-brand-700 font-medium">
+            <Link href="/login" className="text-accent-600 hover:text-accent-700 font-medium">
               Sign in
             </Link>
           </div>

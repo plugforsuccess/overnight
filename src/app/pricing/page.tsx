@@ -33,10 +33,10 @@ export default function PricingPage() {
             return (
               <div
                 key={tier.nights}
-                className={`card relative ${isBest ? 'border-night-600 border-2 shadow-lg scale-105' : ''}`}
+                className={`card relative ${isBest ? 'border-accent-600 border-2 shadow-soft-lg scale-105' : ''}`}
               >
                 {isBest && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-night-600 text-white text-xs font-bold px-3 py-1 rounded-full">
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-accent-600 text-white text-xs font-bold px-3 py-1 rounded-full">
                     Best Value
                   </div>
                 )}
@@ -55,7 +55,7 @@ export default function PricingPage() {
                       Save {formatCents(tiers[0].price_cents * tier.nights - tier.price_cents)} vs single-night rate
                     </div>
                   )}
-                  <Link href="/signup" className={`w-full block text-center py-2.5 px-4 rounded-lg font-semibold transition-colors ${isBest ? 'bg-night-600 hover:bg-night-700 text-white' : 'btn-secondary'}`}>
+                  <Link href="/signup" className={`w-full block text-center py-2.5 px-4 rounded-lg font-semibold transition-colors ${isBest ? 'bg-accent-600 hover:bg-accent-700 text-white shadow-soft-sm' : 'btn-secondary'}`}>
                     Get Started
                   </Link>
                 </div>

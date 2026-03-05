@@ -6,12 +6,12 @@ export default function HomePage() {
   return (
     <div>
       {/* Hero */}
-      <section className="relative bg-gradient-to-br from-night-900 via-night-800 to-brand-900 text-white">
+      <section className="relative bg-gradient-to-br from-navy-900 via-navy-800 to-navy-700 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32">
           <div className="max-w-3xl">
             <div className="flex items-center gap-2 mb-4">
-              <Moon className="h-8 w-8 text-night-300" />
-              <span className="text-night-300 font-medium">Licensed FCCLH in Georgia</span>
+              <Moon className="h-8 w-8 text-accent-300" />
+              <span className="text-accent-300 font-medium">Licensed FCCLH in Georgia</span>
             </div>
             <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
               Overnight Childcare for Night-Shift Parents
@@ -32,8 +32,8 @@ export default function HomePage() {
           </div>
         </div>
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-40 -right-40 w-96 h-96 bg-night-600/20 rounded-full blur-3xl" />
-          <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-brand-600/20 rounded-full blur-3xl" />
+          <div className="absolute -top-40 -right-40 w-96 h-96 bg-accent-500/10 rounded-full blur-3xl" />
+          <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-navy-500/20 rounded-full blur-3xl" />
         </div>
       </section>
 
@@ -42,7 +42,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div className="flex items-center gap-3 justify-center">
-              <Shield className="h-8 w-8 text-night-600 flex-shrink-0" />
+              <Shield className="h-8 w-8 text-navy-600 flex-shrink-0" />
               <span className="font-semibold text-gray-900">Licensed FCCLH</span>
             </div>
             <div className="flex items-center gap-3 justify-center">
@@ -50,11 +50,11 @@ export default function HomePage() {
               <span className="font-semibold text-gray-900">CPR Certified</span>
             </div>
             <div className="flex items-center gap-3 justify-center">
-              <BedDouble className="h-8 w-8 text-night-600 flex-shrink-0" />
+              <BedDouble className="h-8 w-8 text-navy-600 flex-shrink-0" />
               <span className="font-semibold text-gray-900">Safe Sleep Environment</span>
             </div>
             <div className="flex items-center gap-3 justify-center">
-              <Users className="h-8 w-8 text-brand-600 flex-shrink-0" />
+              <Users className="h-8 w-8 text-navy-600 flex-shrink-0" />
               <span className="font-semibold text-gray-900">Limited Spots (6 Max)</span>
             </div>
           </div>
@@ -106,8 +106,8 @@ export default function HomePage() {
                 description: 'We maintain consistent bedtime routines including storytime, quiet activities, and comfortable sleeping arrangements.',
               },
             ].map((feature) => (
-              <div key={feature.title} className="card hover:shadow-md transition-shadow">
-                <feature.icon className="h-10 w-10 text-night-600 mb-4" />
+              <div key={feature.title} className="card hover:shadow-soft-md transition-all">
+                <feature.icon className="h-10 w-10 text-navy-600 mb-4" />
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">{feature.title}</h3>
                 <p className="text-gray-600">{feature.description}</p>
               </div>
@@ -130,7 +130,7 @@ export default function HomePage() {
               { step: '4', title: 'Drop Off & Rest Easy', desc: 'Drop off at 9 PM, pick up by 7 AM. We handle the rest.' },
             ].map((item) => (
               <div key={item.step} className="text-center">
-                <div className="w-12 h-12 bg-night-600 text-white rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">
+                <div className="w-12 h-12 bg-navy-700 text-white rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">
                   {item.step}
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">{item.title}</h3>
@@ -142,7 +142,7 @@ export default function HomePage() {
       </section>
 
       {/* CTA */}
-      <section className="py-20 bg-night-800 text-white">
+      <section className="py-20 bg-navy-800 text-white">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-6">
             Ready to Get Started?

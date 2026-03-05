@@ -9,26 +9,26 @@ export function Navbar() {
   const [open, setOpen] = useState(false);
 
   return (
-    <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
+    <nav className="bg-white border-b border-[#E2E8F0] sticky top-0 z-50 shadow-soft-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           <Link href="/" className="flex items-center gap-2">
-            <Moon className="h-7 w-7 text-night-600" />
-            <span className="text-xl font-bold text-gray-900">{APP_NAME}</span>
+            <Moon className="h-7 w-7 text-accent-500" />
+            <span className="text-xl font-bold text-navy-800">{APP_NAME}</span>
           </Link>
 
           {/* Desktop nav */}
           <div className="hidden md:flex items-center gap-6">
-            <Link href="/pricing" className="text-gray-600 hover:text-gray-900 font-medium">
+            <Link href="/pricing" className="text-gray-600 hover:text-navy-700 font-medium transition-colors">
               Pricing
             </Link>
-            <Link href="/schedule" className="text-gray-600 hover:text-gray-900 font-medium">
+            <Link href="/schedule" className="text-gray-600 hover:text-navy-700 font-medium transition-colors">
               Reserve Nights
             </Link>
-            <Link href="/policies" className="text-gray-600 hover:text-gray-900 font-medium">
+            <Link href="/policies" className="text-gray-600 hover:text-navy-700 font-medium transition-colors">
               Policies & FAQ
             </Link>
-            <Link href="/dashboard" className="text-gray-600 hover:text-gray-900 font-medium">
+            <Link href="/dashboard" className="text-gray-600 hover:text-navy-700 font-medium transition-colors">
               Dashboard
             </Link>
             <Link href="/login" className="btn-primary text-sm">
@@ -45,7 +45,7 @@ export function Navbar() {
 
       {/* Mobile menu */}
       {open && (
-        <div className="md:hidden border-t border-gray-200 bg-white">
+        <div className="md:hidden border-t border-[#E2E8F0] bg-white">
           <div className="px-4 py-3 space-y-2">
             <Link href="/pricing" className="block py-2 text-gray-700 font-medium" onClick={() => setOpen(false)}>
               Pricing
@@ -59,7 +59,7 @@ export function Navbar() {
             <Link href="/dashboard" className="block py-2 text-gray-700 font-medium" onClick={() => setOpen(false)}>
               Dashboard
             </Link>
-            <Link href="/login" className="block py-2 text-brand-600 font-semibold" onClick={() => setOpen(false)}>
+            <Link href="/login" className="block py-2 text-accent-600 font-semibold" onClick={() => setOpen(false)}>
               Login
             </Link>
           </div>

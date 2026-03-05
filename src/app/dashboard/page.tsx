@@ -88,14 +88,14 @@ export default function DashboardPage() {
         {/* Quick Stats */}
         <div className="grid sm:grid-cols-4 gap-4 mb-8">
           <div className="card flex items-center gap-3">
-            <Calendar className="h-8 w-8 text-night-600" />
+            <Calendar className="h-8 w-8 text-navy-700" />
             <div>
               <div className="text-2xl font-bold">{upcomingReservations.length}</div>
               <div className="text-sm text-gray-500">Upcoming Nights</div>
             </div>
           </div>
           <div className="card flex items-center gap-3">
-            <Users className="h-8 w-8 text-brand-600" />
+            <Users className="h-8 w-8 text-accent-600" />
             <div>
               <div className="text-2xl font-bold">{activePlans.length}</div>
               <div className="text-sm text-gray-500">Active Plans</div>
@@ -152,7 +152,7 @@ export default function DashboardPage() {
           <div className="card">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Upcoming Nights</h2>
             {upcomingReservations.length === 0 ? (
-              <p className="text-gray-500">No upcoming reservations. <Link href="/schedule" className="text-brand-600">Reserve now</Link></p>
+              <p className="text-gray-500">No upcoming reservations. <Link href="/schedule" className="text-accent-600">Reserve now</Link></p>
             ) : (
               <div className="space-y-3">
                 {upcomingReservations.slice(0, 10).map(r => (
@@ -172,7 +172,7 @@ export default function DashboardPage() {
           <div className="card">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Active Plans</h2>
             {activePlans.length === 0 ? (
-              <p className="text-gray-500">No active plans. <Link href="/schedule" className="text-brand-600">Create one</Link></p>
+              <p className="text-gray-500">No active plans. <Link href="/schedule" className="text-accent-600">Create one</Link></p>
             ) : (
               <div className="space-y-3">
                 {activePlans.map(p => (
@@ -192,7 +192,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Link href="/schedule" className="flex items-center gap-1 text-sm text-brand-600 hover:text-brand-700 font-medium">
+                      <Link href="/schedule" className="flex items-center gap-1 text-sm text-accent-600 hover:text-accent-700 font-medium">
                         <ArrowRightLeft className="h-3.5 w-3.5" /> Change Plan
                       </Link>
                       <button
@@ -232,7 +232,7 @@ export default function DashboardPage() {
           <div className="card mt-8">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-semibold text-gray-900">Recent Payments</h2>
-              <Link href="/dashboard/payments" className="text-sm text-brand-600 hover:text-brand-700 font-medium">View all</Link>
+              <Link href="/dashboard/payments" className="text-sm text-accent-600 hover:text-accent-700 font-medium">View all</Link>
             </div>
             <div className="space-y-2">
               {recentPayments.map(p => (
@@ -259,17 +259,17 @@ export default function DashboardPage() {
         {/* Navigation Links */}
         <div className="grid sm:grid-cols-3 gap-4 mt-8">
           <Link href="/dashboard/children" className="card hover:shadow-md transition-shadow text-center">
-            <Users className="h-8 w-8 text-night-600 mx-auto mb-2" />
+            <Users className="h-8 w-8 text-navy-700 mx-auto mb-2" />
             <div className="font-semibold">Manage Children</div>
             <div className="text-sm text-gray-500">Add/edit child profiles</div>
           </Link>
           <Link href="/dashboard/payments" className="card hover:shadow-md transition-shadow text-center">
-            <CreditCard className="h-8 w-8 text-night-600 mx-auto mb-2" />
+            <CreditCard className="h-8 w-8 text-navy-700 mx-auto mb-2" />
             <div className="font-semibold">Payment History</div>
             <div className="text-sm text-gray-500">View invoices & payments</div>
           </Link>
           <Link href="/schedule" className="card hover:shadow-md transition-shadow text-center">
-            <Calendar className="h-8 w-8 text-night-600 mx-auto mb-2" />
+            <Calendar className="h-8 w-8 text-navy-700 mx-auto mb-2" />
             <div className="font-semibold">Reserve Nights</div>
             <div className="text-sm text-gray-500">Book for next week</div>
           </Link>
