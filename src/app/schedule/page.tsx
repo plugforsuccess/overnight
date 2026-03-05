@@ -80,7 +80,15 @@ export default function SchedulePage() {
   }
 
   async function handleSubmit() {
-    if (!userId || !selectedChild || selectedPlan === 0 || selectedNights.size !== selectedPlan) return;
+    if (!userId) {
+      setError('Session expired. Please log in again.');
+      router.push('/login');
+      return;
+    }
+    if (!selectedChild || selectedPlan === 0 || selectedNights.size !== selectedPlan) {
+      setError('Please complete all steps before confirming.');
+      return;
+    }
     setSubmitting(true);
     setError('');
 
