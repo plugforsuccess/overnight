@@ -172,8 +172,11 @@ export default function SignupPage() {
           });
 
           if (authError) {
-            if (authError.message.toLowerCase().includes('rate limit')) {
-              setError('Too many signup attempts. Please wait a minute and try again.');
+            const msg = authError.message.toLowerCase();
+            if (msg.includes('rate limit')) {
+              setError('Too many signup attempts for this email. Please wait a few minutes before trying again, even on other devices.');
+            } else if (msg.includes('already registered') || msg.includes('already been registered')) {
+              setError('This email is already registered. Please sign in instead.');
             } else {
               setError(authError.message);
             }
