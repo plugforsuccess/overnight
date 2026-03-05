@@ -56,7 +56,8 @@ export default function SignupPage() {
 
   // Step 1 — Parent Account
   const [account, setAccount] = useState({
-    fullName: '',
+    firstName: '',
+    lastName: '',
     email: '',
     phone: '',
     address: '',
@@ -66,7 +67,8 @@ export default function SignupPage() {
 
   // Step 2 — Child Profile
   const [child, setChild] = useState({
-    fullName: '',
+    firstName: '',
+    lastName: '',
     dateOfBirth: '',
     hasAllergies: false,
     allergyNotes: '',
@@ -74,7 +76,8 @@ export default function SignupPage() {
 
   // Step 3 — Emergency Contact
   const [emergency, setEmergency] = useState({
-    contactName: '',
+    firstName: '',
+    lastName: '',
     relationship: '',
     phone: '',
     pickupPerson: '',
@@ -121,7 +124,8 @@ export default function SignupPage() {
     const errors: FieldErrors = {};
 
     if (step === 'account') {
-      if (!account.fullName.trim()) errors.fullName = 'Full name is required';
+      if (!account.firstName.trim()) errors.firstName = 'First name is required';
+      if (!account.lastName.trim()) errors.lastName = 'Last name is required';
       if (!account.email.trim()) errors.email = 'Email is required';
       else if (!validateEmail(account.email.trim())) errors.email = 'Please enter a valid email address';
       if (!account.phone.trim()) errors.phone = 'Phone number is required';
@@ -133,13 +137,15 @@ export default function SignupPage() {
     }
 
     if (step === 'child') {
-      if (!child.fullName.trim()) errors.childName = 'Child name is required';
+      if (!child.firstName.trim()) errors.childFirstName = 'First name is required';
+      if (!child.lastName.trim()) errors.childLastName = 'Last name is required';
       if (!child.dateOfBirth) errors.childDob = 'Date of birth is required';
       if (child.hasAllergies && !child.allergyNotes.trim()) errors.allergyNotes = 'Please describe the allergies or conditions';
     }
 
     if (step === 'emergency') {
-      if (!emergency.contactName.trim()) errors.emergencyName = 'Emergency contact name is required';
+      if (!emergency.firstName.trim()) errors.emergencyFirstName = 'First name is required';
+      if (!emergency.lastName.trim()) errors.emergencyLastName = 'Last name is required';
       if (!emergency.relationship.trim()) errors.emergencyRelationship = 'Relationship is required';
       if (!emergency.phone.trim()) errors.emergencyPhone = 'Phone number is required';
       else if (!validatePhone(emergency.phone)) errors.emergencyPhone = 'Please enter a valid phone number';
@@ -167,7 +173,9 @@ export default function SignupPage() {
             body: JSON.stringify({
               email: account.email.trim(),
               password: account.password,
-              fullName: account.fullName,
+              fullName: `${account.firstName.trim()} ${account.lastName.trim()}`,
+              firstName: account.firstName.trim(),
+              lastName: account.lastName.trim(),
               phone: account.phone.replace(/\D/g, ''),
               address: account.address,
             }),
@@ -246,7 +254,7 @@ export default function SignupPage() {
         }
 
         const emergencyInfo = [
-          `Emergency Contact: ${emergency.contactName} (${emergency.relationship})`,
+          `Emergency Contact: ${emergency.firstName} ${emergency.lastName} (${emergency.relationship})`,
           `Phone: ${emergency.phone.replace(/\D/g, '')}`,
           emergency.pickupPerson ? `Authorized Pickup: ${emergency.pickupPerson}` : '',
         ].filter(Boolean).join('\n');
@@ -255,10 +263,10 @@ export default function SignupPage() {
           .from('children')
           .insert({
             parent_id: parentRow.id,
-            name: child.fullName,
+            first_name: child.firstName.trim(),
+            last_name: child.lastName.trim(),
             date_of_birth: child.dateOfBirth,
-            allergies: child.hasAllergies ? child.allergyNotes : null,
-            medical_notes: emergencyInfo,
+            medical_notes: child.hasAllergies ? child.allergyNotes : emergencyInfo,
           });
 
         if (childError) {
@@ -391,27 +399,51 @@ export default function SignupPage() {
           {/* Step 1: Account */}
           {step === 'account' && (
             <div className="space-y-5">
-              <div>
-                <label htmlFor="fullName" className="onboarding-label">
-                  Full Name
-                </label>
-                <input
-                  id="fullName"
-                  type="text"
-                  value={account.fullName}
-                  onChange={e => {
-                    setAccount(prev => ({ ...prev, fullName: e.target.value }));
-                    clearFieldError('fullName');
-                  }}
-                  className="onboarding-input"
-                  placeholder="Your full name"
-                  autoComplete="name"
-                  required
-                  aria-invalid={!!fieldErrors.fullName}
-                />
-                {fieldErrors.fullName && (
-                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.fullName}</p>
-                )}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="firstName" className="onboarding-label">
+                    First Name
+                  </label>
+                  <input
+                    id="firstName"
+                    type="text"
+                    value={account.firstName}
+                    onChange={e => {
+                      setAccount(prev => ({ ...prev, firstName: e.target.value }));
+                      clearFieldError('firstName');
+                    }}
+                    className="onboarding-input"
+                    placeholder="First name"
+                    autoComplete="given-name"
+                    required
+                    aria-invalid={!!fieldErrors.firstName}
+                  />
+                  {fieldErrors.firstName && (
+                    <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.firstName}</p>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="lastName" className="onboarding-label">
+                    Last Name
+                  </label>
+                  <input
+                    id="lastName"
+                    type="text"
+                    value={account.lastName}
+                    onChange={e => {
+                      setAccount(prev => ({ ...prev, lastName: e.target.value }));
+                      clearFieldError('lastName');
+                    }}
+                    className="onboarding-input"
+                    placeholder="Last name"
+                    autoComplete="family-name"
+                    required
+                    aria-invalid={!!fieldErrors.lastName}
+                  />
+                  {fieldErrors.lastName && (
+                    <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.lastName}</p>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -574,26 +606,49 @@ export default function SignupPage() {
           {/* Step 2: Child Profile */}
           {step === 'child' && (
             <div className="space-y-5">
-              <div>
-                <label htmlFor="childName" className="onboarding-label">
-                  Child&apos;s Name
-                </label>
-                <input
-                  id="childName"
-                  type="text"
-                  value={child.fullName}
-                  onChange={e => {
-                    setChild(prev => ({ ...prev, fullName: e.target.value }));
-                    clearFieldError('childName');
-                  }}
-                  className="onboarding-input"
-                  placeholder="Your child's full name"
-                  required
-                  aria-invalid={!!fieldErrors.childName}
-                />
-                {fieldErrors.childName && (
-                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.childName}</p>
-                )}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="childFirstName" className="onboarding-label">
+                    Child&apos;s First Name
+                  </label>
+                  <input
+                    id="childFirstName"
+                    type="text"
+                    value={child.firstName}
+                    onChange={e => {
+                      setChild(prev => ({ ...prev, firstName: e.target.value }));
+                      clearFieldError('childFirstName');
+                    }}
+                    className="onboarding-input"
+                    placeholder="First name"
+                    required
+                    aria-invalid={!!fieldErrors.childFirstName}
+                  />
+                  {fieldErrors.childFirstName && (
+                    <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.childFirstName}</p>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="childLastName" className="onboarding-label">
+                    Child&apos;s Last Name
+                  </label>
+                  <input
+                    id="childLastName"
+                    type="text"
+                    value={child.lastName}
+                    onChange={e => {
+                      setChild(prev => ({ ...prev, lastName: e.target.value }));
+                      clearFieldError('childLastName');
+                    }}
+                    className="onboarding-input"
+                    placeholder="Last name"
+                    required
+                    aria-invalid={!!fieldErrors.childLastName}
+                  />
+                  {fieldErrors.childLastName && (
+                    <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.childLastName}</p>
+                  )}
+                </div>
               </div>
 
               <div>
@@ -671,26 +726,49 @@ export default function SignupPage() {
           {/* Step 3: Emergency Contact */}
           {step === 'emergency' && (
             <div className="space-y-5">
-              <div>
-                <label htmlFor="emergencyName" className="onboarding-label">
-                  Emergency Contact Name
-                </label>
-                <input
-                  id="emergencyName"
-                  type="text"
-                  value={emergency.contactName}
-                  onChange={e => {
-                    setEmergency(prev => ({ ...prev, contactName: e.target.value }));
-                    clearFieldError('emergencyName');
-                  }}
-                  className="onboarding-input"
-                  placeholder="Full name"
-                  required
-                  aria-invalid={!!fieldErrors.emergencyName}
-                />
-                {fieldErrors.emergencyName && (
-                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.emergencyName}</p>
-                )}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="emergencyFirstName" className="onboarding-label">
+                    Emergency Contact First Name
+                  </label>
+                  <input
+                    id="emergencyFirstName"
+                    type="text"
+                    value={emergency.firstName}
+                    onChange={e => {
+                      setEmergency(prev => ({ ...prev, firstName: e.target.value }));
+                      clearFieldError('emergencyFirstName');
+                    }}
+                    className="onboarding-input"
+                    placeholder="First name"
+                    required
+                    aria-invalid={!!fieldErrors.emergencyFirstName}
+                  />
+                  {fieldErrors.emergencyFirstName && (
+                    <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.emergencyFirstName}</p>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="emergencyLastName" className="onboarding-label">
+                    Emergency Contact Last Name
+                  </label>
+                  <input
+                    id="emergencyLastName"
+                    type="text"
+                    value={emergency.lastName}
+                    onChange={e => {
+                      setEmergency(prev => ({ ...prev, lastName: e.target.value }));
+                      clearFieldError('emergencyLastName');
+                    }}
+                    className="onboarding-input"
+                    placeholder="Last name"
+                    required
+                    aria-invalid={!!fieldErrors.emergencyLastName}
+                  />
+                  {fieldErrors.emergencyLastName && (
+                    <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.emergencyLastName}</p>
+                  )}
+                </div>
               </div>
 
               <div>

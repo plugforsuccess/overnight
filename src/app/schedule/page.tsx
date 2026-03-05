@@ -348,7 +348,7 @@ export default function SchedulePage() {
                       selectedChild === child.id ? 'border-navy-600 bg-navy-50' : 'border-gray-200 hover:border-gray-300'
                     )}
                   >
-                    <div className="font-semibold text-gray-900">{child.full_name}</div>
+                    <div className="font-semibold text-gray-900">{child.first_name} {child.last_name}</div>
                     <div className="text-sm text-gray-500">DOB: {child.date_of_birth}</div>
                   </button>
                 ))}
@@ -389,7 +389,7 @@ export default function SchedulePage() {
               </div>
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="text-sm text-gray-500 mb-1">Child</div>
-                <div className="font-semibold">{children.find(c => c.id === selectedChild)?.full_name}</div>
+                <div className="font-semibold">{children.find(c => c.id === selectedChild)?.first_name} {children.find(c => c.id === selectedChild)?.last_name}</div>
               </div>
             </div>
             <div className="flex gap-3 mt-6">

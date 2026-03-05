@@ -127,7 +127,7 @@ export default function RosterPage() {
                     <div key={r.id} className="border border-gray-200 rounded-lg p-4">
                       <div className="flex justify-between items-start">
                         <div>
-                          <h3 className="font-semibold text-gray-900 text-lg">{child?.full_name}</h3>
+                          <h3 className="font-semibold text-gray-900 text-lg">{child?.first_name} {child?.last_name}</h3>
                           <p className="text-sm text-gray-500">DOB: {child?.date_of_birth}</p>
                         </div>
                         <button onClick={() => cancelReservation(r.id)} className="text-red-500 hover:text-red-700 p-1" title="Cancel reservation">

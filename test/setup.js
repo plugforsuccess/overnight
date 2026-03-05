@@ -33,9 +33,9 @@ async function seedTestData(db) {
   ]);
 
   await db('children').insert([
-    { id: childId, parent_id: parentId, name: 'Charlie' },
-    { id: child2Id, parent_id: parent2Id, name: 'Dana' },
-    { id: child3Id, parent_id: parentId, name: 'Eve' },
+    { id: childId, parent_id: parentId, first_name: 'Charlie', last_name: 'Smith', date_of_birth: '2020-01-01' },
+    { id: child2Id, parent_id: parent2Id, first_name: 'Dana', last_name: 'Jones', date_of_birth: '2019-06-15' },
+    { id: child3Id, parent_id: parentId, first_name: 'Eve', last_name: 'Smith', date_of_birth: '2021-03-20' },
   ]);
 
   return { parentId, parent2Id, adminId, childId, child2Id, child3Id };

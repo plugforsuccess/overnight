@@ -78,7 +78,7 @@ export default function DashboardPage() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Parent Dashboard</h1>
-            <p className="text-gray-600">Welcome back, {profile?.full_name}</p>
+            <p className="text-gray-600">Welcome back, {profile?.first_name} {(w as any).child?.last_name}</p>
           </div>
           <Link href="/schedule" className="btn-primary">
             Reserve Nights
@@ -140,7 +140,7 @@ export default function DashboardPage() {
             </div>
             {waitlist.filter(w => w.status === 'offered').map(w => (
               <div key={w.id} className="text-yellow-700">
-                A spot opened up for {(w as WaitlistEntry & { child: { full_name: string } }).child?.full_name} on {formatDate(w.night_date)}.
+                A spot opened up for {(w as WaitlistEntry & { child: { first_name: string; last_name: string } }).child?.first_name} {(w as any).child?.last_name} on {formatDate(w.night_date)}.
                 Please confirm within the deadline.
               </div>
             ))}
@@ -159,7 +159,7 @@ export default function DashboardPage() {
                   <div key={r.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
                     <div>
                       <div className="font-semibold text-gray-900">{formatDate(r.night_date)}</div>
-                      <div className="text-sm text-gray-500">{(r as Reservation & { child: { full_name: string } }).child?.full_name} — 9 PM to 7 AM</div>
+                      <div className="text-sm text-gray-500">{(r as Reservation & { child: { first_name: string; last_name: string } }).child?.first_name} {(r as any).child?.last_name} — 9 PM to 7 AM</div>
                     </div>
                     <span className="badge-green">Confirmed</span>
                   </div>
@@ -180,7 +180,7 @@ export default function DashboardPage() {
                     <div className="flex justify-between items-center mb-3">
                       <div>
                         <div className="font-semibold text-gray-900">
-                          {(p as Plan & { child: { full_name: string } }).child?.full_name}
+                          {(p as Plan & { child: { first_name: string; last_name: string } }).child?.first_name} {(p as any).child?.last_name}
                         </div>
                         <div className="text-sm text-gray-500">
                           {p.nights_per_week} night{p.nights_per_week > 1 ? 's' : ''}/week
@@ -218,7 +218,7 @@ export default function DashboardPage() {
                 <h3 className="text-sm font-medium text-gray-500 mb-2">Cancelled Plans</h3>
                 {plans.filter(p => p.status === 'cancelled').slice(0, 3).map(p => (
                   <div key={p.id} className="flex justify-between items-center p-2 text-sm text-gray-400">
-                    <span>{(p as Plan & { child: { full_name: string } }).child?.full_name} — {p.nights_per_week} nights/wk</span>
+                    <span>{(p as Plan & { child: { first_name: string; last_name: string } }).child?.first_name} {(p as any).child?.last_name} — {p.nights_per_week} nights/wk</span>
                     <span className="badge-red">{p.status}</span>
                   </div>
                 ))}
