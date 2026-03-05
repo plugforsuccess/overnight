@@ -15,12 +15,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  // Update profile with phone and address
+  // Create parent row in the public.parents table
   if (data.user) {
-    await supabaseAdmin.from('profiles').update({
-      phone,
-      address,
-    }).eq('id', data.user.id);
+    const { error: parentError } = await supabaseAdmin.from('parents').insert({
+      auth_user_id: data.user.id,
+      name: fullName,
+      email,
+      phone: phone || null,
+      address: address || null,
+      role: 'parent',
+    });
+
+    if (parentError) {
+      return NextResponse.json(
+        { error: `Account created but parent profile failed: ${parentError.message}` },
+        { status: 500 },
+      );
+    }
   }
 
   return NextResponse.json({ user: data.user });
