@@ -252,488 +252,9 @@ export default function SignupPage() {
     if (step === 'emergency') setStep('child');
   }
 
-  // ── Progress indicator ─────────────────────────────────────────────
+  // ── Derived values ──────────────────────────────────────────────────
 
-  function ProgressBar() {
-    return (
-      <nav aria-label="Signup progress" className="mb-8">
-        <ol className="flex items-center justify-between">
-          {STEPS.map((s, i) => {
-            const isCurrent = i === stepIndex;
-            const isComplete = i < stepIndex;
-            return (
-              <li key={s} className="flex items-center flex-1 last:flex-none">
-                <div className="flex flex-col items-center">
-                  <div
-                    className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
-                      isComplete
-                        ? 'bg-green-500 text-white'
-                        : isCurrent
-                        ? 'bg-navy-600 text-white'
-                        : 'bg-gray-200 text-gray-500'
-                    }`}
-                  >
-                    {isComplete ? <Check className="w-4 h-4" /> : i + 1}
-                  </div>
-                  <span
-                    className={`mt-1.5 text-xs font-medium ${
-                      isCurrent ? 'text-navy-700' : isComplete ? 'text-green-600' : 'text-gray-400'
-                    }`}
-                  >
-                    {STEP_LABELS[i]}
-                  </span>
-                </div>
-                {i < STEPS.length - 1 && (
-                  <div
-                    className={`flex-1 h-0.5 mx-2 mt-[-1rem] ${
-                      i < stepIndex ? 'bg-green-400' : 'bg-gray-200'
-                    }`}
-                  />
-                )}
-              </li>
-            );
-          })}
-        </ol>
-      </nav>
-    );
-  }
-
-  // ── Field error display ────────────────────────────────────────────
-
-  function FieldError({ field }: { field: string }) {
-    if (!fieldErrors[field]) return null;
-    return (
-      <p className="mt-1 text-sm text-red-600" role="alert">
-        {fieldErrors[field]}
-      </p>
-    );
-  }
-
-  // ── Password strength indicator ────────────────────────────────────
-
-  function PasswordStrength() {
-    if (!account.password) return null;
-    const strength = getPasswordStrength(account.password);
-    return (
-      <div className="mt-2">
-        <div className="flex gap-1">
-          {[1, 2, 3, 4, 5].map(i => (
-            <div
-              key={i}
-              className={`h-1 flex-1 rounded-full transition-colors ${
-                i <= strength.score ? strength.color : 'bg-gray-200'
-              }`}
-            />
-          ))}
-        </div>
-        <p className={`text-xs mt-1 ${
-          strength.score <= 1 ? 'text-red-500' : strength.score <= 2 ? 'text-yellow-600' : strength.score <= 3 ? 'text-blue-600' : 'text-green-600'
-        }`}>
-          {strength.label}
-        </p>
-      </div>
-    );
-  }
-
-  // ── Step 1: Parent Account ─────────────────────────────────────────
-
-  function StepAccount() {
-    return (
-      <div className="space-y-5">
-        <div>
-          <label htmlFor="fullName" className="onboarding-label">
-            Full Name
-          </label>
-          <input
-            id="fullName"
-            type="text"
-            value={account.fullName}
-            onChange={e => {
-              setAccount(prev => ({ ...prev, fullName: e.target.value }));
-              clearFieldError('fullName');
-            }}
-            className="onboarding-input"
-            placeholder="Your full name"
-            autoComplete="name"
-            required
-            aria-invalid={!!fieldErrors.fullName}
-          />
-          <FieldError field="fullName" />
-        </div>
-
-        <div>
-          <label htmlFor="email" className="onboarding-label">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={account.email}
-            onChange={e => {
-              setAccount(prev => ({ ...prev, email: e.target.value }));
-              validateAccountField('email', e.target.value);
-            }}
-            className="onboarding-input"
-            placeholder="you@example.com"
-            autoComplete="email"
-            required
-            aria-invalid={!!fieldErrors.email}
-          />
-          <FieldError field="email" />
-        </div>
-
-        <div>
-          <label htmlFor="phone" className="onboarding-label">
-            Phone Number
-          </label>
-          <input
-            id="phone"
-            type="tel"
-            value={account.phone}
-            onChange={e => {
-              const formatted = formatPhoneInput(e.target.value);
-              setAccount(prev => ({ ...prev, phone: formatted }));
-              validateAccountField('phone', formatted);
-            }}
-            className="onboarding-input"
-            placeholder="(404) 555-0123"
-            autoComplete="tel"
-            required
-            aria-invalid={!!fieldErrors.phone}
-          />
-          <FieldError field="phone" />
-        </div>
-
-        <div>
-          <label htmlFor="address" className="onboarding-label">
-            Address or ZIP Code
-          </label>
-          <input
-            id="address"
-            type="text"
-            value={account.address}
-            onChange={e => {
-              setAccount(prev => ({ ...prev, address: e.target.value }));
-              clearFieldError('address');
-            }}
-            className="onboarding-input"
-            placeholder="123 Main St, Atlanta, GA or 30301"
-            autoComplete="street-address"
-            required
-            aria-invalid={!!fieldErrors.address}
-          />
-          <FieldError field="address" />
-        </div>
-
-        <div>
-          <label htmlFor="password" className="onboarding-label">
-            Password
-          </label>
-          <div className="relative">
-            <input
-              id="password"
-              type={showPassword ? 'text' : 'password'}
-              value={account.password}
-              onChange={e => {
-                setAccount(prev => ({ ...prev, password: e.target.value }));
-                validateAccountField('password', e.target.value);
-              }}
-              className="onboarding-input pr-10"
-              placeholder="At least 8 characters"
-              autoComplete="new-password"
-              required
-              aria-invalid={!!fieldErrors.password}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              aria-label={showPassword ? 'Hide password' : 'Show password'}
-            >
-              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-            </button>
-          </div>
-          <FieldError field="password" />
-          <PasswordStrength />
-        </div>
-
-        <div>
-          <label htmlFor="confirmPassword" className="onboarding-label">
-            Confirm Password
-          </label>
-          <div className="relative">
-            <input
-              id="confirmPassword"
-              type={showConfirm ? 'text' : 'password'}
-              value={account.confirmPassword}
-              onChange={e => {
-                setAccount(prev => ({ ...prev, confirmPassword: e.target.value }));
-                validateAccountField('confirmPassword', e.target.value);
-              }}
-              className="onboarding-input pr-10"
-              placeholder="Re-enter your password"
-              autoComplete="new-password"
-              required
-              aria-invalid={!!fieldErrors.confirmPassword}
-            />
-            <button
-              type="button"
-              onClick={() => setShowConfirm(!showConfirm)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              aria-label={showConfirm ? 'Hide password' : 'Show password'}
-            >
-              {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-            </button>
-          </div>
-          <FieldError field="confirmPassword" />
-        </div>
-      </div>
-    );
-  }
-
-  // ── Step 2: Child Profile ──────────────────────────────────────────
-
-  function StepChild() {
-    return (
-      <div className="space-y-5">
-        <div>
-          <label htmlFor="childName" className="onboarding-label">
-            Child&apos;s Name
-          </label>
-          <input
-            id="childName"
-            type="text"
-            value={child.fullName}
-            onChange={e => {
-              setChild(prev => ({ ...prev, fullName: e.target.value }));
-              clearFieldError('childName');
-            }}
-            className="onboarding-input"
-            placeholder="Your child's full name"
-            required
-            aria-invalid={!!fieldErrors.childName}
-          />
-          <FieldError field="childName" />
-        </div>
-
-        <div>
-          <label htmlFor="childDob" className="onboarding-label">
-            Date of Birth
-          </label>
-          <input
-            id="childDob"
-            type="date"
-            value={child.dateOfBirth}
-            onChange={e => {
-              setChild(prev => ({ ...prev, dateOfBirth: e.target.value }));
-              clearFieldError('childDob');
-            }}
-            className="onboarding-input"
-            required
-            aria-invalid={!!fieldErrors.childDob}
-          />
-          <FieldError field="childDob" />
-        </div>
-
-        <fieldset className="space-y-3">
-          <legend className="onboarding-label">
-            Does your child have allergies or medical conditions?
-          </legend>
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="hasAllergies"
-                checked={!child.hasAllergies}
-                onChange={() => setChild(prev => ({ ...prev, hasAllergies: false, allergyNotes: '' }))}
-                className="w-4 h-4 text-accent-600 focus:ring-accent-500"
-              />
-              <span className="text-sm text-gray-700">No</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="hasAllergies"
-                checked={child.hasAllergies}
-                onChange={() => setChild(prev => ({ ...prev, hasAllergies: true }))}
-                className="w-4 h-4 text-accent-600 focus:ring-accent-500"
-              />
-              <span className="text-sm text-gray-700">Yes</span>
-            </label>
-          </div>
-          {child.hasAllergies && (
-            <div>
-              <label htmlFor="allergyNotes" className="onboarding-label">
-                Describe allergies or medical conditions
-              </label>
-              <textarea
-                id="allergyNotes"
-                value={child.allergyNotes}
-                onChange={e => {
-                  setChild(prev => ({ ...prev, allergyNotes: e.target.value }));
-                  clearFieldError('allergyNotes');
-                }}
-                className="onboarding-input min-h-[80px] resize-none"
-                placeholder="e.g., Peanut allergy, asthma inhaler needed"
-                aria-invalid={!!fieldErrors.allergyNotes}
-              />
-              <FieldError field="allergyNotes" />
-            </div>
-          )}
-        </fieldset>
-      </div>
-    );
-  }
-
-  // ── Step 3: Emergency Contact ──────────────────────────────────────
-
-  function StepEmergency() {
-    return (
-      <div className="space-y-5">
-        <div>
-          <label htmlFor="emergencyName" className="onboarding-label">
-            Emergency Contact Name
-          </label>
-          <input
-            id="emergencyName"
-            type="text"
-            value={emergency.contactName}
-            onChange={e => {
-              setEmergency(prev => ({ ...prev, contactName: e.target.value }));
-              clearFieldError('emergencyName');
-            }}
-            className="onboarding-input"
-            placeholder="Full name"
-            required
-            aria-invalid={!!fieldErrors.emergencyName}
-          />
-          <FieldError field="emergencyName" />
-        </div>
-
-        <div>
-          <label htmlFor="emergencyRelationship" className="onboarding-label">
-            Relationship
-          </label>
-          <select
-            id="emergencyRelationship"
-            value={emergency.relationship}
-            onChange={e => {
-              setEmergency(prev => ({ ...prev, relationship: e.target.value }));
-              clearFieldError('emergencyRelationship');
-            }}
-            className="onboarding-input"
-            required
-            aria-invalid={!!fieldErrors.emergencyRelationship}
-          >
-            <option value="">Select relationship</option>
-            <option value="Grandmother">Grandmother</option>
-            <option value="Grandfather">Grandfather</option>
-            <option value="Aunt">Aunt</option>
-            <option value="Uncle">Uncle</option>
-            <option value="Sibling">Sibling</option>
-            <option value="Partner">Partner</option>
-            <option value="Friend">Friend</option>
-            <option value="Other">Other</option>
-          </select>
-          <FieldError field="emergencyRelationship" />
-        </div>
-
-        <div>
-          <label htmlFor="emergencyPhone" className="onboarding-label">
-            Phone Number
-          </label>
-          <input
-            id="emergencyPhone"
-            type="tel"
-            value={emergency.phone}
-            onChange={e => {
-              const formatted = formatPhoneInput(e.target.value);
-              setEmergency(prev => ({ ...prev, phone: formatted }));
-              if (formatted && !validatePhone(formatted)) {
-                setFieldError('emergencyPhone', 'Please enter a valid phone number');
-              } else {
-                clearFieldError('emergencyPhone');
-              }
-            }}
-            className="onboarding-input"
-            placeholder="(404) 555-0123"
-            autoComplete="tel"
-            required
-            aria-invalid={!!fieldErrors.emergencyPhone}
-          />
-          <FieldError field="emergencyPhone" />
-        </div>
-
-        <div>
-          <label htmlFor="pickupPerson" className="onboarding-label">
-            Authorized Pickup Person <span className="text-gray-400 font-normal">(optional)</span>
-          </label>
-          <input
-            id="pickupPerson"
-            type="text"
-            value={emergency.pickupPerson}
-            onChange={e => setEmergency(prev => ({ ...prev, pickupPerson: e.target.value }))}
-            className="onboarding-input"
-            placeholder="Name of additional authorized pickup"
-          />
-        </div>
-      </div>
-    );
-  }
-
-  // ── Step 4: Done ───────────────────────────────────────────────────
-
-  function StepDone() {
-    return (
-      <div className="text-center py-6">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
-          <Check className="w-8 h-8 text-green-600" />
-        </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Your account is ready</h2>
-        <p className="text-gray-600 mb-8">You can now schedule overnight care for your child.</p>
-        <button
-          onClick={() => router.push('/schedule')}
-          className="btn-primary w-full text-base py-3"
-        >
-          Continue to Booking
-          <ChevronRight className="w-5 h-5 inline ml-1" />
-        </button>
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="btn-secondary w-full mt-3 text-base py-3"
-        >
-          Go to Dashboard
-        </button>
-      </div>
-    );
-  }
-
-  // ── Trust signals ──────────────────────────────────────────────────
-
-  function TrustSignals() {
-    return (
-      <div className="grid grid-cols-2 gap-3 mb-6">
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Shield className="w-4 h-4 text-green-600 flex-shrink-0" />
-          <span>Licensed caregivers</span>
-        </div>
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Heart className="w-4 h-4 text-green-600 flex-shrink-0" />
-          <span>CPR-certified staff</span>
-        </div>
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Building2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-          <span>Secure facility</span>
-        </div>
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <Users className="w-4 h-4 text-green-600 flex-shrink-0" />
-          <span>Trusted by ATL healthcare workers</span>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Main render ────────────────────────────────────────────────────
+  const passwordStrength = account.password ? getPasswordStrength(account.password) : null;
 
   const stepTitles: Record<Step, string> = {
     account: 'Create Your Account',
@@ -749,6 +270,8 @@ export default function SignupPage() {
     done: '',
   };
 
+  // ── Main render ────────────────────────────────────────────────────
+
   return (
     <div className="min-h-[80vh] flex items-center justify-center py-8 px-4">
       <div className="w-full max-w-md">
@@ -762,10 +285,67 @@ export default function SignupPage() {
         )}
 
         {/* Progress bar */}
-        <ProgressBar />
+        <nav aria-label="Signup progress" className="mb-8">
+          <ol className="flex items-center justify-between">
+            {STEPS.map((s, i) => {
+              const isCurrent = i === stepIndex;
+              const isComplete = i < stepIndex;
+              return (
+                <li key={s} className="flex items-center flex-1 last:flex-none">
+                  <div className="flex flex-col items-center">
+                    <div
+                      className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
+                        isComplete
+                          ? 'bg-green-500 text-white'
+                          : isCurrent
+                          ? 'bg-navy-600 text-white'
+                          : 'bg-gray-200 text-gray-500'
+                      }`}
+                    >
+                      {isComplete ? <Check className="w-4 h-4" /> : i + 1}
+                    </div>
+                    <span
+                      className={`mt-1.5 text-xs font-medium ${
+                        isCurrent ? 'text-navy-700' : isComplete ? 'text-green-600' : 'text-gray-400'
+                      }`}
+                    >
+                      {STEP_LABELS[i]}
+                    </span>
+                  </div>
+                  {i < STEPS.length - 1 && (
+                    <div
+                      className={`flex-1 h-0.5 mx-2 mt-[-1rem] ${
+                        i < stepIndex ? 'bg-green-400' : 'bg-gray-200'
+                      }`}
+                    />
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
 
         {/* Trust signals — step 1 only */}
-        {step === 'account' && <TrustSignals />}
+        {step === 'account' && (
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Shield className="w-4 h-4 text-green-600 flex-shrink-0" />
+              <span>Licensed caregivers</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Heart className="w-4 h-4 text-green-600 flex-shrink-0" />
+              <span>CPR-certified staff</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Building2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+              <span>Secure facility</span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Users className="w-4 h-4 text-green-600 flex-shrink-0" />
+              <span>Trusted by ATL healthcare workers</span>
+            </div>
+          </div>
+        )}
 
         {/* Card */}
         <div className="onboarding-card">
@@ -776,11 +356,408 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* Step content */}
-          {step === 'account' && <StepAccount />}
-          {step === 'child' && <StepChild />}
-          {step === 'emergency' && <StepEmergency />}
-          {step === 'done' && <StepDone />}
+          {/* Step 1: Account */}
+          {step === 'account' && (
+            <div className="space-y-5">
+              <div>
+                <label htmlFor="fullName" className="onboarding-label">
+                  Full Name
+                </label>
+                <input
+                  id="fullName"
+                  type="text"
+                  value={account.fullName}
+                  onChange={e => {
+                    setAccount(prev => ({ ...prev, fullName: e.target.value }));
+                    clearFieldError('fullName');
+                  }}
+                  className="onboarding-input"
+                  placeholder="Your full name"
+                  autoComplete="name"
+                  required
+                  aria-invalid={!!fieldErrors.fullName}
+                />
+                {fieldErrors.fullName && (
+                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.fullName}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="email" className="onboarding-label">
+                  Email
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  value={account.email}
+                  onChange={e => {
+                    setAccount(prev => ({ ...prev, email: e.target.value }));
+                    validateAccountField('email', e.target.value);
+                  }}
+                  className="onboarding-input"
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  required
+                  aria-invalid={!!fieldErrors.email}
+                />
+                {fieldErrors.email && (
+                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.email}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="phone" className="onboarding-label">
+                  Phone Number
+                </label>
+                <input
+                  id="phone"
+                  type="tel"
+                  value={account.phone}
+                  onChange={e => {
+                    const formatted = formatPhoneInput(e.target.value);
+                    setAccount(prev => ({ ...prev, phone: formatted }));
+                    validateAccountField('phone', formatted);
+                  }}
+                  className="onboarding-input"
+                  placeholder="(404) 555-0123"
+                  autoComplete="tel"
+                  required
+                  aria-invalid={!!fieldErrors.phone}
+                />
+                {fieldErrors.phone && (
+                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.phone}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="address" className="onboarding-label">
+                  Address or ZIP Code
+                </label>
+                <input
+                  id="address"
+                  type="text"
+                  value={account.address}
+                  onChange={e => {
+                    setAccount(prev => ({ ...prev, address: e.target.value }));
+                    clearFieldError('address');
+                  }}
+                  className="onboarding-input"
+                  placeholder="123 Main St, Atlanta, GA or 30301"
+                  autoComplete="street-address"
+                  required
+                  aria-invalid={!!fieldErrors.address}
+                />
+                {fieldErrors.address && (
+                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.address}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="password" className="onboarding-label">
+                  Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={account.password}
+                    onChange={e => {
+                      setAccount(prev => ({ ...prev, password: e.target.value }));
+                      validateAccountField('password', e.target.value);
+                    }}
+                    className="onboarding-input pr-10"
+                    placeholder="At least 8 characters"
+                    autoComplete="new-password"
+                    required
+                    aria-invalid={!!fieldErrors.password}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+                {fieldErrors.password && (
+                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.password}</p>
+                )}
+                {passwordStrength && (
+                  <div className="mt-2">
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4, 5].map(i => (
+                        <div
+                          key={i}
+                          className={`h-1 flex-1 rounded-full transition-colors ${
+                            i <= passwordStrength.score ? passwordStrength.color : 'bg-gray-200'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <p className={`text-xs mt-1 ${
+                      passwordStrength.score <= 1 ? 'text-red-500' : passwordStrength.score <= 2 ? 'text-yellow-600' : passwordStrength.score <= 3 ? 'text-blue-600' : 'text-green-600'
+                    }`}>
+                      {passwordStrength.label}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="confirmPassword" className="onboarding-label">
+                  Confirm Password
+                </label>
+                <div className="relative">
+                  <input
+                    id="confirmPassword"
+                    type={showConfirm ? 'text' : 'password'}
+                    value={account.confirmPassword}
+                    onChange={e => {
+                      setAccount(prev => ({ ...prev, confirmPassword: e.target.value }));
+                      validateAccountField('confirmPassword', e.target.value);
+                    }}
+                    className="onboarding-input pr-10"
+                    placeholder="Re-enter your password"
+                    autoComplete="new-password"
+                    required
+                    aria-invalid={!!fieldErrors.confirmPassword}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm(!showConfirm)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    aria-label={showConfirm ? 'Hide password' : 'Show password'}
+                  >
+                    {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+                {fieldErrors.confirmPassword && (
+                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.confirmPassword}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Child Profile */}
+          {step === 'child' && (
+            <div className="space-y-5">
+              <div>
+                <label htmlFor="childName" className="onboarding-label">
+                  Child&apos;s Name
+                </label>
+                <input
+                  id="childName"
+                  type="text"
+                  value={child.fullName}
+                  onChange={e => {
+                    setChild(prev => ({ ...prev, fullName: e.target.value }));
+                    clearFieldError('childName');
+                  }}
+                  className="onboarding-input"
+                  placeholder="Your child's full name"
+                  required
+                  aria-invalid={!!fieldErrors.childName}
+                />
+                {fieldErrors.childName && (
+                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.childName}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="childDob" className="onboarding-label">
+                  Date of Birth
+                </label>
+                <input
+                  id="childDob"
+                  type="date"
+                  value={child.dateOfBirth}
+                  onChange={e => {
+                    setChild(prev => ({ ...prev, dateOfBirth: e.target.value }));
+                    clearFieldError('childDob');
+                  }}
+                  className="onboarding-input"
+                  required
+                  aria-invalid={!!fieldErrors.childDob}
+                />
+                {fieldErrors.childDob && (
+                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.childDob}</p>
+                )}
+              </div>
+
+              <fieldset className="space-y-3">
+                <legend className="onboarding-label">
+                  Does your child have allergies or medical conditions?
+                </legend>
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="hasAllergies"
+                      checked={!child.hasAllergies}
+                      onChange={() => setChild(prev => ({ ...prev, hasAllergies: false, allergyNotes: '' }))}
+                      className="w-4 h-4 text-accent-600 focus:ring-accent-500"
+                    />
+                    <span className="text-sm text-gray-700">No</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="hasAllergies"
+                      checked={child.hasAllergies}
+                      onChange={() => setChild(prev => ({ ...prev, hasAllergies: true }))}
+                      className="w-4 h-4 text-accent-600 focus:ring-accent-500"
+                    />
+                    <span className="text-sm text-gray-700">Yes</span>
+                  </label>
+                </div>
+                {child.hasAllergies && (
+                  <div>
+                    <label htmlFor="allergyNotes" className="onboarding-label">
+                      Describe allergies or medical conditions
+                    </label>
+                    <textarea
+                      id="allergyNotes"
+                      value={child.allergyNotes}
+                      onChange={e => {
+                        setChild(prev => ({ ...prev, allergyNotes: e.target.value }));
+                        clearFieldError('allergyNotes');
+                      }}
+                      className="onboarding-input min-h-[80px] resize-none"
+                      placeholder="e.g., Peanut allergy, asthma inhaler needed"
+                      aria-invalid={!!fieldErrors.allergyNotes}
+                    />
+                    {fieldErrors.allergyNotes && (
+                      <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.allergyNotes}</p>
+                    )}
+                  </div>
+                )}
+              </fieldset>
+            </div>
+          )}
+
+          {/* Step 3: Emergency Contact */}
+          {step === 'emergency' && (
+            <div className="space-y-5">
+              <div>
+                <label htmlFor="emergencyName" className="onboarding-label">
+                  Emergency Contact Name
+                </label>
+                <input
+                  id="emergencyName"
+                  type="text"
+                  value={emergency.contactName}
+                  onChange={e => {
+                    setEmergency(prev => ({ ...prev, contactName: e.target.value }));
+                    clearFieldError('emergencyName');
+                  }}
+                  className="onboarding-input"
+                  placeholder="Full name"
+                  required
+                  aria-invalid={!!fieldErrors.emergencyName}
+                />
+                {fieldErrors.emergencyName && (
+                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.emergencyName}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="emergencyRelationship" className="onboarding-label">
+                  Relationship
+                </label>
+                <select
+                  id="emergencyRelationship"
+                  value={emergency.relationship}
+                  onChange={e => {
+                    setEmergency(prev => ({ ...prev, relationship: e.target.value }));
+                    clearFieldError('emergencyRelationship');
+                  }}
+                  className="onboarding-input"
+                  required
+                  aria-invalid={!!fieldErrors.emergencyRelationship}
+                >
+                  <option value="">Select relationship</option>
+                  <option value="Grandmother">Grandmother</option>
+                  <option value="Grandfather">Grandfather</option>
+                  <option value="Aunt">Aunt</option>
+                  <option value="Uncle">Uncle</option>
+                  <option value="Sibling">Sibling</option>
+                  <option value="Partner">Partner</option>
+                  <option value="Friend">Friend</option>
+                  <option value="Other">Other</option>
+                </select>
+                {fieldErrors.emergencyRelationship && (
+                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.emergencyRelationship}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="emergencyPhone" className="onboarding-label">
+                  Phone Number
+                </label>
+                <input
+                  id="emergencyPhone"
+                  type="tel"
+                  value={emergency.phone}
+                  onChange={e => {
+                    const formatted = formatPhoneInput(e.target.value);
+                    setEmergency(prev => ({ ...prev, phone: formatted }));
+                    if (formatted && !validatePhone(formatted)) {
+                      setFieldError('emergencyPhone', 'Please enter a valid phone number');
+                    } else {
+                      clearFieldError('emergencyPhone');
+                    }
+                  }}
+                  className="onboarding-input"
+                  placeholder="(404) 555-0123"
+                  autoComplete="tel"
+                  required
+                  aria-invalid={!!fieldErrors.emergencyPhone}
+                />
+                {fieldErrors.emergencyPhone && (
+                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.emergencyPhone}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="pickupPerson" className="onboarding-label">
+                  Authorized Pickup Person <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <input
+                  id="pickupPerson"
+                  type="text"
+                  value={emergency.pickupPerson}
+                  onChange={e => setEmergency(prev => ({ ...prev, pickupPerson: e.target.value }))}
+                  className="onboarding-input"
+                  placeholder="Name of additional authorized pickup"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: Done */}
+          {step === 'done' && (
+            <div className="text-center py-6">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
+                <Check className="w-8 h-8 text-green-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Your account is ready</h2>
+              <p className="text-gray-600 mb-8">You can now schedule overnight care for your child.</p>
+              <button
+                onClick={() => router.push('/schedule')}
+                className="btn-primary w-full text-base py-3"
+              >
+                Continue to Booking
+                <ChevronRight className="w-5 h-5 inline ml-1" />
+              </button>
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="btn-secondary w-full mt-3 text-base py-3"
+              >
+                Go to Dashboard
+              </button>
+            </div>
+          )}
 
           {/* Navigation buttons */}
           {step !== 'done' && (
