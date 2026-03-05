@@ -18,18 +18,43 @@ $$;
 ALTER TABLE public.children ADD COLUMN IF NOT EXISTS first_name text;
 ALTER TABLE public.children ADD COLUMN IF NOT EXISTS last_name text;
 
-UPDATE public.children
-SET first_name = CASE
-      WHEN position(' ' in COALESCE(full_name, name, '')) > 0
-        THEN left(COALESCE(full_name, name, ''), position(' ' in COALESCE(full_name, name, '')) - 1)
-      ELSE COALESCE(full_name, name, '')
-    END,
-    last_name = CASE
-      WHEN position(' ' in COALESCE(full_name, name, '')) > 0
-        THEN substring(COALESCE(full_name, name, '') from position(' ' in COALESCE(full_name, name, '')) + 1)
-      ELSE ''
-    END
-WHERE first_name IS NULL;
+DO $$
+DECLARE
+  src_col text;
+BEGIN
+  -- Determine which legacy column exists: full_name or name
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'children' AND column_name = 'full_name'
+  ) THEN
+    src_col := 'full_name';
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'children' AND column_name = 'name'
+  ) THEN
+    src_col := 'name';
+  ELSE
+    src_col := NULL;
+  END IF;
+
+  IF src_col IS NOT NULL THEN
+    EXECUTE format(
+      'UPDATE public.children
+       SET first_name = CASE
+             WHEN position('' '' in COALESCE(%I, '''')) > 0
+               THEN left(COALESCE(%I, ''''), position('' '' in COALESCE(%I, '''')) - 1)
+             ELSE COALESCE(%I, '''')
+           END,
+           last_name = CASE
+             WHEN position('' '' in COALESCE(%I, '''')) > 0
+               THEN substring(COALESCE(%I, '''') from position('' '' in COALESCE(%I, '''')) + 1)
+             ELSE ''''
+           END
+       WHERE first_name IS NULL',
+      src_col, src_col, src_col, src_col, src_col, src_col, src_col
+    );
+  END IF;
+END $$;
 
 ALTER TABLE public.children ALTER COLUMN first_name SET NOT NULL;
 ALTER TABLE public.children ALTER COLUMN last_name SET NOT NULL;
