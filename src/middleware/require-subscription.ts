@@ -1,36 +1,33 @@
 import { Request, Response, NextFunction } from "express";
 import { canReserve } from "../billing/subscription-service";
 
-/**
- * Middleware: blocks reservation requests if the parent has no active subscription.
- *
- * Expects `parent_id` in req.body or req.params. Attach this to any
- * reservation/scheduling route.
- *
- * System rules enforced:
- *   - No active subscription → cannot reserve nights.
- *   - payment_failed (past_due) → subscription is not "active" → locked.
- */
-export function requireActiveSubscription(
-  req: Request,
+type AuthedRequest = Request & { parent?: { id: string } };
+
+export async function requireActiveSubscription(
+  req: AuthedRequest,
   res: Response,
   next: NextFunction
-): void {
-  const parentId = req.body?.parent_id ?? req.params?.parentId;
+): Promise<void> {
+  const parentId = req.parent?.id;
 
   if (!parentId) {
-    res.status(400).json({ error: "parent_id is required" });
+    res.status(401).json({ error: "Authentication required" });
     return;
   }
 
-  if (!canReserve(parentId)) {
-    res.status(403).json({
-      error: "Active subscription required to reserve nights.",
-      code: "NO_ACTIVE_SUBSCRIPTION",
-      help: "Subscribe to a plan or resolve any outstanding payment issues.",
-    });
-    return;
-  }
+  try {
+    const ok = await canReserve(parentId);
+    if (!ok) {
+      res.status(403).json({
+        error: "Active subscription required to reserve nights.",
+        code: "NO_ACTIVE_SUBSCRIPTION",
+        help: "Subscribe to a plan or resolve any outstanding payment issues.",
+      });
+      return;
+    }
 
-  next();
+    next();
+  } catch {
+    res.status(500).json({ error: "Subscription check failed" });
+  }
 }
