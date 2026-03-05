@@ -7,14 +7,12 @@ import {
   cancelSubscription,
   getActiveSubscription,
 } from "../billing/subscription-service";
-import { handleWebhook } from "../billing/webhooks";
 import { authenticate, requireAdmin } from "../middleware/auth";
 
 export const billingRouter = Router();
 
-// All billing actions require auth (except webhook)
+// All billing actions require auth (webhook is handled separately in index.ts)
 billingRouter.use((req, res, next) => {
-  if (req.path === "/webhook") return next();
   return authenticate(req as any, res, next);
 });
 
@@ -120,5 +118,7 @@ billingRouter.get("/admin/status/:parentId", requireAdmin, async (req: any, res:
   res.json({ active: Boolean(sub), subscription: sub || null });
 });
 
-// ── Stripe webhook endpoint ─────────────────────────────────────────────
-billingRouter.post("/webhook", handleWebhook);
+// NOTE: The webhook endpoint is NOT registered here. It lives in index.ts
+// with express.raw() middleware so that req.body remains an unparsed Buffer
+// for Stripe signature verification. Registering it here would fail because
+// express.json() has already parsed the body by the time this router runs.
