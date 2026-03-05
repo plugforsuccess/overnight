@@ -2,14 +2,14 @@ const express = require('express');
 const reservationService = require('../services/reservation');
 const capacityService = require('../services/capacity');
 const { authenticate } = require('../middleware/auth');
+const { validate, createReservationSchema, swapNightSchema } = require('../middleware/validate');
+const { logAudit } = require('../middleware/audit');
 
 const router = express.Router();
 router.use(authenticate);
 
 // Small helper to avoid unhandled promise rejections
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-
-const ALLOWED_PLAN_NIGHTS = new Set([3, 4, 5]);
 
 // Get capacity info for a list of dates
 router.get('/capacity', asyncHandler(async (req, res) => {
@@ -36,40 +36,29 @@ router.get('/week/:weekStart', asyncHandler(async (req, res) => {
 }));
 
 // Create a reservation (book a weekly plan)
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', validate(createReservationSchema), asyncHandler(async (req, res) => {
   const { childId, weekStart, nightsPerWeek, selectedDates } = req.body;
 
-  if (!childId || !weekStart || !nightsPerWeek || !selectedDates) {
-    return res.status(400).json({ error: 'childId, weekStart, nightsPerWeek, selectedDates required' });
-  }
-
-  const nights = Number(nightsPerWeek);
-  if (!Number.isInteger(nights) || !ALLOWED_PLAN_NIGHTS.has(nights)) {
-    return res.status(400).json({ error: 'nightsPerWeek must be one of 3, 4, 5' });
-  }
-
-  if (!Array.isArray(selectedDates) || selectedDates.length !== nights) {
-    return res.status(400).json({ error: 'selectedDates must be an array matching nightsPerWeek length' });
+  if (selectedDates.length !== nightsPerWeek) {
+    return res.status(400).json({ error: 'selectedDates must match nightsPerWeek length' });
   }
 
   const result = await reservationService.createReservation({
     childId,
     parentId: req.parent.id,           // must be enforced in service queries
     weekStart,
-    nightsPerWeek: nights,
+    nightsPerWeek,
     selectedDates,
   });
 
   if (result?.error) return res.status(409).json(result);
+  await logAudit(req.parent.id, 'reservation_created', 'reservation', result.blockId, { weekStart, nightsPerWeek, childId });
   res.status(201).json(result);
 }));
 
 // Swap a night within an existing block
-router.put('/:blockId/swap', asyncHandler(async (req, res) => {
+router.put('/:blockId/swap', validate(swapNightSchema), asyncHandler(async (req, res) => {
   const { dropDate, addDate } = req.body;
-  if (!dropDate || !addDate) {
-    return res.status(400).json({ error: 'dropDate and addDate required' });
-  }
 
   const result = await reservationService.swapNights({
     parentId: req.parent.id,           // REQUIRED for ownership enforcement
@@ -90,6 +79,7 @@ router.delete('/:reservationId', asyncHandler(async (req, res) => {
   });
 
   if (result?.error) return res.status(404).json(result);
+  await logAudit(req.parent.id, 'reservation_canceled', 'reservation', req.params.reservationId, {});
   res.json(result);
 }));
 
