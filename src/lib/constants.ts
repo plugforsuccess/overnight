@@ -10,12 +10,20 @@ export const DEFAULT_OPERATING_NIGHTS: DayOfWeek[] = [
 ];
 
 export const DEFAULT_PRICING_TIERS: PricingTier[] = [
-  { nights: 1, price_cents: 9500 },
-  { nights: 2, price_cents: 18000 },
-  { nights: 3, price_cents: 25500 },
-  { nights: 4, price_cents: 32000 },
-  { nights: 5, price_cents: 37500 },
+  { nights: 3, price_cents: 30000 },
+  { nights: 4, price_cents: 36000 },
+  { nights: 5, price_cents: 42500 },
 ];
+
+export const MIN_NIGHTS_PER_WEEK = 3;
+export const MIN_ENROLLMENT_PER_NIGHT = 4;
+export const MULTI_CHILD_DISCOUNT_PCT = 10;
+
+export function creditPerNight(nightsPerWeek: number): number {
+  const tier = DEFAULT_PRICING_TIERS.find(t => t.nights === nightsPerWeek);
+  if (!tier) return 0;
+  return Math.round(tier.price_cents / tier.nights);
+}
 
 export const OVERNIGHT_START = '9:00 PM';
 export const OVERNIGHT_END = '7:00 AM';

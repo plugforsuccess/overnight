@@ -4,12 +4,12 @@ import { DEFAULT_PRICING_TIERS, formatCents, pricePerNight, OVERNIGHT_START, OVE
 
 export const metadata = {
   title: 'Pricing | DreamWatch Overnight',
-  description: 'Affordable weekly overnight childcare plans. Starting at $95/week for 1 night.',
+  description: 'Affordable weekly overnight childcare plans. Starting at $300/week for 3 nights.',
 };
 
 export default function PricingPage() {
   const tiers = DEFAULT_PRICING_TIERS;
-  const bestValue = 3; // 3-night plan index
+  const bestValue = 4; // 4-night plan is best value per PRD
 
   return (
     <div className="py-16 md:py-24">
@@ -26,7 +26,7 @@ export default function PricingPage() {
         </div>
 
         {/* Pricing Cards */}
-        <div className="grid md:grid-cols-3 lg:grid-cols-5 gap-6 mb-16">
+        <div className="grid md:grid-cols-3 gap-6 mb-16 max-w-4xl mx-auto">
           {tiers.map((tier, i) => {
             const perNight = pricePerNight(tier);
             const isBest = tier.nights === bestValue;
@@ -90,13 +90,23 @@ export default function PricingPage() {
           </div>
         </div>
 
+        {/* Multi-Child Discount */}
+        <div className="mt-16 card max-w-3xl mx-auto bg-green-50 border-green-200">
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Multi-Child Discount</h3>
+          <p className="text-gray-700">
+            Families enrolling multiple children receive a <strong>10% discount on the second child</strong>.
+            For example, if Child 1 is on the 4-night plan ($360), Child 2 would be $324/week.
+          </p>
+        </div>
+
         {/* Billing Info */}
-        <div className="mt-16 card max-w-3xl mx-auto">
+        <div className="mt-8 card max-w-3xl mx-auto">
           <h3 className="text-lg font-semibold text-gray-900 mb-3">Billing Details</h3>
           <ul className="space-y-2 text-gray-600">
-            <li>&#8226; Payment is charged weekly in advance (default: Friday at 12:00 PM for the upcoming week).</li>
+            <li>&#8226; Payment is charged weekly in advance (Friday at 12:00 PM for the upcoming week).</li>
             <li>&#8226; You select your specific nights each week before the billing cutoff.</li>
             <li>&#8226; Plans can be paused or cancelled at any time, effective the next billing cycle.</li>
+            <li>&#8226; If a night is canceled due to low enrollment, you receive an automatic credit.</li>
             <li>&#8226; Payments are processed securely through Stripe.</li>
           </ul>
         </div>
