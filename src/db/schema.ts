@@ -143,6 +143,45 @@ export interface ConfigRow {
 }
 
 // ─── Knex table-name → row-type mapping (for knex<TableType>('table')) ───────
+// ─── subscriptions ───────────────────────────────────────────────────────────
+export interface Subscription {
+  id: string;
+  parent_id: string;
+  stripe_subscription_id: string;
+  plan_tier: string;
+  status: 'active' | 'past_due' | 'canceled' | 'incomplete';
+  stripe_status: string;
+  next_billing_date: Date | null;
+  current_period_end: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// ─── pending_plan_changes ────────────────────────────────────────────────────
+export interface PendingPlanChange {
+  id: string;
+  subscription_id: string;
+  new_plan_tier: string;
+  effective_date: Date;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// ─── billing_events ──────────────────────────────────────────────────────────
+export interface BillingEvent {
+  id: string;
+  stripe_event_id: string;
+  event_type: string;
+  subscription_id: string | null;
+  payload: Record<string, unknown>;
+  livemode: boolean;
+  stripe_created_at: Date | null;
+  status: 'received' | 'processed' | 'failed' | 'skipped';
+  error: string | null;
+  processed_at: Date;
+}
+
+// ─── Knex table-name → row-type mapping (for knex<TableType>('table')) ───────
 export interface Tables {
   parents: Parent;
   children: Child;
@@ -155,4 +194,7 @@ export interface Tables {
   stripe_prices: StripePriceCache;
   audit_log: AuditLogEntry;
   config: ConfigRow;
+  subscriptions: Subscription;
+  pending_plan_changes: PendingPlanChange;
+  billing_events: BillingEvent;
 }

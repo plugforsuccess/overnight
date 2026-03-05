@@ -1,12 +1,9 @@
+import db from "../db";
 import { getStripe } from "./stripe-client";
 import { getPriceId } from "./plans";
-import knexDb from "../db";
 import { PlanTier, SubscriptionStatus } from "../types/billing";
-
-/** Local alias — the Knex db singleton. */
-function getDb() {
-  return knexDb;
-}
+import type Stripe from "stripe";
+import type { Knex } from "knex";
 
 // ---------------------------------------------------------------------------
 // Mid-cycle change policy: APPLY AT NEXT BILLING WEEK
@@ -45,32 +42,48 @@ export function periodEndForBillingDate(billingDate: Date): Date {
   return d;
 }
 
+/** Map Stripe subscription status to our internal status. */
+function mapStripeStatusToInternal(stripeStatus: Stripe.Subscription.Status): SubscriptionStatus {
+  switch (stripeStatus) {
+    case "active":
+    case "trialing":
+      return "active";
+    case "past_due":
+      return "past_due";
+    case "canceled":
+    case "unpaid":
+      return "canceled";
+    case "incomplete":
+    case "incomplete_expired":
+    default:
+      return "incomplete";
+  }
+}
+
 // ── Customer management ─────────────────────────────────────────────────
 
-export async function ensureStripeCustomer(
-  parentId: string,
-  email: string,
-  name: string
-): Promise<string> {
-  const db = getDb();
-  const row = db
-    .prepare("SELECT stripe_customer_id FROM parents WHERE id = ?")
-    .get(parentId) as { stripe_customer_id: string | null } | undefined;
+/**
+ * Ensure a Stripe customer exists for the parent. Idempotent.
+ *
+ * SECURITY: email/name are sourced from the parent DB record, NOT from
+ * client input, to prevent spoofing.
+ */
+export async function ensureStripeCustomer(parentId: string): Promise<string> {
+  const parent = await db("parents").where({ id: parentId }).first();
+  if (!parent) throw new Error("Parent not found");
 
-  if (row?.stripe_customer_id) return row.stripe_customer_id;
+  if (parent.stripe_customer_id) return parent.stripe_customer_id;
 
   const stripe = getStripe();
   const customer = await stripe.customers.create({
-    email,
-    name,
+    email: parent.email,
+    name: parent.name,
     metadata: { parent_id: parentId },
   });
 
-  db.prepare(
-    `INSERT INTO parents (id, email, name, stripe_customer_id)
-     VALUES (?, ?, ?, ?)
-     ON CONFLICT(id) DO UPDATE SET stripe_customer_id = excluded.stripe_customer_id`
-  ).run(parentId, email, name, customer.id);
+  await db("parents")
+    .where({ id: parentId })
+    .update({ stripe_customer_id: customer.id });
 
   return customer.id;
 }
@@ -79,153 +92,176 @@ export async function ensureStripeCustomer(
 
 export interface CreateSubscriptionResult {
   subscriptionId: string;
-  clientSecret: string | null; // for confirming payment on the frontend
+  clientSecret: string | null;
+  alreadyExists?: boolean;
 }
 
 /**
- * Create a new weekly subscription for a parent.
+ * Create a new weekly subscription for a parent. Idempotent + one-active guard.
  *
+ * Uses a transaction with a partial unique index (enforced at DB level) to
+ * prevent duplicate active subscriptions. If one already exists, returns it
+ * rather than creating a duplicate.
+ *
+ * Uses `proration_behavior: "none"` for simple weekly billing (no proration).
  * Uses `billing_cycle_anchor` to pin billing to Friday noon UTC.
- * Charges immediately for the first partial week (Stripe handles this).
  */
 export async function createSubscription(
   parentId: string,
-  stripeCustomerId: string,
   tier: PlanTier
 ): Promise<CreateSubscriptionResult> {
-  const stripe = getStripe();
-  const priceId = await getPriceId(tier, knexDb);
+  return db.transaction(async (trx: Knex.Transaction) => {
+    // Block multiple active subs — the partial unique index also enforces this,
+    // but checking first gives a better return value.
+    const existing = await trx("subscriptions")
+      .where({ parent_id: parentId })
+      .whereIn("status", ["active", "past_due", "incomplete"])
+      .first();
 
-  const anchor = nextFridayNoon();
-  const anchorUnix = Math.floor(anchor.getTime() / 1000);
+    if (existing) {
+      return {
+        subscriptionId: existing.stripe_subscription_id,
+        clientSecret: null,
+        alreadyExists: true,
+      };
+    }
 
-  const subscription = await stripe.subscriptions.create({
-    customer: stripeCustomerId,
-    items: [{ price: priceId }],
-    billing_cycle_anchor: anchorUnix,
-    proration_behavior: "create_prorations", // charges partial first week
-    payment_behavior: "default_incomplete", // require payment confirmation
-    payment_settings: {
-      save_default_payment_method: "on_subscription",
-    },
-    expand: ["latest_invoice.payment_intent"],
-    metadata: { parent_id: parentId, plan_tier: tier },
+    const parent = await trx("parents").where({ id: parentId }).first();
+    if (!parent?.stripe_customer_id) {
+      throw new Error("Missing stripe_customer_id — call ensureStripeCustomer first");
+    }
+
+    const stripe = getStripe();
+    const priceId = await getPriceId(tier, db);
+
+    const anchor = nextFridayNoon();
+    const anchorUnix = Math.floor(anchor.getTime() / 1000);
+
+    const subscription = await stripe.subscriptions.create({
+      customer: parent.stripe_customer_id,
+      items: [{ price: priceId }],
+      billing_cycle_anchor: anchorUnix,
+      proration_behavior: "none",
+      payment_behavior: "default_incomplete",
+      payment_settings: {
+        save_default_payment_method: "on_subscription",
+      },
+      expand: ["latest_invoice.payment_intent"],
+      metadata: { parent_id: parentId, plan_tier: tier },
+    });
+
+    const invoice = subscription.latest_invoice as any;
+    const clientSecret: string | null =
+      invoice?.payment_intent?.client_secret ?? null;
+
+    const billingDate = anchor.toISOString();
+    const periodEnd = periodEndForBillingDate(anchor).toISOString();
+
+    await trx("subscriptions").insert({
+      parent_id: parentId,
+      stripe_subscription_id: subscription.id,
+      plan_tier: tier,
+      status: mapStripeStatusToInternal(subscription.status),
+      stripe_status: subscription.status,
+      next_billing_date: billingDate,
+      current_period_end: periodEnd,
+    });
+
+    return { subscriptionId: subscription.id, clientSecret };
   });
-
-  // Persist locally.
-  const billingDate = anchor.toISOString();
-  const periodEnd = periodEndForBillingDate(anchor).toISOString();
-
-  const db = getDb();
-  db.prepare(
-    `INSERT INTO subscriptions
-       (parent_id, stripe_subscription_id, plan_tier, status, next_billing_date, current_period_end)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(parentId, subscription.id, tier, subscription.status, billingDate, periodEnd);
-
-  // Extract client secret for frontend payment confirmation.
-  const invoice = subscription.latest_invoice as any;
-  const clientSecret = invoice?.payment_intent?.client_secret ?? null;
-
-  return { subscriptionId: subscription.id, clientSecret };
 }
 
 // ── Plan change (mid-cycle → next week) ─────────────────────────────────
 
+/**
+ * Queue a plan-tier change for the next billing cycle. Transactional + idempotent.
+ *
+ * Uses ON CONFLICT on the unique subscription_id column to upsert, so
+ * retries and rapid re-submissions are safe.
+ */
 export async function requestPlanChange(
   parentId: string,
   newTier: PlanTier
 ): Promise<{ effectiveDate: string }> {
-  const db = getDb();
+  return db.transaction(async (trx: Knex.Transaction) => {
+    const sub = await trx("subscriptions")
+      .where({ parent_id: parentId, status: "active" })
+      .first();
 
-  const sub = db
-    .prepare(
-      "SELECT id, plan_tier, next_billing_date FROM subscriptions WHERE parent_id = ? AND status = 'active'"
-    )
-    .get(parentId) as
-    | { id: string; plan_tier: string; next_billing_date: string }
-    | undefined;
+    if (!sub) throw new Error("No active subscription found for this parent.");
+    if (sub.plan_tier === newTier) throw new Error("Already on that plan.");
 
-  if (!sub) throw new Error("No active subscription found for this parent.");
-  if (sub.plan_tier === newTier) throw new Error("Already on that plan.");
+    const effectiveDate = sub.next_billing_date;
 
-  const effectiveDate = sub.next_billing_date; // next Friday
+    await trx("pending_plan_changes")
+      .insert({
+        subscription_id: sub.id,
+        new_plan_tier: newTier,
+        effective_date: effectiveDate,
+      })
+      .onConflict("subscription_id")
+      .merge({
+        new_plan_tier: newTier,
+        effective_date: effectiveDate,
+      });
 
-  // Upsert pending change (one pending change per subscription at a time).
-  db.prepare(
-    `INSERT INTO pending_plan_changes (subscription_id, new_plan_tier, effective_date)
-     VALUES (?, ?, ?)
-     ON CONFLICT(subscription_id) DO UPDATE SET
-       new_plan_tier = excluded.new_plan_tier,
-       effective_date = excluded.effective_date`
-  ).run(sub.id, newTier, effectiveDate);
-
-  return { effectiveDate };
+    return { effectiveDate };
+  });
 }
 
 /**
- * Apply pending plan changes. Called by a cron job on Friday noon or
- * triggered by the `invoice.paid` webhook when the new cycle starts.
+ * Apply pending plan changes for a SINGLE subscription. Scoped + idempotent.
+ *
+ * Called from the invoice.paid webhook handler inside a transaction.
+ * Only processes changes whose effective_date has passed.
  */
-export async function applyPendingChanges(): Promise<number> {
-  const db = getDb();
+export async function applyPendingChangesForSubscription(
+  trx: Knex.Transaction,
+  stripeSubId: string
+): Promise<void> {
+  const sub = await trx("subscriptions")
+    .where({ stripe_subscription_id: stripeSubId })
+    .first();
+  if (!sub) return;
+
+  const pending = await trx("pending_plan_changes")
+    .where({ subscription_id: sub.id })
+    .andWhere("effective_date", "<=", trx.fn.now())
+    .first();
+
+  if (!pending) return;
+
   const stripe = getStripe();
+  const newPriceId = await getPriceId(pending.new_plan_tier, trx);
 
-  const pending = db
-    .prepare(
-      `SELECT pc.id, pc.subscription_id, pc.new_plan_tier, s.stripe_subscription_id
-       FROM pending_plan_changes pc
-       JOIN subscriptions s ON s.id = pc.subscription_id
-       WHERE pc.effective_date <= datetime('now')`
-    )
-    .all() as Array<{
-    id: string;
-    subscription_id: string;
-    new_plan_tier: PlanTier;
-    stripe_subscription_id: string;
-  }>;
+  const stripeSub = await stripe.subscriptions.retrieve(stripeSubId);
+  const itemId = stripeSub.items.data[0]?.id;
+  if (!itemId) throw new Error("Stripe subscription has no items");
 
-  for (const change of pending) {
-    const newPriceId = await getPriceId(change.new_plan_tier, knexDb);
+  await stripe.subscriptions.update(stripeSubId, {
+    items: [{ id: itemId, price: newPriceId }],
+    proration_behavior: "none",
+    metadata: { plan_tier: pending.new_plan_tier },
+  });
 
-    // Get current subscription item to swap the price.
-    const stripeSub = await stripe.subscriptions.retrieve(
-      change.stripe_subscription_id
-    );
-    const itemId = stripeSub.items.data[0].id;
+  await trx("subscriptions")
+    .where({ id: sub.id })
+    .update({ plan_tier: pending.new_plan_tier, updated_at: trx.fn.now() });
 
-    await stripe.subscriptions.update(change.stripe_subscription_id, {
-      items: [{ id: itemId, price: newPriceId }],
-      proration_behavior: "none", // already at cycle boundary
-      metadata: { plan_tier: change.new_plan_tier },
-    });
-
-    db.prepare(
-      "UPDATE subscriptions SET plan_tier = ?, updated_at = datetime('now') WHERE id = ?"
-    ).run(change.new_plan_tier, change.subscription_id);
-
-    db.prepare("DELETE FROM pending_plan_changes WHERE id = ?").run(change.id);
-  }
-
-  return pending.length;
+  await trx("pending_plan_changes").where({ id: pending.id }).delete();
 }
 
 // ── Cancellation ────────────────────────────────────────────────────────
 
 /**
  * Cancel at period end: the parent keeps access until the paid week expires,
- * then the subscription transitions to 'canceled'.
+ * then the subscription transitions to 'canceled' via Stripe webhook.
  */
 export async function cancelSubscription(parentId: string): Promise<string> {
-  const db = getDb();
-
-  const sub = db
-    .prepare(
-      "SELECT stripe_subscription_id, current_period_end FROM subscriptions WHERE parent_id = ? AND status IN ('active','past_due')"
-    )
-    .get(parentId) as
-    | { stripe_subscription_id: string; current_period_end: string }
-    | undefined;
+  const sub = await db("subscriptions")
+    .where({ parent_id: parentId })
+    .whereIn("status", ["active", "past_due"])
+    .first();
 
   if (!sub) throw new Error("No active subscription to cancel.");
 
@@ -234,59 +270,29 @@ export async function cancelSubscription(parentId: string): Promise<string> {
     cancel_at_period_end: true,
   });
 
-  return sub.current_period_end; // reservations valid until this date
+  return sub.current_period_end;
 }
 
 // ── Status queries ──────────────────────────────────────────────────────
 
-export function getActiveSubscription(parentId: string) {
-  const db = getDb();
-  return db
-    .prepare(
-      "SELECT * FROM subscriptions WHERE parent_id = ? AND status = 'active'"
-    )
-    .get(parentId) as Record<string, unknown> | undefined;
+export async function getActiveSubscription(parentId: string) {
+  return db("subscriptions")
+    .where({ parent_id: parentId, status: "active" })
+    .first();
 }
-
-export function canReserve(parentId: string): boolean {
-  const sub = getActiveSubscription(parentId);
-  return !!sub;
-}
-
-// ── Webhook-scoped pending change application ───────────────────────────
 
 /**
- * Apply pending plan changes for a single subscription (called from webhook handler).
- * Uses the provided Knex transaction so everything is atomic with the webhook processing.
+ * Check whether a parent may reserve nights.
+ *
+ * Verifies:
+ *   - An active subscription exists
+ *   - current_period_end has not passed (i.e. the paid week is still valid)
  */
-export async function applyPendingChangesForSubscription(
-  trx: import("knex").Knex,
-  stripeSubscriptionId: string
-): Promise<void> {
-  const stripe = getStripe();
+export async function canReserve(parentId: string): Promise<boolean> {
+  const sub = await db("subscriptions")
+    .where({ parent_id: parentId, status: "active" })
+    .andWhere("current_period_end", ">=", db.fn.now())
+    .first();
 
-  const pending = await trx("pending_plan_changes as pc")
-    .join("subscriptions as s", "s.id", "pc.subscription_id")
-    .where("s.stripe_subscription_id", stripeSubscriptionId)
-    .where("pc.effective_date", "<=", trx.fn.now())
-    .select("pc.id", "pc.subscription_id", "pc.new_plan_tier", "s.stripe_subscription_id");
-
-  for (const change of pending) {
-    const newPriceId = await getPriceId(change.new_plan_tier as PlanTier, trx);
-
-    const stripeSub = await stripe.subscriptions.retrieve(change.stripe_subscription_id);
-    const itemId = stripeSub.items.data[0].id;
-
-    await stripe.subscriptions.update(change.stripe_subscription_id, {
-      items: [{ id: itemId, price: newPriceId }],
-      proration_behavior: "none",
-      metadata: { plan_tier: change.new_plan_tier },
-    });
-
-    await trx("subscriptions")
-      .where({ id: change.subscription_id })
-      .update({ plan_tier: change.new_plan_tier, updated_at: trx.fn.now() });
-
-    await trx("pending_plan_changes").where({ id: change.id }).del();
-  }
+  return Boolean(sub);
 }
