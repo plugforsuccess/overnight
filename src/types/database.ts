@@ -93,6 +93,19 @@ export interface AdminSettings {
   updated_at: string;
 }
 
+export interface Credit {
+  id: string;
+  parent_id: string;
+  amount_cents: number;
+  reason: 'canceled_low_enrollment' | 'admin_manual' | 'refund';
+  related_block_id: string | null;
+  related_date: string | null;
+  applied: boolean;
+  applied_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Payment {
   id: string;
   parent_id: string;
