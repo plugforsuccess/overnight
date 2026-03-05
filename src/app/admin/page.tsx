@@ -98,14 +98,14 @@ export default function AdminPage() {
         {/* Stats */}
         <div className="grid sm:grid-cols-4 gap-4 mb-8">
           <div className="card flex items-center gap-3">
-            <Users className="h-8 w-8 text-brand-600" />
+            <Users className="h-8 w-8 text-navy-600" />
             <div>
               <div className="text-2xl font-bold">{stats.activePlansCount}</div>
               <div className="text-sm text-gray-500">Active Plans</div>
             </div>
           </div>
           <div className="card flex items-center gap-3">
-            <Users className="h-8 w-8 text-night-600" />
+            <Users className="h-8 w-8 text-navy-700" />
             <div>
               <div className="text-2xl font-bold">{stats.totalChildren}</div>
               <div className="text-sm text-gray-500">Total Children</div>
@@ -177,12 +177,12 @@ export default function AdminPage() {
         {/* Navigation */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Link href="/admin/roster" className="card hover:shadow-md transition-shadow text-center">
-            <Calendar className="h-10 w-10 text-night-600 mx-auto mb-3" />
+            <Calendar className="h-10 w-10 text-navy-700 mx-auto mb-3" />
             <div className="font-semibold text-gray-900">Nightly Roster</div>
             <div className="text-sm text-gray-500">View children by night</div>
           </Link>
           <Link href="/admin/plans" className="card hover:shadow-md transition-shadow text-center">
-            <List className="h-10 w-10 text-brand-600 mx-auto mb-3" />
+            <List className="h-10 w-10 text-navy-600 mx-auto mb-3" />
             <div className="font-semibold text-gray-900">Active Plans</div>
             <div className="text-sm text-gray-500">View & manage plans</div>
           </Link>

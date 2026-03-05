@@ -193,7 +193,7 @@ export default function SchedulePage() {
     <div className="py-16">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
-          <Calendar className="h-12 w-12 text-night-600 mx-auto mb-4" />
+          <Calendar className="h-12 w-12 text-navy-700 mx-auto mb-4" />
           <h1 className="text-3xl font-bold text-gray-900">Reserve Your Nights</h1>
           <p className="text-gray-600 mt-2">Choose your plan, pick your nights, and confirm your booking</p>
         </div>
@@ -204,7 +204,7 @@ export default function SchedulePage() {
             <div key={s} className="flex items-center gap-2">
               <div className={cn(
                 'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold',
-                step === s ? 'bg-night-600 text-white' :
+                step === s ? 'bg-navy-700 text-white' :
                 stepIndex > i ? 'bg-green-500 text-white' :
                 'bg-gray-200 text-gray-500'
               )}>
@@ -234,7 +234,7 @@ export default function SchedulePage() {
                   onClick={() => { setSelectedPlan(tier.nights); setSelectedNights(new Set()); setStep('nights'); }}
                   className={cn(
                     'w-full text-left p-4 rounded-lg border-2 transition-colors',
-                    selectedPlan === tier.nights ? 'border-night-600 bg-night-50' : 'border-gray-200 hover:border-gray-300'
+                    selectedPlan === tier.nights ? 'border-navy-600 bg-navy-50' : 'border-gray-200 hover:border-gray-300'
                   )}
                 >
                   <div className="flex justify-between items-center">
@@ -283,7 +283,7 @@ export default function SchedulePage() {
                     }}
                     className={cn(
                       'flex flex-col items-center p-4 rounded-xl border-2 transition-colors text-center',
-                      isSelected ? 'border-night-600 bg-night-50 shadow-sm' :
+                      isSelected ? 'border-navy-600 bg-navy-50 shadow-sm' :
                       isFull ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed' :
                       'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                     )}
@@ -299,7 +299,7 @@ export default function SchedulePage() {
                         {remaining}/{capacity} spots
                       </span>
                     )}
-                    {isSelected && <Check className="h-5 w-5 text-night-600 mt-2" />}
+                    {isSelected && <Check className="h-5 w-5 text-navy-700 mt-2" />}
                   </button>
                 );
               })}
@@ -337,7 +337,7 @@ export default function SchedulePage() {
                     onClick={() => { setSelectedChild(child.id); setStep('confirm'); }}
                     className={cn(
                       'w-full text-left p-4 rounded-lg border-2 transition-colors',
-                      selectedChild === child.id ? 'border-night-600 bg-night-50' : 'border-gray-200 hover:border-gray-300'
+                      selectedChild === child.id ? 'border-navy-600 bg-navy-50' : 'border-gray-200 hover:border-gray-300'
                     )}
                   >
                     <div className="font-semibold text-gray-900">{child.full_name}</div>
@@ -371,7 +371,7 @@ export default function SchedulePage() {
                     const isFull = count >= capacity;
                     return (
                       <div key={dateStr} className="font-semibold flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-night-600" />
+                        <Clock className="h-4 w-4 text-navy-700" />
                         {night ? DAY_LABELS[night.day] : ''} ({dateStr}) &mdash; 9:00 PM to 7:00 AM
                         {isFull && <span className="badge-yellow text-xs ml-2">Waitlisted</span>}
                       </div>

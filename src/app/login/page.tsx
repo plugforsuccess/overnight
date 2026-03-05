@@ -46,7 +46,7 @@ export default function LoginPage() {
     <div className="min-h-[80vh] flex items-center justify-center py-12 px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Moon className="h-12 w-12 text-night-600 mx-auto mb-4" />
+          <Moon className="h-12 w-12 text-accent-500 mx-auto mb-4" />
           <h1 className="text-3xl font-bold text-gray-900">Welcome Back</h1>
           <p className="text-gray-600 mt-2">Sign in to your DreamWatch account</p>
         </div>
@@ -90,7 +90,7 @@ export default function LoginPage() {
           </form>
           <div className="mt-4 text-center text-sm text-gray-600">
             Don&apos;t have an account?{' '}
-            <Link href="/signup" className="text-brand-600 hover:text-brand-700 font-medium">
+            <Link href="/signup" className="text-accent-600 hover:text-accent-700 font-medium">
               Sign up
             </Link>
           </div>

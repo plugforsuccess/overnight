@@ -95,7 +95,7 @@ export default function RosterPage() {
               onClick={() => setSelectedDate(dateStr)}
               className={cn(
                 'px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors',
-                selectedDate === dateStr ? 'bg-night-600 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                selectedDate === dateStr ? 'bg-navy-700 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
               )}
             >
               {DAY_LABELS[day]}<br />
