@@ -193,7 +193,7 @@ export default function SignupPage() {
             password: account.password,
           });
           if (signInError) {
-            setError('Account created but could not sign in. Please try logging in.');
+            setError(`Account created but could not sign in: ${signInError.message}`);
             setLoading(false);
             return;
           }
