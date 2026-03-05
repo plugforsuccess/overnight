@@ -20,7 +20,7 @@ export default function PricingPage() {
             Simple, Transparent Pricing
           </h1>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Weekly plans billed in advance. The more nights you book, the more you save.
+            Weekly plans reserve your spot&mdash;paid weekly in advance. The more nights you book, the more you save.
             All plans include overnight care from {OVERNIGHT_START} to {OVERNIGHT_END}.
           </p>
         </div>

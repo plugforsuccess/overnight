@@ -104,7 +104,7 @@ billingRouter.post("/cancel", async (req: Request, res: Response) => {
 // ── Get current subscription status ─────────────────────────────────────
 
 billingRouter.get("/status/:parentId", (req: Request, res: Response) => {
-  const sub = getActiveSubscription(req.params.parentId);
+  const sub = getActiveSubscription(req.params.parentId as string);
   if (!sub) {
     res.json({ active: false, subscription: null });
     return;

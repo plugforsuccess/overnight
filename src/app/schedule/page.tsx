@@ -6,11 +6,11 @@ import { Calendar, AlertCircle, Check, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { DEFAULT_PRICING_TIERS, DEFAULT_OPERATING_NIGHTS, formatCents, DAY_LABELS, DEFAULT_CAPACITY } from '@/lib/constants';
 import { getWeekNights, getNextWeekStart, cn } from '@/lib/utils';
-import { DayOfWeek, Child, AdminSettings, PricingTier } from '@/types/database';
+import { DayOfWeek, Child, AdminSettings } from '@/types/database';
 
 export default function SchedulePage() {
   const router = useRouter();
-  const [step, setStep] = useState<'child' | 'plan' | 'nights' | 'confirm'>('child');
+  const [step, setStep] = useState<'plan' | 'nights' | 'child' | 'confirm'>('plan');
   const [children, setChildren] = useState<Child[]>([]);
   const [selectedChild, setSelectedChild] = useState<string>('');
   const [selectedPlan, setSelectedPlan] = useState<number>(0);
@@ -186,26 +186,29 @@ export default function SchedulePage() {
     );
   }
 
+  const stepOrder = ['plan', 'nights', 'child', 'confirm'] as const;
+  const stepIndex = stepOrder.indexOf(step);
+
   return (
     <div className="py-16">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12">
           <Calendar className="h-12 w-12 text-night-600 mx-auto mb-4" />
           <h1 className="text-3xl font-bold text-gray-900">Reserve Your Nights</h1>
-          <p className="text-gray-600 mt-2">Select your child, plan, and specific nights for next week</p>
+          <p className="text-gray-600 mt-2">Choose your plan, pick your nights, and confirm your booking</p>
         </div>
 
         {/* Progress */}
         <div className="flex items-center justify-center gap-2 mb-8">
-          {(['child', 'plan', 'nights', 'confirm'] as const).map((s, i) => (
+          {stepOrder.map((s, i) => (
             <div key={s} className="flex items-center gap-2">
               <div className={cn(
                 'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold',
                 step === s ? 'bg-night-600 text-white' :
-                (['child', 'plan', 'nights', 'confirm'].indexOf(step) > i) ? 'bg-green-500 text-white' :
+                stepIndex > i ? 'bg-green-500 text-white' :
                 'bg-gray-200 text-gray-500'
               )}>
-                {['child', 'plan', 'nights', 'confirm'].indexOf(step) > i ? <Check className="h-4 w-4" /> : i + 1}
+                {stepIndex > i ? <Check className="h-4 w-4" /> : i + 1}
               </div>
               {i < 3 && <div className="w-12 h-0.5 bg-gray-200" />}
             </div>
@@ -219,41 +222,11 @@ export default function SchedulePage() {
           </div>
         )}
 
-        {/* Step 1: Select Child */}
-        {step === 'child' && (
-          <div className="card">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Select a Child</h2>
-            {children.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-gray-600 mb-4">You haven&apos;t added any children yet.</p>
-                <button onClick={() => router.push('/dashboard/children')} className="btn-primary">
-                  Add a Child
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {children.map(child => (
-                  <button
-                    key={child.id}
-                    onClick={() => { setSelectedChild(child.id); setStep('plan'); }}
-                    className={cn(
-                      'w-full text-left p-4 rounded-lg border-2 transition-colors',
-                      selectedChild === child.id ? 'border-night-600 bg-night-50' : 'border-gray-200 hover:border-gray-300'
-                    )}
-                  >
-                    <div className="font-semibold text-gray-900">{child.full_name}</div>
-                    <div className="text-sm text-gray-500">DOB: {child.date_of_birth}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Step 2: Select Plan */}
+        {/* Step 1: Select Plan */}
         {step === 'plan' && (
           <div className="card">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Choose Your Weekly Plan</h2>
+            <p className="text-gray-600 mb-4">Weekly plans reserve your spot&mdash;paid weekly in advance.</p>
             <div className="space-y-3">
               {pricingTiers.map(tier => (
                 <button
@@ -280,59 +253,62 @@ export default function SchedulePage() {
                 </button>
               ))}
             </div>
-            <button onClick={() => setStep('child')} className="btn-secondary mt-4">Back</button>
           </div>
         )}
 
-        {/* Step 3: Select Nights */}
+        {/* Step 2: Select Nights — Week Grid (Sun–Thu) */}
         {step === 'nights' && (
           <div className="card">
             <h2 className="text-xl font-semibold text-gray-900 mb-2">Select Your Nights</h2>
-            <p className="text-gray-600 mb-4">
+            <p className="text-gray-600 mb-6">
               Choose {selectedPlan} night{selectedPlan > 1 ? 's' : ''} for next week.
-              Nights shown are for the week starting {weekNights[0]?.dateStr}.
+              Week of {weekNights[0]?.dateStr}.
             </p>
-            <div className="space-y-3">
+
+            {/* Week Grid */}
+            <div className="grid grid-cols-5 gap-3 mb-6">
               {weekNights.map(({ day, dateStr }) => {
                 const count = nightCapacity[dateStr] ?? 0;
-                const isFull = count >= capacity;
+                const remaining = capacity - count;
+                const isFull = remaining <= 0;
                 const isSelected = selectedNights.has(dateStr);
                 const canSelect = !isFull && (isSelected || selectedNights.size < selectedPlan);
 
                 return (
                   <button
                     key={dateStr}
-                    onClick={() => canSelect && toggleNight(dateStr)}
-                    disabled={isFull && !isSelected}
+                    onClick={() => {
+                      if (isFull && !isSelected) return;
+                      if (canSelect) toggleNight(dateStr);
+                    }}
                     className={cn(
-                      'w-full text-left p-4 rounded-lg border-2 transition-colors',
-                      isSelected ? 'border-night-600 bg-night-50' :
+                      'flex flex-col items-center p-4 rounded-xl border-2 transition-colors text-center',
+                      isSelected ? 'border-night-600 bg-night-50 shadow-sm' :
                       isFull ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed' :
-                      'border-gray-200 hover:border-gray-300'
+                      'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                     )}
                   >
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="font-semibold text-gray-900">{DAY_LABELS[day]}</div>
-                        <div className="text-sm text-gray-500">{dateStr}</div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {isFull ? (
-                          <span className="badge-red">Full</span>
-                        ) : (
-                          <span className="badge-green">{capacity - count} spot{capacity - count !== 1 ? 's' : ''} left</span>
-                        )}
-                        {isSelected && <Check className="h-5 w-5 text-night-600" />}
-                      </div>
-                    </div>
+                    <div className="text-sm font-bold text-gray-900 mb-1">{DAY_LABELS[day]}</div>
+                    <div className="text-xs text-gray-400 mb-3">{dateStr.slice(5)}</div>
+                    {isFull ? (
+                      <span className="text-xs font-semibold text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded-full">
+                        Join waitlist
+                      </span>
+                    ) : (
+                      <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+                        {remaining}/{capacity} spots
+                      </span>
+                    )}
+                    {isSelected && <Check className="h-5 w-5 text-night-600 mt-2" />}
                   </button>
                 );
               })}
             </div>
-            <div className="flex gap-3 mt-4">
+
+            <div className="flex gap-3">
               <button onClick={() => setStep('plan')} className="btn-secondary">Back</button>
               <button
-                onClick={() => setStep('confirm')}
+                onClick={() => setStep('child')}
                 disabled={selectedNights.size !== selectedPlan}
                 className="btn-primary flex-1"
               >
@@ -342,19 +318,47 @@ export default function SchedulePage() {
           </div>
         )}
 
+        {/* Step 3: Select Child */}
+        {step === 'child' && (
+          <div className="card">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Select a Child</h2>
+            {children.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-gray-600 mb-4">You haven&apos;t added any children yet.</p>
+                <button onClick={() => router.push('/dashboard/children')} className="btn-primary">
+                  Add a Child
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {children.map(child => (
+                  <button
+                    key={child.id}
+                    onClick={() => { setSelectedChild(child.id); setStep('confirm'); }}
+                    className={cn(
+                      'w-full text-left p-4 rounded-lg border-2 transition-colors',
+                      selectedChild === child.id ? 'border-night-600 bg-night-50' : 'border-gray-200 hover:border-gray-300'
+                    )}
+                  >
+                    <div className="font-semibold text-gray-900">{child.full_name}</div>
+                    <div className="text-sm text-gray-500">DOB: {child.date_of_birth}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+            <button onClick={() => setStep('nights')} className="btn-secondary mt-4">Back</button>
+          </div>
+        )}
+
         {/* Step 4: Confirm */}
         {step === 'confirm' && (
           <div className="card">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Confirm Your Booking</h2>
             <div className="space-y-4">
               <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-500 mb-1">Child</div>
-                <div className="font-semibold">{children.find(c => c.id === selectedChild)?.full_name}</div>
-              </div>
-              <div className="bg-gray-50 rounded-lg p-4">
                 <div className="text-sm text-gray-500 mb-1">Plan</div>
                 <div className="font-semibold">
-                  {selectedPlan} Night{selectedPlan > 1 ? 's' : ''}/Week —{' '}
+                  {selectedPlan} Night{selectedPlan > 1 ? 's' : ''}/Week &mdash;{' '}
                   {formatCents(pricingTiers.find(t => t.nights === selectedPlan)!.price_cents)}/week
                 </div>
               </div>
@@ -363,18 +367,25 @@ export default function SchedulePage() {
                 <div className="space-y-1">
                   {Array.from(selectedNights).sort().map(dateStr => {
                     const night = weekNights.find(n => n.dateStr === dateStr);
+                    const count = nightCapacity[dateStr] ?? 0;
+                    const isFull = count >= capacity;
                     return (
                       <div key={dateStr} className="font-semibold flex items-center gap-2">
                         <Clock className="h-4 w-4 text-night-600" />
-                        {night ? DAY_LABELS[night.day] : ''} ({dateStr}) — 9:00 PM to 7:00 AM
+                        {night ? DAY_LABELS[night.day] : ''} ({dateStr}) &mdash; 9:00 PM to 7:00 AM
+                        {isFull && <span className="badge-yellow text-xs ml-2">Waitlisted</span>}
                       </div>
                     );
                   })}
                 </div>
               </div>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="text-sm text-gray-500 mb-1">Child</div>
+                <div className="font-semibold">{children.find(c => c.id === selectedChild)?.full_name}</div>
+              </div>
             </div>
             <div className="flex gap-3 mt-6">
-              <button onClick={() => setStep('nights')} className="btn-secondary">Back</button>
+              <button onClick={() => setStep('child')} className="btn-secondary">Back</button>
               <button onClick={handleSubmit} disabled={submitting} className="btn-primary flex-1">
                 {submitting ? 'Processing...' : 'Confirm & Pay'}
               </button>

@@ -89,7 +89,7 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
  */
 async function onInvoicePaid(event: Stripe.Event): Promise<void> {
   const invoice = event.data.object as Stripe.Invoice;
-  const stripeSubId = invoice.subscription as string | null;
+  const stripeSubId = (invoice as unknown as Record<string, unknown>).subscription as string | null;
   if (!stripeSubId) return; // one-off invoice, not subscription-related
 
   const db = getDb();
@@ -118,7 +118,7 @@ async function onInvoicePaid(event: Stripe.Event): Promise<void> {
  */
 async function onInvoicePaymentFailed(event: Stripe.Event): Promise<void> {
   const invoice = event.data.object as Stripe.Invoice;
-  const stripeSubId = invoice.subscription as string | null;
+  const stripeSubId = (invoice as unknown as Record<string, unknown>).subscription as string | null;
   if (!stripeSubId) return;
 
   const db = getDb();
