@@ -32,8 +32,8 @@ ALTER TABLE plans
   ADD CONSTRAINT chk_plans_nights
     CHECK (nights_per_week BETWEEN 1 AND 7);
 
--- Replace full unique index with partial unique index (only non-canceled reservations block double-booking)
-DROP INDEX IF EXISTS uniq_reservations_child_date;
+-- Replace full unique constraint with partial unique index (only non-canceled reservations block double-booking)
+ALTER TABLE reservations DROP CONSTRAINT IF EXISTS uniq_reservations_child_date;
 CREATE UNIQUE INDEX uniq_reservations_child_date_confirmed
   ON reservations (child_id, date)
   WHERE status NOT IN ('canceled_low_enrollment');
@@ -41,9 +41,15 @@ CREATE UNIQUE INDEX uniq_reservations_child_date_confirmed
 -- billing_events (Stripe webhook idempotency)
 CREATE TABLE IF NOT EXISTS billing_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  stripe_event_id VARCHAR(255) NOT NULL UNIQUE,
-  event_type VARCHAR(255) NOT NULL,
-  subscription_id UUID,
-  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
-  processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  stripe_event_id TEXT NOT NULL UNIQUE,
+  event_type TEXT NOT NULL,
+  livemode BOOLEAN NOT NULL DEFAULT false,
+  stripe_created_at TIMESTAMPTZ,
+  status TEXT NOT NULL DEFAULT 'received', -- received|processed|failed|skipped
+  error TEXT,
+  payload JSONB,
+  processed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS idx_billing_events_type ON billing_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_billing_events_created_at ON billing_events(created_at);
