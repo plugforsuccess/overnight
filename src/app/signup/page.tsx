@@ -160,23 +160,40 @@ export default function SignupPage() {
       try {
         // Skip signUp if user already created (e.g. navigated back to this step)
         if (!userId) {
-          const { error: authError } = await supabase.auth.signUp({
+          // Use admin API to create user with email auto-confirmed
+          const res = await fetch('/api/auth/signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email: account.email.trim(),
+              password: account.password,
+              fullName: account.fullName,
+              phone: account.phone.replace(/\D/g, ''),
+              address: account.address,
+            }),
+          });
+          const result = await res.json();
+
+          if (!res.ok) {
+            const msg = (result.error || '').toLowerCase();
+            if (msg.includes('rate limit')) {
+              setError('Too many sign up attempts. Please wait a few minutes and try again.');
+            } else if (msg.includes('already registered') || msg.includes('already been registered') || msg.includes('already exists')) {
+              setError('This email is already registered. Please sign in instead.');
+            } else {
+              setError(result.error || 'Signup failed. Please try again.');
+            }
+            setLoading(false);
+            return;
+          }
+
+          // Sign in to establish a session
+          const { error: signInError } = await supabase.auth.signInWithPassword({
             email: account.email.trim(),
             password: account.password,
-            options: {
-              data: {
-                full_name: account.fullName,
-                role: 'parent',
-              },
-            },
           });
-
-          if (authError) {
-            if (authError.message.toLowerCase().includes('rate limit')) {
-              setError('Too many signup attempts. Please wait a minute and try again.');
-            } else {
-              setError(authError.message);
-            }
+          if (signInError) {
+            setError('Account created but could not sign in. Please try logging in.');
             setLoading(false);
             return;
           }
@@ -190,10 +207,6 @@ export default function SignupPage() {
           setUserId(user.id);
         }
 
-        await supabase.from('profiles').update({
-          phone: account.phone.replace(/\D/g, ''),
-          address: account.address,
-        }).eq('id', userId!);
         setLoading(false);
         setStep('child');
       } catch {
