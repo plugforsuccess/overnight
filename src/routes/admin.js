@@ -2,6 +2,7 @@ const express = require('express');
 const adminService = require('../services/admin');
 const waitlistService = require('../services/waitlist');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { logAudit } = require('../middleware/audit');
 
 const router = express.Router();
 router.use(authenticate);
@@ -16,6 +17,7 @@ router.post('/override', async (req, res) => {
 
   const result = await adminService.overrideCapacity(date, childId, blockId);
   if (result.error) return res.status(409).json(result);
+  await logAudit(req.parent.id, 'admin_override', 'reservation', blockId, { date, childId });
   res.status(201).json(result);
 });
 

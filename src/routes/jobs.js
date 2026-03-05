@@ -4,14 +4,13 @@
 // These should be called by cron/scheduler — never exposed publicly.
 
 const express = require('express');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { requireJobSecret } = require('../middleware/auth');
 const jobs = require('../services/jobs');
 
 const router = express.Router();
 
-// All job routes require admin auth
-router.use(authenticate);
-router.use(requireAdmin);
+// All job routes require internal job secret — not user auth
+router.use(requireJobSecret);
 
 /**
  * POST /api/jobs/weekly-billing
@@ -96,7 +95,7 @@ async function logAudit(req, action, entityType, entityId, metadata) {
   try {
     const db = require('../db');
     await db('audit_log').insert({
-      actor_id: req.parent.id,
+      actor_id: req.parent ? req.parent.id : null,
       action,
       entity_type: entityType,
       entity_id: entityId || null,

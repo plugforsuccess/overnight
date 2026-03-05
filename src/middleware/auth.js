@@ -11,16 +11,30 @@ async function authenticate(req, res, next) {
       return res.status(401).json({ error: "Missing Authorization header" });
     }
 
-    const token = authHeader.replace("Bearer ", "");
+    if (!authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({ error: "Invalid Authorization format" });
+    }
+
+    const token = authHeader.slice(7);
+
+    if (!token) {
+      return res.status(401).json({ error: "Missing auth token" });
+    }
 
     let payload;
     try {
-      payload = jwt.verify(token, SUPABASE_JWT_SECRET);
+      payload = jwt.verify(token, SUPABASE_JWT_SECRET, {
+        algorithms: ["HS256"],
+      });
     } catch (err) {
       return res.status(401).json({ error: "Invalid auth token" });
     }
 
     const userId = payload.sub;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Invalid token payload" });
+    }
 
     const parent = await db("parents")
       .where({ auth_user_id: userId })
@@ -47,4 +61,11 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { authenticate, requireAdmin };
+function requireJobSecret(req, res, next) {
+  if (req.headers["x-job-secret"] !== process.env.JOB_SECRET) {
+    return res.status(403).json({ error: "Unauthorized job trigger" });
+  }
+  next();
+}
+
+module.exports = { authenticate, requireAdmin, requireJobSecret };
