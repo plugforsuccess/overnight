@@ -40,8 +40,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No parent profile found for this email' }, { status: 404 });
   }
 
-  // Auto-link auth_user_id if it's missing
-  if (!parent.auth_user_id) {
+  // Auto-link or fix auth_user_id if it's missing or mismatched
+  if (parent.auth_user_id !== user.id) {
     await supabaseAdmin
       .from('parents')
       .update({ auth_user_id: user.id })
