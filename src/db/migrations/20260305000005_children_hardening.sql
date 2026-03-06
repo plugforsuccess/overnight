@@ -185,6 +185,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_child_allergies_unique
 
 CREATE INDEX IF NOT EXISTS idx_child_allergies_child_id ON public.child_allergies(child_id);
 
+DROP TRIGGER IF EXISTS child_allergies_set_updated_at ON public.child_allergies;
 CREATE TRIGGER child_allergies_set_updated_at
 BEFORE UPDATE ON public.child_allergies
 FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
@@ -208,6 +209,7 @@ CREATE TABLE IF NOT EXISTS public.child_allergy_action_plans (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
+DROP TRIGGER IF EXISTS child_allergy_action_plans_set_updated_at ON public.child_allergy_action_plans;
 CREATE TRIGGER child_allergy_action_plans_set_updated_at
 BEFORE UPDATE ON public.child_allergy_action_plans
 FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
@@ -232,6 +234,7 @@ CREATE TABLE IF NOT EXISTS public.child_emergency_contacts (
 
 CREATE INDEX IF NOT EXISTS idx_child_emergency_contacts_child_id ON public.child_emergency_contacts(child_id);
 
+DROP TRIGGER IF EXISTS child_emergency_contacts_set_updated_at ON public.child_emergency_contacts;
 CREATE TRIGGER child_emergency_contacts_set_updated_at
 BEFORE UPDATE ON public.child_emergency_contacts
 FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
@@ -281,6 +284,7 @@ CREATE TABLE IF NOT EXISTS public.child_authorized_pickups (
 
 CREATE INDEX IF NOT EXISTS idx_child_authorized_pickups_child_id ON public.child_authorized_pickups(child_id);
 
+DROP TRIGGER IF EXISTS child_authorized_pickups_set_updated_at ON public.child_authorized_pickups;
 CREATE TRIGGER child_authorized_pickups_set_updated_at
 BEFORE UPDATE ON public.child_authorized_pickups
 FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
@@ -288,236 +292,220 @@ FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 -- ============================================================
 -- 7. RLS Policies
 -- ============================================================
+-- Only create RLS policies when running on Supabase (auth.uid() available).
+-- Detects the schema by checking which FK column children uses:
+--   Supabase schema → children.user_id  (references users)
+--   Knex schema     → children.parent_id (references parents)
+-- Also resolves the admin lookup table (users vs parents).
+-- All policies are idempotent (DROP IF EXISTS before CREATE).
 
--- Enable RLS on new tables
-ALTER TABLE public.child_allergies ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.child_allergy_action_plans ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.child_emergency_contacts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.child_authorized_pickups ENABLE ROW LEVEL SECURITY;
+DO $$
+DECLARE
+  use_knex  boolean;   -- true = Knex parents schema, false = Supabase users schema
+  has_auth  boolean;
+  -- Predicate fragments built per schema variant:
+  -- "child_own" checks ownership of a child row  (used by child_allergies, emergency_contacts, pickups)
+  -- "plan_own"  checks ownership via allergy→child (used by action_plans)
+  -- "admin_chk" checks admin role
+  child_own_tpl text;  -- e.g. 'SELECT 1 FROM ... WHERE c.id = %s.child_id AND ...'
+  plan_own_tpl  text;
+  admin_chk     text;
+BEGIN
+  -- ── Detect auth.uid() availability ────────────────────────────
+  BEGIN
+    PERFORM auth.uid();
+    has_auth := true;
+  EXCEPTION WHEN OTHERS THEN
+    has_auth := false;
+  END;
 
--- child_allergies: parent access via child ownership
-CREATE POLICY "parents_select_child_allergies"
-ON public.child_allergies FOR SELECT
-USING (
-  EXISTS (
-    SELECT 1 FROM public.children c
-    WHERE c.id = child_allergies.child_id
-      AND c.user_id = auth.uid()
-  )
-);
+  IF NOT has_auth THEN
+    RAISE NOTICE 'auth.uid() not available — skipping RLS policies';
+    RETURN;
+  END IF;
 
-CREATE POLICY "parents_insert_child_allergies"
-ON public.child_allergies FOR INSERT
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM public.children c
-    WHERE c.id = child_allergies.child_id
-      AND c.user_id = auth.uid()
-  )
-);
+  -- ── Detect schema variant ─────────────────────────────────────
+  -- Knex schema: children.parent_id → parents.id, auth identity in parents.auth_user_id
+  -- Supabase schema: children.user_id = auth.uid() directly (users.id IS the auth id)
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'children' AND column_name = 'parent_id'
+  ) AND EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'parents'
+  ) THEN
+    use_knex := true;
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'children' AND column_name = 'user_id'
+  ) THEN
+    use_knex := false;
+  ELSE
+    RAISE NOTICE 'children table has neither user_id nor parent_id — skipping RLS policies';
+    RETURN;
+  END IF;
 
-CREATE POLICY "parents_update_child_allergies"
-ON public.child_allergies FOR UPDATE
-USING (
-  EXISTS (
-    SELECT 1 FROM public.children c
-    WHERE c.id = child_allergies.child_id
-      AND c.user_id = auth.uid()
-  )
-)
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM public.children c
-    WHERE c.id = child_allergies.child_id
-      AND c.user_id = auth.uid()
-  )
-);
+  -- ── Build predicate templates ─────────────────────────────────
+  IF use_knex THEN
+    -- Knex: must join through parents to compare auth_user_id = auth.uid()
+    child_own_tpl :=
+      'SELECT 1 FROM public.children c '
+      || 'JOIN public.parents p ON p.id = c.parent_id '
+      || 'WHERE c.id = %s AND p.auth_user_id = auth.uid()';
+    plan_own_tpl :=
+      'SELECT 1 FROM public.child_allergies a '
+      || 'JOIN public.children c ON c.id = a.child_id '
+      || 'JOIN public.parents p ON p.id = c.parent_id '
+      || 'WHERE a.id = %s AND p.auth_user_id = auth.uid()';
+    admin_chk :=
+      'SELECT 1 FROM public.parents WHERE auth_user_id = auth.uid() AND role = ''admin''';
+  ELSE
+    -- Supabase: children.user_id IS the auth user id
+    child_own_tpl :=
+      'SELECT 1 FROM public.children c '
+      || 'WHERE c.id = %s AND c.user_id = auth.uid()';
+    plan_own_tpl :=
+      'SELECT 1 FROM public.child_allergies a '
+      || 'JOIN public.children c ON c.id = a.child_id '
+      || 'WHERE a.id = %s AND c.user_id = auth.uid()';
+    admin_chk :=
+      'SELECT 1 FROM public.users WHERE id = auth.uid() AND role = ''admin''';
+  END IF;
 
-CREATE POLICY "parents_delete_child_allergies"
-ON public.child_allergies FOR DELETE
-USING (
-  EXISTS (
-    SELECT 1 FROM public.children c
-    WHERE c.id = child_allergies.child_id
-      AND c.user_id = auth.uid()
-  )
-);
+  -- ── Enable RLS ────────────────────────────────────────────────
+  EXECUTE 'ALTER TABLE public.child_allergies ENABLE ROW LEVEL SECURITY';
+  EXECUTE 'ALTER TABLE public.child_allergy_action_plans ENABLE ROW LEVEL SECURITY';
+  EXECUTE 'ALTER TABLE public.child_emergency_contacts ENABLE ROW LEVEL SECURITY';
+  EXECUTE 'ALTER TABLE public.child_authorized_pickups ENABLE ROW LEVEL SECURITY';
 
--- child_allergy_action_plans: parent access via allergy -> child
-CREATE POLICY "parents_select_action_plans"
-ON public.child_allergy_action_plans FOR SELECT
-USING (
-  EXISTS (
-    SELECT 1
-    FROM public.child_allergies a
-    JOIN public.children c ON c.id = a.child_id
-    WHERE a.id = child_allergy_action_plans.child_allergy_id
-      AND c.user_id = auth.uid()
-  )
-);
+  -- ────────────────────────────────────────────────────────────────
+  -- child_allergies
+  -- ────────────────────────────────────────────────────────────────
+  EXECUTE 'DROP POLICY IF EXISTS "parents_select_child_allergies" ON public.child_allergies';
+  EXECUTE format(
+    'CREATE POLICY "parents_select_child_allergies" ON public.child_allergies FOR SELECT
+     USING (EXISTS (' || child_own_tpl || '))',
+    'child_allergies.child_id');
 
-CREATE POLICY "parents_insert_action_plans"
-ON public.child_allergy_action_plans FOR INSERT
-WITH CHECK (
-  EXISTS (
-    SELECT 1
-    FROM public.child_allergies a
-    JOIN public.children c ON c.id = a.child_id
-    WHERE a.id = child_allergy_action_plans.child_allergy_id
-      AND c.user_id = auth.uid()
-  )
-);
+  EXECUTE 'DROP POLICY IF EXISTS "parents_insert_child_allergies" ON public.child_allergies';
+  EXECUTE format(
+    'CREATE POLICY "parents_insert_child_allergies" ON public.child_allergies FOR INSERT
+     WITH CHECK (EXISTS (' || child_own_tpl || '))',
+    'child_allergies.child_id');
 
-CREATE POLICY "parents_update_action_plans"
-ON public.child_allergy_action_plans FOR UPDATE
-USING (
-  EXISTS (
-    SELECT 1
-    FROM public.child_allergies a
-    JOIN public.children c ON c.id = a.child_id
-    WHERE a.id = child_allergy_action_plans.child_allergy_id
-      AND c.user_id = auth.uid()
-  )
-)
-WITH CHECK (
-  EXISTS (
-    SELECT 1
-    FROM public.child_allergies a
-    JOIN public.children c ON c.id = a.child_id
-    WHERE a.id = child_allergy_action_plans.child_allergy_id
-      AND c.user_id = auth.uid()
-  )
-);
+  EXECUTE 'DROP POLICY IF EXISTS "parents_update_child_allergies" ON public.child_allergies';
+  EXECUTE format(
+    'CREATE POLICY "parents_update_child_allergies" ON public.child_allergies FOR UPDATE
+     USING (EXISTS (' || child_own_tpl || '))
+     WITH CHECK (EXISTS (' || child_own_tpl || '))',
+    'child_allergies.child_id', 'child_allergies.child_id');
 
-CREATE POLICY "parents_delete_action_plans"
-ON public.child_allergy_action_plans FOR DELETE
-USING (
-  EXISTS (
-    SELECT 1
-    FROM public.child_allergies a
-    JOIN public.children c ON c.id = a.child_id
-    WHERE a.id = child_allergy_action_plans.child_allergy_id
-      AND c.user_id = auth.uid()
-  )
-);
+  EXECUTE 'DROP POLICY IF EXISTS "parents_delete_child_allergies" ON public.child_allergies';
+  EXECUTE format(
+    'CREATE POLICY "parents_delete_child_allergies" ON public.child_allergies FOR DELETE
+     USING (EXISTS (' || child_own_tpl || '))',
+    'child_allergies.child_id');
 
--- child_emergency_contacts: parent access via child
-CREATE POLICY "parents_select_emergency_contacts"
-ON public.child_emergency_contacts FOR SELECT
-USING (
-  EXISTS (
-    SELECT 1 FROM public.children c
-    WHERE c.id = child_emergency_contacts.child_id
-      AND c.user_id = auth.uid()
-  )
-);
+  -- ────────────────────────────────────────────────────────────────
+  -- child_allergy_action_plans (via allergy → child)
+  -- ────────────────────────────────────────────────────────────────
+  EXECUTE 'DROP POLICY IF EXISTS "parents_select_action_plans" ON public.child_allergy_action_plans';
+  EXECUTE format(
+    'CREATE POLICY "parents_select_action_plans" ON public.child_allergy_action_plans FOR SELECT
+     USING (EXISTS (' || plan_own_tpl || '))',
+    'child_allergy_action_plans.child_allergy_id');
 
-CREATE POLICY "parents_insert_emergency_contacts"
-ON public.child_emergency_contacts FOR INSERT
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM public.children c
-    WHERE c.id = child_emergency_contacts.child_id
-      AND c.user_id = auth.uid()
-  )
-);
+  EXECUTE 'DROP POLICY IF EXISTS "parents_insert_action_plans" ON public.child_allergy_action_plans';
+  EXECUTE format(
+    'CREATE POLICY "parents_insert_action_plans" ON public.child_allergy_action_plans FOR INSERT
+     WITH CHECK (EXISTS (' || plan_own_tpl || '))',
+    'child_allergy_action_plans.child_allergy_id');
 
-CREATE POLICY "parents_update_emergency_contacts"
-ON public.child_emergency_contacts FOR UPDATE
-USING (
-  EXISTS (
-    SELECT 1 FROM public.children c
-    WHERE c.id = child_emergency_contacts.child_id
-      AND c.user_id = auth.uid()
-  )
-)
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM public.children c
-    WHERE c.id = child_emergency_contacts.child_id
-      AND c.user_id = auth.uid()
-  )
-);
+  EXECUTE 'DROP POLICY IF EXISTS "parents_update_action_plans" ON public.child_allergy_action_plans';
+  EXECUTE format(
+    'CREATE POLICY "parents_update_action_plans" ON public.child_allergy_action_plans FOR UPDATE
+     USING (EXISTS (' || plan_own_tpl || '))
+     WITH CHECK (EXISTS (' || plan_own_tpl || '))',
+    'child_allergy_action_plans.child_allergy_id', 'child_allergy_action_plans.child_allergy_id');
 
-CREATE POLICY "parents_delete_emergency_contacts"
-ON public.child_emergency_contacts FOR DELETE
-USING (
-  EXISTS (
-    SELECT 1 FROM public.children c
-    WHERE c.id = child_emergency_contacts.child_id
-      AND c.user_id = auth.uid()
-  )
-);
+  EXECUTE 'DROP POLICY IF EXISTS "parents_delete_action_plans" ON public.child_allergy_action_plans';
+  EXECUTE format(
+    'CREATE POLICY "parents_delete_action_plans" ON public.child_allergy_action_plans FOR DELETE
+     USING (EXISTS (' || plan_own_tpl || '))',
+    'child_allergy_action_plans.child_allergy_id');
 
--- child_authorized_pickups: parent access via child
-CREATE POLICY "parents_select_authorized_pickups"
-ON public.child_authorized_pickups FOR SELECT
-USING (
-  EXISTS (
-    SELECT 1 FROM public.children c
-    WHERE c.id = child_authorized_pickups.child_id
-      AND c.user_id = auth.uid()
-  )
-);
+  -- ────────────────────────────────────────────────────────────────
+  -- child_emergency_contacts
+  -- ────────────────────────────────────────────────────────────────
+  EXECUTE 'DROP POLICY IF EXISTS "parents_select_emergency_contacts" ON public.child_emergency_contacts';
+  EXECUTE format(
+    'CREATE POLICY "parents_select_emergency_contacts" ON public.child_emergency_contacts FOR SELECT
+     USING (EXISTS (' || child_own_tpl || '))',
+    'child_emergency_contacts.child_id');
 
-CREATE POLICY "parents_insert_authorized_pickups"
-ON public.child_authorized_pickups FOR INSERT
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM public.children c
-    WHERE c.id = child_authorized_pickups.child_id
-      AND c.user_id = auth.uid()
-  )
-);
+  EXECUTE 'DROP POLICY IF EXISTS "parents_insert_emergency_contacts" ON public.child_emergency_contacts';
+  EXECUTE format(
+    'CREATE POLICY "parents_insert_emergency_contacts" ON public.child_emergency_contacts FOR INSERT
+     WITH CHECK (EXISTS (' || child_own_tpl || '))',
+    'child_emergency_contacts.child_id');
 
-CREATE POLICY "parents_update_authorized_pickups"
-ON public.child_authorized_pickups FOR UPDATE
-USING (
-  EXISTS (
-    SELECT 1 FROM public.children c
-    WHERE c.id = child_authorized_pickups.child_id
-      AND c.user_id = auth.uid()
-  )
-)
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM public.children c
-    WHERE c.id = child_authorized_pickups.child_id
-      AND c.user_id = auth.uid()
-  )
-);
+  EXECUTE 'DROP POLICY IF EXISTS "parents_update_emergency_contacts" ON public.child_emergency_contacts';
+  EXECUTE format(
+    'CREATE POLICY "parents_update_emergency_contacts" ON public.child_emergency_contacts FOR UPDATE
+     USING (EXISTS (' || child_own_tpl || '))
+     WITH CHECK (EXISTS (' || child_own_tpl || '))',
+    'child_emergency_contacts.child_id', 'child_emergency_contacts.child_id');
 
-CREATE POLICY "parents_delete_authorized_pickups"
-ON public.child_authorized_pickups FOR DELETE
-USING (
-  EXISTS (
-    SELECT 1 FROM public.children c
-    WHERE c.id = child_authorized_pickups.child_id
-      AND c.user_id = auth.uid()
-  )
-);
+  EXECUTE 'DROP POLICY IF EXISTS "parents_delete_emergency_contacts" ON public.child_emergency_contacts';
+  EXECUTE format(
+    'CREATE POLICY "parents_delete_emergency_contacts" ON public.child_emergency_contacts FOR DELETE
+     USING (EXISTS (' || child_own_tpl || '))',
+    'child_emergency_contacts.child_id');
 
--- Admin access policies for new tables
-CREATE POLICY "admins_manage_child_allergies"
-ON public.child_allergies FOR ALL
-USING (
-  EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
-);
+  -- ────────────────────────────────────────────────────────────────
+  -- child_authorized_pickups
+  -- ────────────────────────────────────────────────────────────────
+  EXECUTE 'DROP POLICY IF EXISTS "parents_select_authorized_pickups" ON public.child_authorized_pickups';
+  EXECUTE format(
+    'CREATE POLICY "parents_select_authorized_pickups" ON public.child_authorized_pickups FOR SELECT
+     USING (EXISTS (' || child_own_tpl || '))',
+    'child_authorized_pickups.child_id');
 
-CREATE POLICY "admins_manage_action_plans"
-ON public.child_allergy_action_plans FOR ALL
-USING (
-  EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
-);
+  EXECUTE 'DROP POLICY IF EXISTS "parents_insert_authorized_pickups" ON public.child_authorized_pickups';
+  EXECUTE format(
+    'CREATE POLICY "parents_insert_authorized_pickups" ON public.child_authorized_pickups FOR INSERT
+     WITH CHECK (EXISTS (' || child_own_tpl || '))',
+    'child_authorized_pickups.child_id');
 
-CREATE POLICY "admins_manage_emergency_contacts"
-ON public.child_emergency_contacts FOR ALL
-USING (
-  EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
-);
+  EXECUTE 'DROP POLICY IF EXISTS "parents_update_authorized_pickups" ON public.child_authorized_pickups';
+  EXECUTE format(
+    'CREATE POLICY "parents_update_authorized_pickups" ON public.child_authorized_pickups FOR UPDATE
+     USING (EXISTS (' || child_own_tpl || '))
+     WITH CHECK (EXISTS (' || child_own_tpl || '))',
+    'child_authorized_pickups.child_id', 'child_authorized_pickups.child_id');
 
-CREATE POLICY "admins_manage_authorized_pickups"
-ON public.child_authorized_pickups FOR ALL
-USING (
-  EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role = 'admin')
-);
+  EXECUTE 'DROP POLICY IF EXISTS "parents_delete_authorized_pickups" ON public.child_authorized_pickups';
+  EXECUTE format(
+    'CREATE POLICY "parents_delete_authorized_pickups" ON public.child_authorized_pickups FOR DELETE
+     USING (EXISTS (' || child_own_tpl || '))',
+    'child_authorized_pickups.child_id');
+
+  -- ────────────────────────────────────────────────────────────────
+  -- Admin policies
+  -- ────────────────────────────────────────────────────────────────
+  EXECUTE 'DROP POLICY IF EXISTS "admins_manage_child_allergies" ON public.child_allergies';
+  EXECUTE 'CREATE POLICY "admins_manage_child_allergies" ON public.child_allergies FOR ALL
+           USING (EXISTS (' || admin_chk || '))';
+
+  EXECUTE 'DROP POLICY IF EXISTS "admins_manage_action_plans" ON public.child_allergy_action_plans';
+  EXECUTE 'CREATE POLICY "admins_manage_action_plans" ON public.child_allergy_action_plans FOR ALL
+           USING (EXISTS (' || admin_chk || '))';
+
+  EXECUTE 'DROP POLICY IF EXISTS "admins_manage_emergency_contacts" ON public.child_emergency_contacts';
+  EXECUTE 'CREATE POLICY "admins_manage_emergency_contacts" ON public.child_emergency_contacts FOR ALL
+           USING (EXISTS (' || admin_chk || '))';
+
+  EXECUTE 'DROP POLICY IF EXISTS "admins_manage_authorized_pickups" ON public.child_authorized_pickups';
+  EXECUTE 'CREATE POLICY "admins_manage_authorized_pickups" ON public.child_authorized_pickups FOR ALL
+           USING (EXISTS (' || admin_chk || '))';
+END $$;
