@@ -16,17 +16,12 @@ export default function PaymentsPage() {
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/login'); return; }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { router.push('/login'); return; }
+      const user = session.user;
 
       // parents.id = auth user ID
-      const { data: parentRow } = await supabase
-        .from('parents')
-        .select('id')
-        .eq('id', user.id)
-        .single();
-
-      const parentId = parentRow?.id ?? user.id;
+      const parentId = user.id;
 
       const { data } = await supabase
         .from('payments')

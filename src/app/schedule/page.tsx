@@ -30,19 +30,15 @@ export default function SchedulePage() {
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
         router.push('/login');
         return;
       }
-      // parents.id = auth user ID
-      const { data: parentRow } = await supabase
-        .from('parents')
-        .select('id')
-        .eq('id', user.id)
-        .single();
+      const user = session.user;
 
-      const parentId = parentRow?.id ?? user.id;
+      // parents.id = auth user ID
+      const parentId = user.id;
       setUserId(parentId);
 
       const [childrenRes, settingsRes] = await Promise.all([
