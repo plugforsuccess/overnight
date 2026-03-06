@@ -1,57 +1,38 @@
-import { createServerClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
 
 /**
- * Server client for use in server components & route handlers.
- * Reads auth cookies from the incoming request.
+ * The cookie name used by the browser client's custom storage adapter.
+ * Must match the `storageKey` in supabase-client.ts.
  */
-export async function createSupabaseServerClient() {
-  const cookieStore = await cookies();
+const STORAGE_KEY = 'sb-auth-token';
 
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options),
-            );
-          } catch {
-            // setAll can fail in server components (read-only).
-            // This is fine — the middleware will handle refreshing.
-          }
-        },
-      },
-    },
-  );
+/**
+ * Parse the auth cookie value into an access token.
+ */
+function parseAccessToken(cookieValue: string | undefined): string | undefined {
+  if (!cookieValue) return undefined;
+  try {
+    const parsed = JSON.parse(decodeURIComponent(cookieValue));
+    return parsed.access_token;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
- * Middleware client that can read AND write cookies on the response.
- * Used to refresh expired sessions transparently.
+ * Server client for use in server components & route handlers.
+ * Reads the auth cookie set by the browser client and injects it as the session.
  */
-export function createSupabaseMiddlewareClient(req: NextRequest, res: NextResponse) {
-  return createServerClient(
+export async function createSupabaseServerClient() {
+  const cookieStore = await cookies();
+  const accessToken = parseAccessToken(cookieStore.get(STORAGE_KEY)?.value);
+
+  return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return req.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            req.cookies.set(name, value);
-            res.cookies.set(name, value, options);
-          });
-        },
-      },
-    },
+    accessToken
+      ? { global: { headers: { Authorization: `Bearer ${accessToken}` } } }
+      : {},
   );
 }

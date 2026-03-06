@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseMiddlewareClient } from '@/lib/supabase-ssr';
+import { createSupabaseMiddlewareClient } from '@/lib/supabase-middleware';
 
 const PROTECTED_ROUTES = ['/dashboard', '/schedule', '/account'];
 const AUTH_ROUTES = ['/login', '/signup'];
@@ -29,8 +29,8 @@ export async function middleware(req: NextRequest) {
     return response;
   }
 
-  // Create Supabase client that can read/refresh cookies
-  const supabase = createSupabaseMiddlewareClient(req, response);
+  // Create Supabase client that reads the auth cookie from the request
+  const supabase = createSupabaseMiddlewareClient(req);
 
   // getUser() validates the JWT server-side (not just reading from cookie).
   // This also refreshes the session if the access token is expired.
