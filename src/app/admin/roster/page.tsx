@@ -28,7 +28,7 @@ export default function RosterPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
-      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+      const { data: profile } = await supabase.from('parents').select('role').eq('auth_user_id', user.id).single();
       if (profile?.role !== 'admin') { router.push('/dashboard'); return; }
 
       const { data: s } = await supabase.from('admin_settings').select('*').limit(1).single();
@@ -43,7 +43,7 @@ export default function RosterPage() {
     async function loadRoster() {
       const { data } = await supabase
         .from('reservations')
-        .select('*, child:children(*), parent:profiles(*)')
+        .select('*, child:children(*), parent:parents(*)')
         .eq('night_date', selectedDate)
         .eq('status', 'confirmed');
       setReservations(data || []);
