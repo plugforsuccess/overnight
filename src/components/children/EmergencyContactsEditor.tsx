@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Trash2, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, AlertTriangle, ShieldCheck } from 'lucide-react';
 import type { ChildEmergencyContactRow } from '@/types/children';
 
 interface ContactForm {
@@ -12,6 +12,9 @@ interface ContactForm {
   phone_alt: string;
   priority: number;
   authorized_for_pickup: boolean;
+  // Pickup promotion fields (shown when authorized_for_pickup is true)
+  pickup_pin: string;
+  pickup_pin_confirm: string;
 }
 
 interface Props {
@@ -46,6 +49,8 @@ function emptyContact(priority: number): ContactForm {
     phone_alt: '',
     priority,
     authorized_for_pickup: false,
+    pickup_pin: '',
+    pickup_pin_confirm: '',
   };
 }
 
@@ -66,6 +71,19 @@ export function EmergencyContactsEditor({ childId, contacts, onAdd, onUpdate, on
     if (!form.phone.trim()) errs.phone = 'Required';
     else if (!validatePhone(form.phone)) errs.phone = 'Invalid phone number';
     if (form.priority < 1 || form.priority > 2) errs.priority = 'Must be 1 or 2';
+
+    // Validate pickup PIN when authorized_for_pickup is checked
+    if (form.authorized_for_pickup) {
+      if (!form.pickup_pin) {
+        errs.pickup_pin = 'PIN is required when authorizing for pickup';
+      } else if (!/^\d{4,6}$/.test(form.pickup_pin)) {
+        errs.pickup_pin = 'PIN must be 4-6 digits';
+      }
+      if (form.pickup_pin !== form.pickup_pin_confirm) {
+        errs.pickup_pin_confirm = 'PINs do not match';
+      }
+    }
+
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -79,6 +97,8 @@ export function EmergencyContactsEditor({ childId, contacts, onAdd, onUpdate, on
       phone_alt: contact.phone_alt || '',
       priority: contact.priority,
       authorized_for_pickup: contact.authorized_for_pickup,
+      pickup_pin: '',
+      pickup_pin_confirm: '',
     });
     setEditingId(contact.id);
     setShowForm(true);
@@ -130,7 +150,7 @@ export function EmergencyContactsEditor({ childId, contacts, onAdd, onUpdate, on
       )}
 
       {contacts.length === 0 && !showForm && (
-        <p className="text-gray-500 text-sm">No emergency contacts added yet. At least one is recommended.</p>
+        <p className="text-gray-500 text-sm">No emergency contacts added yet. At least one is required.</p>
       )}
 
       {/* Contact List */}
@@ -149,7 +169,9 @@ export function EmergencyContactsEditor({ childId, contacts, onAdd, onUpdate, on
                 {contact.phone_alt && ` / ${contact.phone_alt}`}
               </p>
               {contact.authorized_for_pickup && (
-                <span className="badge badge-green mt-1">Authorized for Pickup</span>
+                <span className="badge badge-green mt-1 flex items-center gap-1 w-fit">
+                  <ShieldCheck className="h-3 w-3" /> Authorized for Pickup
+                </span>
               )}
             </div>
             <div className="flex gap-2">
@@ -254,15 +276,58 @@ export function EmergencyContactsEditor({ childId, contacts, onAdd, onUpdate, on
             </div>
           </div>
 
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={form.authorized_for_pickup}
-              onChange={e => setForm(f => ({ ...f, authorized_for_pickup: e.target.checked }))}
-              className="w-4 h-4 text-accent-600 focus:ring-accent-500 rounded"
-            />
-            <span className="text-sm font-medium text-gray-700">Also authorized for pickup</span>
-          </label>
+          {/* Pickup authorization toggle with inline PIN fields */}
+          <div className="border-t pt-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.authorized_for_pickup}
+                onChange={e => setForm(f => ({
+                  ...f,
+                  authorized_for_pickup: e.target.checked,
+                  pickup_pin: e.target.checked ? f.pickup_pin : '',
+                  pickup_pin_confirm: e.target.checked ? f.pickup_pin_confirm : '',
+                }))}
+                className="w-4 h-4 text-accent-600 focus:ring-accent-500 rounded"
+              />
+              <span className="text-sm font-medium text-gray-700">This person can pick up my child</span>
+            </label>
+
+            {/* Pickup verification fields — revealed when authorized */}
+            {form.authorized_for_pickup && (
+              <div className="mt-3 ml-6 p-3 bg-white border border-gray-200 rounded-lg space-y-3">
+                <p className="text-xs text-gray-500">
+                  Set a pickup verification PIN. Staff will ask for this code when this person arrives.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Pickup PIN * (4-6 digits)</label>
+                    <input
+                      type="text"
+                      value={form.pickup_pin}
+                      onChange={e => setForm(f => ({ ...f, pickup_pin: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                      className="input-field text-center tracking-widest font-mono"
+                      placeholder="1234"
+                      maxLength={6}
+                    />
+                    {errors.pickup_pin && <p className="mt-1 text-xs text-red-600">{errors.pickup_pin}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Confirm PIN *</label>
+                    <input
+                      type="text"
+                      value={form.pickup_pin_confirm}
+                      onChange={e => setForm(f => ({ ...f, pickup_pin_confirm: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                      className="input-field text-center tracking-widest font-mono"
+                      placeholder="1234"
+                      maxLength={6}
+                    />
+                    {errors.pickup_pin_confirm && <p className="mt-1 text-xs text-red-600">{errors.pickup_pin_confirm}</p>}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="flex gap-3">
             <button

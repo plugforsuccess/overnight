@@ -56,15 +56,15 @@ export async function POST(
 
   if (!child) return notFound('Child not found');
 
-  // Enforce max 10 authorized pickups per child
+  // Enforce max 5 authorized pickups per child
   const { count: pickupCount } = await auth.supabase
     .from('child_authorized_pickups')
     .select('*', { count: 'exact', head: true })
     .eq('child_id', childId);
 
-  if ((pickupCount ?? 0) >= 10) {
+  if ((pickupCount ?? 0) >= 5) {
     return NextResponse.json(
-      { error: 'Maximum of 10 authorized pickups allowed per child. Please remove one before adding another.' },
+      { error: 'Maximum of 5 authorized pickups allowed per child. Please remove one before adding another.' },
       { status: 422 }
     );
   }
