@@ -49,6 +49,7 @@ model Parent {
   credits         Credit[]
   subscriptions   Subscription[]
   audit_logs      AuditLog[]
+  notifications   Notification[]
 
   @@map("parents")
 }
@@ -396,4 +397,24 @@ model BillingEvent {
   subscription Subscription? @relation(fields: [subscription_id], references: [id])
 
   @@map("billing_events")
+}
+
+// ─── notifications ──────────────────────────────────────────────────────────
+// Parent-facing notifications for to-do items, announcements, and alerts.
+model Notification {
+  id         String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  parent_id  String    @db.Uuid
+  type       String    // "missing_emergency_contact", "missing_pickup", "announcement", etc.
+  title      String
+  body       String?
+  severity   String    @default("info") // info / warn / critical
+  read_at    DateTime? @db.Timestamptz(6)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  parent Parent @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+
+  @@index([parent_id], map: "idx_notifications_parent")
+  @@map("notifications")
 }
