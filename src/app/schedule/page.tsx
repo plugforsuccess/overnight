@@ -101,87 +101,41 @@ export default function SchedulePage() {
     setError('');
 
     try {
-      const tier = pricingTiers.find(t => t.nights === selectedPlan)!;
-
-      // Create plan
-      const { data: plan, error: planError } = await supabase
-        .from('plans')
-        .insert({
-          parent_id: userId,
-          child_id: selectedChild,
-          nights_per_week: selectedPlan,
-          price_cents: tier.price_cents,
-          status: 'active',
-          week_start: weekNights[0]?.dateStr,
-        })
-        .select()
-        .single();
-
-      if (planError) throw planError;
-
-      // Create reservations (check capacity server-side)
-      const reservationsToCreate = Array.from(selectedNights).map(nightDate => ({
-        plan_id: plan.id,
-        child_id: selectedChild,
-        parent_id: userId,
-        night_date: nightDate,
-        status: 'confirmed' as const,
-      }));
-
-      // Check capacity for each night
-      const waitlistNights: string[] = [];
-      const confirmedReservations: typeof reservationsToCreate = [];
-
-      for (const res of reservationsToCreate) {
-        const { count } = await supabase
-          .from('reservations')
-          .select('*', { count: 'exact', head: true })
-          .eq('night_date', res.night_date)
-          .eq('status', 'confirmed');
-
-        if ((count ?? 0) >= capacity) {
-          waitlistNights.push(res.night_date);
-        } else {
-          confirmedReservations.push(res);
-        }
+      // Get auth token for server API calls
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setError('Session expired. Please log in again.');
+        router.push('/login');
+        return;
       }
+      const authHeaders = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      };
 
-      // Insert confirmed reservations
-      if (confirmedReservations.length > 0) {
-        const { error: resError } = await supabase
-          .from('reservations')
-          .insert(confirmedReservations);
-        if (resError) throw resError;
-      }
-
-      // Add to waitlist for full nights
-      for (const nightDate of waitlistNights) {
-        const { count: waitlistCount } = await supabase
-          .from('waitlist')
-          .select('*', { count: 'exact', head: true })
-          .eq('night_date', nightDate)
-          .eq('status', 'waiting');
-
-        await supabase.from('waitlist').insert({
-          parent_id: userId,
-          child_id: selectedChild,
-          night_date: nightDate,
-          position: (waitlistCount ?? 0) + 1,
-          status: 'waiting',
-        });
-      }
-
-      // Create Stripe checkout / subscription
-      const response = await fetch('/api/stripe', {
+      // Create plan + reservations via server API (handles capacity, validation, pricing)
+      const bookingRes = await fetch('/api/bookings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({
-          planId: plan.id,
-          priceCents: tier.price_cents,
+          childId: selectedChild,
+          nightsPerWeek: selectedPlan,
+          selectedNights: Array.from(selectedNights),
+          weekStart: weekNights[0]?.dateStr,
         }),
       });
 
-      const { url } = await response.json();
+      const bookingData = await bookingRes.json();
+      if (!bookingRes.ok) throw new Error(bookingData.error || 'Failed to create booking');
+
+      // Create Stripe checkout via server API
+      const stripeRes = await fetch('/api/stripe', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ planId: bookingData.plan.id }),
+      });
+
+      const { url } = await stripeRes.json();
       if (url) {
         window.location.href = url;
       } else {

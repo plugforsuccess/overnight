@@ -1,6 +1,16 @@
 import Stripe from 'stripe';
 
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || 'sk_placeholder', {
+const stripeKey = process.env.STRIPE_SECRET_KEY;
+if (!stripeKey) {
+  throw new Error('Missing required environment variable: STRIPE_SECRET_KEY');
+}
+
+// Safety: prevent live keys in non-production environments
+if (process.env.NODE_ENV !== 'production' && stripeKey.startsWith('sk_live_')) {
+  throw new Error('Live Stripe key detected in non-production environment. Use sk_test_ keys for development.');
+}
+
+export const stripe = new Stripe(stripeKey, {
   apiVersion: '2026-02-25.clover',
 });
 

@@ -59,13 +59,22 @@ export default function DashboardPage() {
     if (!confirm('Cancel this plan? It will take effect at the end of the current billing cycle (next Friday).')) return;
     setCancellingPlanId(planId);
 
-    const { error } = await supabase
-      .from('plans')
-      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-      .eq('id', planId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/bookings', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ planId, action: 'cancel' }),
+      });
 
-    if (!error) {
-      setPlans(prev => prev.map(p => p.id === planId ? { ...p, status: 'cancelled' as const } : p));
+      if (res.ok) {
+        setPlans(prev => prev.map(p => p.id === planId ? { ...p, status: 'cancelled' as const } : p));
+      }
+    } catch {
+      // Silently fail — user can retry
     }
     setCancellingPlanId(null);
   }

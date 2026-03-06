@@ -65,11 +65,6 @@ function isDbError(message: string): boolean {
   return dbPatterns.some(p => message.toLowerCase().includes(p.toLowerCase()));
 }
 
-export function safeJsonParse(body: unknown): { success: true; data: unknown } | { success: false } {
-  // Helper type guard - body is already parsed, this is for the try/catch pattern
-  return { success: true, data: body };
-}
-
 export function notFound(message = 'Not found') {
   return NextResponse.json({ error: message }, { status: 404 });
 }

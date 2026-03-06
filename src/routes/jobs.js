@@ -28,7 +28,7 @@ router.post('/weekly-billing', async (req, res) => {
     res.json({ ok: true, ...result });
   } catch (err) {
     console.error('Weekly billing job failed:', err);
-    res.status(500).json({ error: 'Weekly billing job failed', message: err.message });
+    res.status(500).json({ error: 'Weekly billing job failed' });
   }
 });
 
@@ -48,7 +48,7 @@ router.post('/enrollment-cutoff', async (req, res) => {
     res.json({ ok: true, results: result });
   } catch (err) {
     console.error('Enrollment cutoff job failed:', err);
-    res.status(500).json({ error: 'Enrollment cutoff job failed', message: err.message });
+    res.status(500).json({ error: 'Enrollment cutoff job failed' });
   }
 });
 
@@ -64,7 +64,7 @@ router.post('/waitlist-promotion', async (req, res) => {
     res.json({ ok: true, promoted: result });
   } catch (err) {
     console.error('Waitlist promotion job failed:', err);
-    res.status(500).json({ error: 'Waitlist promotion job failed', message: err.message });
+    res.status(500).json({ error: 'Waitlist promotion job failed' });
   }
 });
 
@@ -86,7 +86,7 @@ router.post('/credit-issuance', async (req, res) => {
     res.json({ ok: true, creditsIssued, results: result });
   } catch (err) {
     console.error('Credit issuance job failed:', err);
-    res.status(500).json({ error: 'Credit issuance job failed', message: err.message });
+    res.status(500).json({ error: 'Credit issuance job failed' });
   }
 });
 
@@ -95,7 +95,7 @@ async function logAudit(req, action, entityType, entityId, metadata) {
   try {
     const db = require('../db');
     await db('audit_log').insert({
-      actor_id: req.parent ? req.parent.id : null,
+      actor_id: req.parent ? req.parent.id : 'system-job',
       action,
       entity_type: entityType,
       entity_id: entityId || null,

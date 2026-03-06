@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { DEFAULT_PRICING_TIERS } from '@/lib/constants';
 import { rateLimit } from '@/lib/rate-limit';
+import { cancelSubscription } from '@/lib/stripe';
 
 function getUserClient(req: NextRequest) {
   const authHeader = req.headers.get('Authorization');
@@ -208,5 +209,55 @@ export async function DELETE(req: NextRequest) {
     .eq('parent_id', parentId);
 
   if (error) return NextResponse.json({ error: 'Failed to cancel reservation' }, { status: 400 });
+  return NextResponse.json({ success: true });
+}
+
+export async function PATCH(req: NextRequest) {
+  const supabase = getUserClient(req);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const parentId = await resolveParentId(user.id);
+  if (!parentId) return NextResponse.json({ error: 'Parent profile not found' }, { status: 400 });
+
+  let body;
+  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }); }
+
+  const { planId, action } = body;
+  if (!planId || typeof planId !== 'string') {
+    return NextResponse.json({ error: 'planId is required' }, { status: 400 });
+  }
+
+  if (action !== 'cancel') {
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+  }
+
+  // Verify plan belongs to this parent
+  const { data: plan } = await supabaseAdmin
+    .from('plans')
+    .select('id, parent_id, stripe_subscription_id, status')
+    .eq('id', planId)
+    .eq('parent_id', parentId)
+    .single();
+
+  if (!plan) return NextResponse.json({ error: 'Plan not found' }, { status: 404 });
+  if (plan.status === 'cancelled') return NextResponse.json({ error: 'Plan is already cancelled' }, { status: 400 });
+
+  // Cancel Stripe subscription if exists
+  if (plan.stripe_subscription_id) {
+    try {
+      await cancelSubscription(plan.stripe_subscription_id);
+    } catch {
+      // Log but don't block — plan may have been cancelled on Stripe already
+    }
+  }
+
+  // Cancel the plan in the database
+  const { error } = await supabaseAdmin
+    .from('plans')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('id', planId);
+
+  if (error) return NextResponse.json({ error: 'Failed to cancel plan' }, { status: 400 });
   return NextResponse.json({ success: true });
 }

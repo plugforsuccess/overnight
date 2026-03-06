@@ -303,6 +303,11 @@ async function getWaitlist(date) {
   return db('waitlist').where({ date }).orderBy('created_at', 'asc');
 }
 
+async function getWaitlistForParent(date, parentId) {
+  assertYmd(date);
+  return db('waitlist').where({ date, parent_id: parentId }).orderBy('created_at', 'asc');
+}
+
 async function removeFromWaitlist({ waitlistId, parentId }) {
   // parent-scoped delete
   const entry = await db('waitlist').where({ id: waitlistId, parent_id: parentId }).first();
@@ -318,5 +323,6 @@ module.exports = {
   acceptOffer,
   expireOffers,
   getWaitlist,
+  getWaitlistForParent,
   removeFromWaitlist,
 };
