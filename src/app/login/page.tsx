@@ -30,18 +30,20 @@ export default function LoginPage() {
         return;
       }
 
-      // Check if user is admin
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: profile } = await supabase
-        .from('parents')
-        .select('role')
-        .eq('auth_user_id', user!.id)
-        .single();
+      // Resolve parent profile server-side (bypasses RLS, auto-links auth_user_id)
+      const { data: { session } } = await supabase.auth.getSession();
+      const meRes = await fetch('/api/auth/me', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session!.access_token}` },
+      });
 
-      if (profile?.role === 'admin') {
-        router.push('/admin');
+      if (meRes.ok) {
+        const { role } = await meRes.json();
+        router.push(role === 'admin' ? '/admin' : '/dashboard');
       } else {
-        router.push('/dashboard');
+        setError('Your account exists but no parent profile was found. Please contact support.');
+        setLoading(false);
+        return;
       }
     } catch {
       setError('Something went wrong. Please try again.');
