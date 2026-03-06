@@ -49,6 +49,11 @@ exports.up = async function (knex) {
       t.jsonb('operating_nights').notNullable().defaultTo(
         JSON.stringify(['sunday', 'monday', 'tuesday', 'wednesday', 'thursday'])
       );
+      t.string('billing_day').notNullable().defaultTo('friday');
+      t.string('billing_time').notNullable().defaultTo('12:00');
+      t.integer('waitlist_confirm_hours').notNullable().defaultTo(24);
+      t.string('overnight_start_time').notNullable().defaultTo('21:00');
+      t.string('overnight_end_time').notNullable().defaultTo('07:00');
       t.timestamps(true, true);
     });
 

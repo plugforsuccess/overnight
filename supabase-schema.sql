@@ -197,13 +197,18 @@ create index idx_payments_status on public.payments(status);
 -- ADMIN_SETTINGS
 -- ============================================================
 create table public.admin_settings (
-  id                uuid primary key default gen_random_uuid(),
-  max_capacity      int not null default 6,
-  min_enrollment    int not null default 4,
-  pricing_tiers     jsonb not null default '[{"nights":3,"price_cents":30000},{"nights":4,"price_cents":36000},{"nights":5,"price_cents":42500}]',
-  operating_nights  jsonb not null default '["sunday","monday","tuesday","wednesday","thursday"]',
-  created_at        timestamptz not null default now(),
-  updated_at        timestamptz not null default now()
+  id                    uuid primary key default gen_random_uuid(),
+  max_capacity          int not null default 6,
+  min_enrollment        int not null default 4,
+  pricing_tiers         jsonb not null default '[{"nights":3,"price_cents":30000},{"nights":4,"price_cents":36000},{"nights":5,"price_cents":42500}]',
+  operating_nights      jsonb not null default '["sunday","monday","tuesday","wednesday","thursday"]',
+  billing_day           text not null default 'friday',
+  billing_time          text not null default '12:00',
+  waitlist_confirm_hours int not null default 24,
+  overnight_start_time  text not null default '21:00',
+  overnight_end_time    text not null default '07:00',
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now()
 );
 
 -- Seed default settings
