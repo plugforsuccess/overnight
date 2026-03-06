@@ -14,8 +14,9 @@
 --   3. Try email-match for any orphaned rows missing auth_user_id
 --   4. Remove gen_random_uuid() default from parents.id
 --   5. Add FK: parents.id REFERENCES auth.users(id) ON DELETE CASCADE
---   6. Drop the now-redundant auth_user_id column
---   7. Replace all RLS policies to use id = auth.uid() directly
+--   6. Drop ALL old RLS policies that depend on auth_user_id
+--   7. Drop the now-redundant auth_user_id column
+--   8. Create new RLS policies using id = auth.uid() directly
 -- ============================================================
 
 BEGIN;
@@ -151,20 +152,73 @@ ALTER TABLE public.parents
   FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
 -- ============================================================
--- 6. Drop the now-redundant auth_user_id column
+-- 6. Drop ALL old RLS policies that reference auth_user_id
+--    Must happen BEFORE dropping the column (Postgres dependency check)
+-- ============================================================
+
+-- parents table policies (from migration 7)
+DROP POLICY IF EXISTS parents_select_own ON public.parents;
+DROP POLICY IF EXISTS parents_update_own ON public.parents;
+DROP POLICY IF EXISTS parents_insert_own ON public.parents;
+
+-- children table policies (from migration 7)
+DROP POLICY IF EXISTS children_select_own ON public.children;
+DROP POLICY IF EXISTS children_insert_own ON public.children;
+DROP POLICY IF EXISTS children_update_own ON public.children;
+DROP POLICY IF EXISTS children_delete_own ON public.children;
+
+-- overnight_blocks policies (from migration 7)
+DROP POLICY IF EXISTS overnight_blocks_select_own ON public.overnight_blocks;
+DROP POLICY IF EXISTS overnight_blocks_update_own ON public.overnight_blocks;
+
+-- reservations policies (from migration 7)
+DROP POLICY IF EXISTS reservations_select_own ON public.reservations;
+DROP POLICY IF EXISTS reservations_update_own ON public.reservations;
+
+-- waitlist policies (from migration 7)
+DROP POLICY IF EXISTS waitlist_select_own ON public.waitlist;
+
+-- credits policies (from migration 7)
+DROP POLICY IF EXISTS credits_select_own ON public.credits;
+
+-- children_hardening policies (from migration 5)
+DROP POLICY IF EXISTS "parents_select_child_allergies" ON public.child_allergies;
+DROP POLICY IF EXISTS "parents_insert_child_allergies" ON public.child_allergies;
+DROP POLICY IF EXISTS "parents_update_child_allergies" ON public.child_allergies;
+DROP POLICY IF EXISTS "parents_delete_child_allergies" ON public.child_allergies;
+DROP POLICY IF EXISTS "admins_manage_child_allergies" ON public.child_allergies;
+
+DROP POLICY IF EXISTS "parents_select_action_plans" ON public.child_allergy_action_plans;
+DROP POLICY IF EXISTS "parents_insert_action_plans" ON public.child_allergy_action_plans;
+DROP POLICY IF EXISTS "parents_update_action_plans" ON public.child_allergy_action_plans;
+DROP POLICY IF EXISTS "parents_delete_action_plans" ON public.child_allergy_action_plans;
+DROP POLICY IF EXISTS "admins_manage_action_plans" ON public.child_allergy_action_plans;
+
+DROP POLICY IF EXISTS "parents_select_emergency_contacts" ON public.child_emergency_contacts;
+DROP POLICY IF EXISTS "parents_insert_emergency_contacts" ON public.child_emergency_contacts;
+DROP POLICY IF EXISTS "parents_update_emergency_contacts" ON public.child_emergency_contacts;
+DROP POLICY IF EXISTS "parents_delete_emergency_contacts" ON public.child_emergency_contacts;
+DROP POLICY IF EXISTS "admins_manage_emergency_contacts" ON public.child_emergency_contacts;
+
+DROP POLICY IF EXISTS "parents_select_authorized_pickups" ON public.child_authorized_pickups;
+DROP POLICY IF EXISTS "parents_insert_authorized_pickups" ON public.child_authorized_pickups;
+DROP POLICY IF EXISTS "parents_update_authorized_pickups" ON public.child_authorized_pickups;
+DROP POLICY IF EXISTS "parents_delete_authorized_pickups" ON public.child_authorized_pickups;
+DROP POLICY IF EXISTS "admins_manage_authorized_pickups" ON public.child_authorized_pickups;
+
+-- ============================================================
+-- 7. Drop the now-redundant auth_user_id column
+--    (safe now that all dependent policies are dropped)
 -- ============================================================
 
 ALTER TABLE public.parents DROP COLUMN IF EXISTS auth_user_id;
 
 -- ============================================================
--- 7. Replace RLS policies to use id = auth.uid() directly
+-- 8. Create new RLS policies using id = auth.uid() directly
 --    (no more joins through auth_user_id)
 -- ============================================================
 
 -- ── parents table ──────────────────────────────────────────
-DROP POLICY IF EXISTS parents_select_own ON public.parents;
-DROP POLICY IF EXISTS parents_update_own ON public.parents;
-DROP POLICY IF EXISTS parents_insert_own ON public.parents;
 
 CREATE POLICY parents_select_own ON public.parents
   FOR SELECT TO authenticated
@@ -180,10 +234,6 @@ CREATE POLICY parents_update_own ON public.parents
   WITH CHECK (id = auth.uid());
 
 -- ── children table ─────────────────────────────────────────
-DROP POLICY IF EXISTS children_select_own ON public.children;
-DROP POLICY IF EXISTS children_insert_own ON public.children;
-DROP POLICY IF EXISTS children_update_own ON public.children;
-DROP POLICY IF EXISTS children_delete_own ON public.children;
 
 CREATE POLICY children_select_own ON public.children
   FOR SELECT TO authenticated
@@ -203,8 +253,6 @@ CREATE POLICY children_delete_own ON public.children
   USING (parent_id = auth.uid());
 
 -- ── overnight_blocks table ─────────────────────────────────
-DROP POLICY IF EXISTS overnight_blocks_select_own ON public.overnight_blocks;
-DROP POLICY IF EXISTS overnight_blocks_update_own ON public.overnight_blocks;
 
 CREATE POLICY overnight_blocks_select_own ON public.overnight_blocks
   FOR SELECT TO authenticated
@@ -216,8 +264,6 @@ CREATE POLICY overnight_blocks_update_own ON public.overnight_blocks
   WITH CHECK (parent_id = auth.uid());
 
 -- ── reservations table (ownership via overnight_blocks) ────
-DROP POLICY IF EXISTS reservations_select_own ON public.reservations;
-DROP POLICY IF EXISTS reservations_update_own ON public.reservations;
 
 CREATE POLICY reservations_select_own ON public.reservations
   FOR SELECT TO authenticated
@@ -238,29 +284,21 @@ CREATE POLICY reservations_update_own ON public.reservations
   );
 
 -- ── waitlist table ─────────────────────────────────────────
-DROP POLICY IF EXISTS waitlist_select_own ON public.waitlist;
 
 CREATE POLICY waitlist_select_own ON public.waitlist
   FOR SELECT TO authenticated
   USING (parent_id = auth.uid());
 
 -- ── credits table ──────────────────────────────────────────
-DROP POLICY IF EXISTS credits_select_own ON public.credits;
 
 CREATE POLICY credits_select_own ON public.credits
   FOR SELECT TO authenticated
   USING (parent_id = auth.uid());
 
--- ── Update children_hardening RLS predicates ───────────────
--- These were created dynamically in migration 5; replace with direct checks.
+-- ── children_hardening tables ───────────────────────────────
+-- (old policies already dropped in step 6 above)
 
 -- child_allergies
-DROP POLICY IF EXISTS "parents_select_child_allergies" ON public.child_allergies;
-DROP POLICY IF EXISTS "parents_insert_child_allergies" ON public.child_allergies;
-DROP POLICY IF EXISTS "parents_update_child_allergies" ON public.child_allergies;
-DROP POLICY IF EXISTS "parents_delete_child_allergies" ON public.child_allergies;
-DROP POLICY IF EXISTS "admins_manage_child_allergies" ON public.child_allergies;
-
 CREATE POLICY parents_select_child_allergies ON public.child_allergies
   FOR SELECT TO authenticated
   USING (EXISTS (
@@ -293,12 +331,6 @@ CREATE POLICY admins_manage_child_allergies ON public.child_allergies
   USING (EXISTS (SELECT 1 FROM public.parents WHERE id = auth.uid() AND role = 'admin'));
 
 -- child_allergy_action_plans
-DROP POLICY IF EXISTS "parents_select_action_plans" ON public.child_allergy_action_plans;
-DROP POLICY IF EXISTS "parents_insert_action_plans" ON public.child_allergy_action_plans;
-DROP POLICY IF EXISTS "parents_update_action_plans" ON public.child_allergy_action_plans;
-DROP POLICY IF EXISTS "parents_delete_action_plans" ON public.child_allergy_action_plans;
-DROP POLICY IF EXISTS "admins_manage_action_plans" ON public.child_allergy_action_plans;
-
 CREATE POLICY parents_select_action_plans ON public.child_allergy_action_plans
   FOR SELECT TO authenticated
   USING (EXISTS (
@@ -341,12 +373,6 @@ CREATE POLICY admins_manage_action_plans ON public.child_allergy_action_plans
   USING (EXISTS (SELECT 1 FROM public.parents WHERE id = auth.uid() AND role = 'admin'));
 
 -- child_emergency_contacts
-DROP POLICY IF EXISTS "parents_select_emergency_contacts" ON public.child_emergency_contacts;
-DROP POLICY IF EXISTS "parents_insert_emergency_contacts" ON public.child_emergency_contacts;
-DROP POLICY IF EXISTS "parents_update_emergency_contacts" ON public.child_emergency_contacts;
-DROP POLICY IF EXISTS "parents_delete_emergency_contacts" ON public.child_emergency_contacts;
-DROP POLICY IF EXISTS "admins_manage_emergency_contacts" ON public.child_emergency_contacts;
-
 CREATE POLICY parents_select_emergency_contacts ON public.child_emergency_contacts
   FOR SELECT TO authenticated
   USING (EXISTS (
@@ -379,12 +405,6 @@ CREATE POLICY admins_manage_emergency_contacts ON public.child_emergency_contact
   USING (EXISTS (SELECT 1 FROM public.parents WHERE id = auth.uid() AND role = 'admin'));
 
 -- child_authorized_pickups
-DROP POLICY IF EXISTS "parents_select_authorized_pickups" ON public.child_authorized_pickups;
-DROP POLICY IF EXISTS "parents_insert_authorized_pickups" ON public.child_authorized_pickups;
-DROP POLICY IF EXISTS "parents_update_authorized_pickups" ON public.child_authorized_pickups;
-DROP POLICY IF EXISTS "parents_delete_authorized_pickups" ON public.child_authorized_pickups;
-DROP POLICY IF EXISTS "admins_manage_authorized_pickups" ON public.child_authorized_pickups;
-
 CREATE POLICY parents_select_authorized_pickups ON public.child_authorized_pickups
   FOR SELECT TO authenticated
   USING (EXISTS (
