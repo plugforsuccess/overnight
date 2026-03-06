@@ -19,7 +19,7 @@ async function checkAdmin(req: NextRequest) {
   const { data: parent } = await supabaseAdmin
     .from('parents')
     .select('id, role, is_admin')
-    .eq('auth_user_id', user.id)
+    .eq('id', user.id)
     .single();
 
   if (!parent || (parent.role !== 'admin' && !parent.is_admin)) return null;

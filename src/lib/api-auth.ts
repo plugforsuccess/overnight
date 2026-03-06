@@ -26,16 +26,17 @@ export async function authenticateRequest(req: NextRequest): Promise<AuthResult 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  // Resolve parents.id from auth_user_id — parent_id FK throughout the app
+  // parents.id = auth.users.id — single canonical identity, no extra lookup needed
+  // Verify the parent row exists
   const { data: parentRow } = await supabaseAdmin
     .from('parents')
     .select('id')
-    .eq('auth_user_id', user.id)
+    .eq('id', user.id)
     .single();
 
   if (!parentRow) return null;
 
-  return { supabase, userId: user.id, parentId: parentRow.id };
+  return { supabase, userId: user.id, parentId: user.id };
 }
 
 export function unauthorized() {

@@ -37,7 +37,7 @@ async function authenticate(req, res, next) {
     }
 
     const parent = await db("parents")
-      .where({ auth_user_id: userId })
+      .where({ id: userId })
       .first();
 
     if (!parent) {

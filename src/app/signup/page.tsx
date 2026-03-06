@@ -240,19 +240,7 @@ export default function SignupPage() {
       }
       setLoading(true);
       try {
-        // Look up the parent row by auth_user_id to get the correct parent_id FK
-        const { data: parentRow, error: parentLookupError } = await supabase
-          .from('parents')
-          .select('id')
-          .eq('auth_user_id', userId)
-          .single();
-
-        if (parentLookupError || !parentRow) {
-          setError('Could not find your parent profile. Please contact support.');
-          setLoading(false);
-          return;
-        }
-
+        // parents.id = auth.users.id — use userId directly as parent_id
         const emergencyInfo = [
           `Emergency Contact: ${emergency.firstName} ${emergency.lastName} (${emergency.relationship})`,
           `Phone: ${emergency.phone.replace(/\D/g, '')}`,
@@ -262,7 +250,7 @@ export default function SignupPage() {
         const { error: childError } = await supabase
           .from('children')
           .insert({
-            parent_id: parentRow.id,
+            parent_id: userId,
             name: `${child.firstName.trim()} ${child.lastName.trim()}`,
             first_name: child.firstName.trim(),
             last_name: child.lastName.trim(),

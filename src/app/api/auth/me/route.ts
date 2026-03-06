@@ -7,9 +7,8 @@ import { supabaseAdmin } from '@/lib/supabase-server';
  *
  * Called after signInWithPassword succeeds. Uses the service-role client to:
  * 1. Verify the caller's JWT
- * 2. Find their parents row by email (bypasses RLS)
- * 3. If auth_user_id is NULL, link it so future RLS queries work
- * 4. Return the parent's role for redirect routing
+ * 2. Find their parent row by id (= auth.users.id)
+ * 3. Return the parent's role for redirect routing
  */
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get('Authorization');
@@ -29,23 +28,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
   }
 
-  // Use admin client (bypasses RLS) to find parent by email
+  // parents.id = auth.users.id — look up directly by id
   const { data: parent } = await supabaseAdmin
     .from('parents')
-    .select('id, role, auth_user_id')
-    .eq('email', user.email!)
+    .select('id, role')
+    .eq('id', user.id)
     .single();
 
   if (!parent) {
-    return NextResponse.json({ error: 'No parent profile found for this email' }, { status: 404 });
-  }
-
-  // Auto-link or fix auth_user_id if it's missing or mismatched
-  if (parent.auth_user_id !== user.id) {
-    await supabaseAdmin
-      .from('parents')
-      .update({ auth_user_id: user.id })
-      .eq('id', parent.id);
+    return NextResponse.json({ error: 'No parent profile found for this account' }, { status: 404 });
   }
 
   return NextResponse.json({ role: parent.role ?? 'parent' });

@@ -30,7 +30,7 @@ export default function LoginPage() {
         return;
       }
 
-      // Resolve parent profile server-side (bypasses RLS, auto-links auth_user_id)
+      // Resolve parent profile server-side (bypasses RLS)
       const { data: { session } } = await supabase.auth.getSession();
       const meRes = await fetch('/api/auth/me', {
         method: 'POST',
