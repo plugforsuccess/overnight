@@ -16,43 +16,70 @@ export async function POST(req: NextRequest) {
     event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET!);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Invalid signature';
+    console.error('[webhook] signature verification failed:', message);
     return NextResponse.json({ error: message }, { status: 400 });
   }
+
+  console.log(`[webhook] event received: type=${event.type} id=${event.id}`);
 
   switch (event.type) {
     case 'checkout.session.completed': {
       const session = event.data.object as Stripe.Checkout.Session;
-      const planId = session.metadata?.plan_id;
+      const blockId = session.metadata?.overnight_block_id ?? session.metadata?.plan_id;
 
-      if (planId && session.subscription) {
-        // Update plan with subscription ID
-        await supabaseAdmin
-          .from('plans')
+      console.log(`[webhook] checkout completed: blockId=${blockId} subscription=${session.subscription}`);
+
+      if (blockId && session.subscription) {
+        // Update overnight_block with subscription ID and payment status
+        const { error: updateError } = await supabaseAdmin
+          .from('overnight_blocks')
           .update({
             stripe_subscription_id: session.subscription as string,
+            payment_status: 'paid',
             updated_at: new Date().toISOString(),
           })
-          .eq('id', planId);
+          .eq('id', blockId);
 
-        // Resolve parent_id from the plan (canonical FK, not auth UUID)
-        const { data: planRow } = await supabaseAdmin
-          .from('plans')
+        if (updateError) {
+          console.error('[webhook] failed to update overnight_block:', updateError);
+        }
+
+        // Confirm all pending_payment reservations for this block
+        const { error: resUpdateError } = await supabaseAdmin
+          .from('reservations')
+          .update({
+            status: 'confirmed',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('overnight_block_id', blockId)
+          .eq('status', 'pending_payment');
+
+        if (resUpdateError) {
+          console.error('[webhook] failed to confirm reservations:', resUpdateError);
+        }
+
+        // Resolve parent_id from the block
+        const { data: blockRow } = await supabaseAdmin
+          .from('overnight_blocks')
           .select('parent_id')
-          .eq('id', planId)
+          .eq('id', blockId)
           .single();
 
-        const parentId = planRow?.parent_id ?? session.metadata?.parent_id;
+        const parentId = blockRow?.parent_id ?? session.metadata?.parent_id;
 
         if (parentId) {
-          // Record payment
-          await supabaseAdmin.from('payments').insert({
-            parent_id: parentId,
-            plan_id: planId,
-            amount_cents: session.amount_total ?? 0,
-            status: 'succeeded',
-            description: 'Weekly plan subscription started',
-            stripe_payment_intent_id: session.payment_intent as string,
-          });
+          try {
+            await supabaseAdmin.from('payments').insert({
+              parent_id: parentId,
+              plan_id: blockId,
+              amount_cents: session.amount_total ?? 0,
+              status: 'succeeded',
+              description: 'Weekly plan subscription started',
+              stripe_payment_intent_id: session.payment_intent as string,
+            });
+          } catch (err) {
+            console.warn('[webhook] payment record insert failed:', err);
+          }
         }
       }
       break;
@@ -62,22 +89,26 @@ export async function POST(req: NextRequest) {
       const invoice = event.data.object as Stripe.Invoice;
       const subscriptionId = (invoice as unknown as Record<string, unknown>).subscription as string;
 
-      // Find the plan by subscription ID
-      const { data: plan } = await supabaseAdmin
-        .from('plans')
+      const { data: block } = await supabaseAdmin
+        .from('overnight_blocks')
         .select('id, parent_id')
         .eq('stripe_subscription_id', subscriptionId)
         .single();
 
-      if (plan) {
-        await supabaseAdmin.from('payments').insert({
-          parent_id: plan.parent_id,
-          plan_id: plan.id,
-          amount_cents: invoice.amount_paid,
-          status: 'succeeded',
-          description: 'Weekly subscription payment',
-          stripe_invoice_id: invoice.id,
-        });
+      if (block) {
+        console.log(`[webhook] invoice paid: blockId=${block.id} amount=${invoice.amount_paid}`);
+        try {
+          await supabaseAdmin.from('payments').insert({
+            parent_id: block.parent_id,
+            plan_id: block.id,
+            amount_cents: invoice.amount_paid,
+            status: 'succeeded',
+            description: 'Weekly subscription payment',
+            stripe_invoice_id: invoice.id,
+          });
+        } catch (err) {
+          console.warn('[webhook] payment record insert failed:', err);
+        }
       }
       break;
     }
@@ -86,35 +117,40 @@ export async function POST(req: NextRequest) {
       const invoice = event.data.object as Stripe.Invoice;
       const subscriptionId = (invoice as unknown as Record<string, unknown>).subscription as string;
 
-      const { data: plan } = await supabaseAdmin
-        .from('plans')
+      const { data: block } = await supabaseAdmin
+        .from('overnight_blocks')
         .select('id, parent_id')
         .eq('stripe_subscription_id', subscriptionId)
         .single();
 
-      if (plan) {
-        await supabaseAdmin.from('payments').insert({
-          parent_id: plan.parent_id,
-          plan_id: plan.id,
-          amount_cents: invoice.amount_due,
-          status: 'failed',
-          description: 'Weekly subscription payment failed',
-          stripe_invoice_id: invoice.id,
-        });
+      if (block) {
+        console.error(`[webhook] payment failed: blockId=${block.id} amount=${invoice.amount_due}`);
+        try {
+          await supabaseAdmin.from('payments').insert({
+            parent_id: block.parent_id,
+            plan_id: block.id,
+            amount_cents: invoice.amount_due,
+            status: 'failed',
+            description: 'Weekly subscription payment failed',
+            stripe_invoice_id: invoice.id,
+          });
+        } catch (err) {
+          console.warn('[webhook] payment record insert failed:', err);
+        }
 
-        // Pause the plan
         await supabaseAdmin
-          .from('plans')
-          .update({ status: 'paused', updated_at: new Date().toISOString() })
-          .eq('id', plan.id);
+          .from('overnight_blocks')
+          .update({ payment_status: 'failed', updated_at: new Date().toISOString() })
+          .eq('id', block.id);
       }
       break;
     }
 
     case 'customer.subscription.deleted': {
       const subscription = event.data.object as Stripe.Subscription;
+      console.log(`[webhook] subscription deleted: ${subscription.id}`);
       await supabaseAdmin
-        .from('plans')
+        .from('overnight_blocks')
         .update({ status: 'cancelled', updated_at: new Date().toISOString() })
         .eq('stripe_subscription_id', subscription.id);
       break;

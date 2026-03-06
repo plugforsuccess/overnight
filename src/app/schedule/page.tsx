@@ -8,10 +8,15 @@ import { DEFAULT_PRICING_TIERS, DEFAULT_OPERATING_NIGHTS, formatCents, DAY_LABEL
 import { getWeekNights, getNextWeekStart, cn } from '@/lib/utils';
 import { DayOfWeek, Child, AdminSettings } from '@/types/database';
 
+interface ChildProfile extends Child {
+  emergency_contacts_count: number;
+  authorized_pickups_count: number;
+}
+
 export default function SchedulePage() {
   const router = useRouter();
   const [step, setStep] = useState<'plan' | 'nights' | 'child' | 'confirm'>('plan');
-  const [children, setChildren] = useState<Child[]>([]);
+  const [children, setChildren] = useState<ChildProfile[]>([]);
   const [selectedChild, setSelectedChild] = useState<string>('');
   const [selectedPlan, setSelectedPlan] = useState<number>(0);
   const [selectedNights, setSelectedNights] = useState<Set<string>>(new Set());
@@ -20,6 +25,7 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
   const weekStart = getNextWeekStart();
@@ -46,14 +52,28 @@ export default function SchedulePage() {
       setUserId(parentId);
 
       const [childrenRes, settingsRes] = await Promise.all([
-        supabase.from('children').select('*').eq('parent_id', parentId),
+        supabase
+          .from('children')
+          .select(`
+            *,
+            child_emergency_contacts(id),
+            child_authorized_pickups(id)
+          `)
+          .eq('parent_id', parentId),
         supabase.from('admin_settings').select('*').limit(1).single(),
       ]);
 
-      if (childrenRes.data) setChildren(childrenRes.data);
+      if (childrenRes.data) {
+        const enriched: ChildProfile[] = childrenRes.data.map((c: Record<string, unknown>) => ({
+          ...c,
+          emergency_contacts_count: Array.isArray(c.child_emergency_contacts) ? c.child_emergency_contacts.length : 0,
+          authorized_pickups_count: Array.isArray(c.child_authorized_pickups) ? c.child_authorized_pickups.length : 0,
+        })) as ChildProfile[];
+        setChildren(enriched);
+      }
       if (settingsRes.data) setSettings(settingsRes.data as AdminSettings);
 
-      // Load capacity for each night
+      // Load capacity for each night — use `date` column (correct schema)
       const nightDates = getWeekNights(
         getNextWeekStart(),
         (settingsRes.data?.operating_nights ?? DEFAULT_OPERATING_NIGHTS) as DayOfWeek[]
@@ -61,14 +81,14 @@ export default function SchedulePage() {
 
       const { data: reservations } = await supabase
         .from('reservations')
-        .select('night_date')
-        .in('night_date', nightDates)
+        .select('date')
+        .in('date', nightDates)
         .eq('status', 'confirmed');
 
       const counts: Record<string, number> = {};
       nightDates.forEach(d => counts[d] = 0);
-      reservations?.forEach(r => {
-        counts[r.night_date] = (counts[r.night_date] || 0) + 1;
+      reservations?.forEach((r: { date: string }) => {
+        counts[r.date] = (counts[r.date] || 0) + 1;
       });
       setNightCapacity(counts);
       setLoading(false);
@@ -87,24 +107,66 @@ export default function SchedulePage() {
     setSelectedNights(updated);
   }
 
+  function getSelectedChildProfile(): ChildProfile | undefined {
+    return children.find(c => c.id === selectedChild);
+  }
+
+  function isChildProfileComplete(child: ChildProfile): boolean {
+    return child.emergency_contacts_count >= 1 && child.authorized_pickups_count >= 1;
+  }
+
+  function getProfileIncompleteMessage(child: ChildProfile): string {
+    const missing: string[] = [];
+    if (child.emergency_contacts_count < 1) missing.push('at least 1 emergency contact');
+    if (child.authorized_pickups_count < 1) missing.push('at least 1 authorized pickup');
+    return `Complete ${child.first_name} ${child.last_name}'s profile before booking: add ${missing.join(' and ')}.`;
+  }
+
+  function handleSelectChild(childId: string) {
+    setSelectedChild(childId);
+    const child = children.find(c => c.id === childId);
+    if (child && !isChildProfileComplete(child)) {
+      setError(getProfileIncompleteMessage(child));
+      setErrorCode('PROFILE_INCOMPLETE');
+      // Don't advance to confirm step
+      return;
+    }
+    setError('');
+    setErrorCode(null);
+    setStep('confirm');
+  }
+
   async function handleSubmit() {
     if (!userId) {
       setError('Session expired. Please log in again.');
+      setErrorCode('AUTH_REQUIRED');
       router.push('/login');
       return;
     }
     if (!selectedChild || selectedPlan === 0 || selectedNights.size !== selectedPlan) {
       setError('Please complete all steps before confirming.');
+      setErrorCode('INVALID_PLAN_SELECTION');
       return;
     }
+
+    // Double-check profile completeness
+    const childProfile = getSelectedChildProfile();
+    if (childProfile && !isChildProfileComplete(childProfile)) {
+      setError(getProfileIncompleteMessage(childProfile));
+      setErrorCode('PROFILE_INCOMPLETE');
+      return;
+    }
+
     setSubmitting(true);
     setError('');
+    setErrorCode(null);
 
     try {
       // Get auth token for server API calls
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         setError('Session expired. Please log in again.');
+        setErrorCode('AUTH_REQUIRED');
         router.push('/login');
         return;
       }
@@ -113,37 +175,75 @@ export default function SchedulePage() {
         'Authorization': `Bearer ${session.access_token}`,
       };
 
-      // Create plan + reservations via server API (handles capacity, validation, pricing)
+      const requestPayload = {
+        childId: selectedChild,
+        nightsPerWeek: selectedPlan,
+        selectedNights: Array.from(selectedNights),
+        weekStart: weekNights[0]?.dateStr,
+      };
+
+      console.log('[schedule] submitting booking:', JSON.stringify(requestPayload));
+
+      // Create plan + reservations via server API
       const bookingRes = await fetch('/api/bookings', {
         method: 'POST',
         headers: authHeaders,
-        body: JSON.stringify({
-          childId: selectedChild,
-          nightsPerWeek: selectedPlan,
-          selectedNights: Array.from(selectedNights),
-          weekStart: weekNights[0]?.dateStr,
-        }),
+        body: JSON.stringify(requestPayload),
       });
 
       const bookingData = await bookingRes.json();
-      if (!bookingRes.ok) throw new Error(bookingData.error || 'Failed to create booking');
+      console.log('[schedule] booking response:', bookingRes.status, JSON.stringify(bookingData));
+
+      if (!bookingRes.ok) {
+        const code = bookingData.code || 'UNKNOWN_ERROR';
+        setErrorCode(code);
+
+        // Show user-friendly messages based on error code
+        if (code === 'PROFILE_INCOMPLETE') {
+          setError(bookingData.error);
+        } else if (code === 'CHILD_NOT_OWNED') {
+          setError('This child does not belong to your account.');
+        } else if (code === 'AUTH_REQUIRED') {
+          setError('Session expired. Please log in again.');
+          router.push('/login');
+          return;
+        } else {
+          setError(bookingData.error || 'Failed to create booking');
+        }
+        setSubmitting(false);
+        return;
+      }
 
       // Create Stripe checkout via server API
+      console.log('[schedule] creating stripe checkout for plan:', bookingData.plan.id);
+
       const stripeRes = await fetch('/api/stripe', {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify({ planId: bookingData.plan.id }),
       });
 
-      const { url } = await stripeRes.json();
-      if (url) {
-        window.location.href = url;
+      const stripeData = await stripeRes.json();
+      console.log('[schedule] stripe response:', stripeRes.status, JSON.stringify(stripeData));
+
+      if (!stripeRes.ok) {
+        const code = stripeData.code || 'STRIPE_SESSION_CREATE_FAILED';
+        setErrorCode(code);
+        setError(stripeData.error || 'Failed to initiate payment');
+        setSubmitting(false);
+        return;
+      }
+
+      if (stripeData.url) {
+        window.location.href = stripeData.url;
       } else {
         router.push('/dashboard');
       }
     } catch (err: unknown) {
+      console.error('[schedule] submit error:', err);
       const message = err instanceof Error ? err.message : 'Something went wrong';
       setError(message);
+      setErrorCode('UNKNOWN_ERROR');
       setSubmitting(false);
     }
   }
@@ -186,9 +286,24 @@ export default function SchedulePage() {
         </div>
 
         {error && (
-          <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg mb-6 flex items-center gap-2">
-            <AlertCircle className="h-5 w-5" />
-            {error}
+          <div className={cn(
+            'px-4 py-3 rounded-lg mb-6 flex items-start gap-2',
+            errorCode === 'PROFILE_INCOMPLETE'
+              ? 'bg-yellow-50 text-yellow-800 border border-yellow-200'
+              : 'bg-red-50 text-red-700'
+          )}>
+            <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+            <div>
+              <div>{error}</div>
+              {errorCode === 'PROFILE_INCOMPLETE' && (
+                <button
+                  onClick={() => router.push('/dashboard/children')}
+                  className="mt-2 text-sm font-semibold underline hover:no-underline"
+                >
+                  Go to Child Profile
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -301,22 +416,40 @@ export default function SchedulePage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {children.map(child => (
-                  <button
-                    key={child.id}
-                    onClick={() => { setSelectedChild(child.id); setStep('confirm'); }}
-                    className={cn(
-                      'w-full text-left p-4 rounded-lg border-2 transition-colors',
-                      selectedChild === child.id ? 'border-navy-600 bg-navy-50' : 'border-gray-200 hover:border-gray-300'
-                    )}
-                  >
-                    <div className="font-semibold text-gray-900">{child.first_name} {child.last_name}</div>
-                    <div className="text-sm text-gray-500">DOB: {child.date_of_birth}</div>
-                  </button>
-                ))}
+                {children.map(child => {
+                  const complete = isChildProfileComplete(child);
+                  return (
+                    <button
+                      key={child.id}
+                      onClick={() => handleSelectChild(child.id)}
+                      className={cn(
+                        'w-full text-left p-4 rounded-lg border-2 transition-colors',
+                        selectedChild === child.id ? 'border-navy-600 bg-navy-50' : 'border-gray-200 hover:border-gray-300'
+                      )}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-semibold text-gray-900">{child.first_name} {child.last_name}</div>
+                          <div className="text-sm text-gray-500">DOB: {child.date_of_birth}</div>
+                        </div>
+                        {!complete && (
+                          <span className="text-xs font-semibold text-yellow-700 bg-yellow-100 px-2 py-1 rounded-full flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3" />
+                            Profile incomplete
+                          </span>
+                        )}
+                      </div>
+                      {!complete && (
+                        <div className="mt-2 text-xs text-yellow-700">
+                          {getProfileIncompleteMessage(child)}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
-            <button onClick={() => setStep('nights')} className="btn-secondary mt-4">Back</button>
+            <button onClick={() => { setStep('nights'); setError(''); setErrorCode(null); }} className="btn-secondary mt-4">Back</button>
           </div>
         )}
 
