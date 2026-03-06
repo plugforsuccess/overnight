@@ -78,7 +78,7 @@ export default function DashboardPage() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Parent Dashboard</h1>
-            <p className="text-gray-600">Welcome back, {profile?.first_name} {(w as any).child?.last_name}</p>
+            <p className="text-gray-600">Welcome back, {profile?.first_name} {profile?.last_name}</p>
           </div>
           <Link href="/schedule" className="btn-primary">
             Reserve Nights

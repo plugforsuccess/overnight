@@ -11,7 +11,8 @@ create extension if not exists "uuid-ossp";
 create table public.users (
   id                 uuid primary key default uuid_generate_v4(),
   email              text not null unique,
-  full_name          text not null,
+  first_name         text not null,
+  last_name          text not null,
   phone              text,
   role               text not null default 'parent'
                      check (role in ('parent', 'admin')),
@@ -24,11 +25,12 @@ create table public.users (
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
-  insert into public.users (id, email, full_name, role)
+  insert into public.users (id, email, first_name, last_name, role)
   values (
     new.id,
     new.email,
-    coalesce(new.raw_user_meta_data ->> 'full_name', ''),
+    coalesce(new.raw_user_meta_data ->> 'first_name', ''),
+    coalesce(new.raw_user_meta_data ->> 'last_name', ''),
     coalesce(new.raw_user_meta_data ->> 'role', 'parent')
   );
   return new;
@@ -45,7 +47,8 @@ create trigger on_auth_user_created
 create table public.children (
   id                       uuid primary key default uuid_generate_v4(),
   user_id                  uuid not null references public.users(id) on delete cascade,
-  full_name                text not null,
+  first_name               text not null,
+  last_name                text not null,
   date_of_birth            date not null,
   allergies                text,
   medical_notes            text,

@@ -80,7 +80,7 @@ export default function AdminPlansPage() {
             <tbody className="divide-y divide-gray-200">
               {plans.map(p => (
                 <tr key={p.id}>
-                  <td className="px-6 py-4 text-sm text-gray-900">{p.parent?.full_name}</td>
+                  <td className="px-6 py-4 text-sm text-gray-900">{p.parent?.first_name} {p.parent?.last_name}</td>
                   <td className="px-6 py-4 text-sm text-gray-900">{p.child?.first_name} {p.child?.last_name}</td>
                   <td className="px-6 py-4 text-sm text-gray-900">{p.nights_per_week}</td>
                   <td className="px-6 py-4 text-sm font-semibold">{formatCents(p.price_cents)}/wk</td>

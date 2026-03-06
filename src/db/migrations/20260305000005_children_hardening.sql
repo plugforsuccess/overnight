@@ -13,7 +13,82 @@ END;
 $$;
 
 -- ============================================================
--- 1. Alter children: split name → first_name + last_name
+-- 1a. Alter users/parents: split full_name/name → first_name + last_name
+-- ============================================================
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS first_name text;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_name text;
+
+DO $$
+DECLARE
+  src_col text;
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'full_name'
+  ) THEN
+    src_col := 'full_name';
+  ELSIF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'name'
+  ) THEN
+    src_col := 'name';
+  ELSE
+    src_col := NULL;
+  END IF;
+
+  IF src_col IS NOT NULL THEN
+    EXECUTE format(
+      'UPDATE public.users
+       SET first_name = CASE
+             WHEN position('' '' in COALESCE(%I, '''')) > 0
+               THEN left(COALESCE(%I, ''''), position('' '' in COALESCE(%I, '''')) - 1)
+             ELSE COALESCE(%I, '''')
+           END,
+           last_name = CASE
+             WHEN position('' '' in COALESCE(%I, '''')) > 0
+               THEN substring(COALESCE(%I, '''') from position('' '' in COALESCE(%I, '''')) + 1)
+             ELSE ''''
+           END
+       WHERE first_name IS NULL',
+      src_col, src_col, src_col, src_col, src_col, src_col, src_col
+    );
+  END IF;
+END $$;
+
+ALTER TABLE public.users ALTER COLUMN first_name SET NOT NULL;
+ALTER TABLE public.users ALTER COLUMN last_name SET NOT NULL;
+
+-- Also handle parents table (Knex schema)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'parents'
+  ) THEN
+    EXECUTE 'ALTER TABLE public.parents ADD COLUMN IF NOT EXISTS first_name text';
+    EXECUTE 'ALTER TABLE public.parents ADD COLUMN IF NOT EXISTS last_name text';
+
+    EXECUTE '
+      UPDATE public.parents
+      SET first_name = CASE
+            WHEN position('' '' in COALESCE(name, '''')) > 0
+              THEN left(COALESCE(name, ''''), position('' '' in COALESCE(name, '''')) - 1)
+            ELSE COALESCE(name, '''')
+          END,
+          last_name = CASE
+            WHEN position('' '' in COALESCE(name, '''')) > 0
+              THEN substring(COALESCE(name, '''') from position('' '' in COALESCE(name, '''')) + 1)
+            ELSE ''''
+          END
+      WHERE first_name IS NULL';
+
+    EXECUTE 'ALTER TABLE public.parents ALTER COLUMN first_name SET NOT NULL';
+    EXECUTE 'ALTER TABLE public.parents ALTER COLUMN last_name SET NOT NULL';
+  END IF;
+END $$;
+
+-- ============================================================
+-- 1b. Alter children: split name → first_name + last_name
 -- ============================================================
 ALTER TABLE public.children ADD COLUMN IF NOT EXISTS first_name text;
 ALTER TABLE public.children ADD COLUMN IF NOT EXISTS last_name text;

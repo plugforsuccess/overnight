@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   // Get or create Stripe customer
   const customerId = await getOrCreateCustomer(
     profile.email,
-    profile.full_name,
+    `${profile.first_name} ${profile.last_name}`.trim(),
     profile.stripe_customer_id
   );
 

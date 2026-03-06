@@ -8,7 +8,32 @@
  */
 
 exports.up = async function (knex) {
-  // ── 1. Alter children: split name → first_name + last_name ──────────
+  // ── 1a. Alter parents: split name → first_name + last_name ──────────
+  await knex.schema.alterTable('parents', (t) => {
+    t.string('first_name');
+    t.string('last_name');
+  });
+
+  await knex.raw(`
+    UPDATE parents
+    SET first_name = CASE
+          WHEN position(' ' in name) > 0 THEN left(name, position(' ' in name) - 1)
+          ELSE name
+        END,
+        last_name = CASE
+          WHEN position(' ' in name) > 0 THEN substring(name from position(' ' in name) + 1)
+          ELSE ''
+        END
+    WHERE first_name IS NULL
+  `);
+
+  await knex.schema.alterTable('parents', (t) => {
+    t.string('first_name').notNullable().alter();
+    t.string('last_name').notNullable().alter();
+    t.dropColumn('name');
+  });
+
+  // ── 1b. Alter children: split name → first_name + last_name ──────────
   await knex.schema.alterTable('children', (t) => {
     t.string('first_name');
     t.string('last_name');
@@ -177,6 +202,23 @@ exports.down = async function (knex) {
   `);
 
   await knex.schema.alterTable('children', (t) => {
+    t.string('name').notNullable().alter();
+    t.dropColumn('first_name');
+    t.dropColumn('last_name');
+  });
+
+  // Restore parents.name from first_name + last_name
+  await knex.schema.alterTable('parents', (t) => {
+    t.string('name');
+  });
+
+  await knex.raw(`
+    UPDATE parents
+    SET name = TRIM(CONCAT(first_name, ' ', last_name))
+    WHERE name IS NULL
+  `);
+
+  await knex.schema.alterTable('parents', (t) => {
     t.string('name').notNullable().alter();
     t.dropColumn('first_name');
     t.dropColumn('last_name');

@@ -102,7 +102,7 @@ export default function AdminWaitlistPage() {
                 <div className="flex justify-between items-start">
                   <div>
                     <h3 className="font-semibold text-gray-900">{entry.child?.first_name} {entry.child?.last_name}</h3>
-                    <p className="text-sm text-gray-500">Parent: {entry.parent?.full_name}</p>
+                    <p className="text-sm text-gray-500">Parent: {entry.parent?.first_name} {entry.parent?.last_name}</p>
                     <p className="text-sm text-gray-500">Night: {formatDate(entry.night_date)}</p>
                     <p className="text-sm text-gray-500">Position: #{entry.position}</p>
                     {entry.status === 'offered' && (
