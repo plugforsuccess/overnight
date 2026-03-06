@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await auth.supabase
     .from('children')
-    .select('*')
+    .select('id, parent_id, first_name, last_name, date_of_birth, medical_notes, created_at, updated_at')
     .eq('parent_id', auth.parentId)
     .order('created_at', { ascending: true });
 
@@ -20,7 +20,8 @@ export async function POST(req: NextRequest) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
 
-  const body = await req.json();
+  let body;
+  try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
   const parsed = childBasicsSchema.safeParse(body);
   if (!parsed.success) {
     return badRequest(parsed.error.errors.map(e => e.message).join(', '));
@@ -47,7 +48,8 @@ export async function PUT(req: NextRequest) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
 
-  const body = await req.json();
+  let body;
+  try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
   const { id, ...updates } = body;
   if (!id) return badRequest('Child ID is required');
 

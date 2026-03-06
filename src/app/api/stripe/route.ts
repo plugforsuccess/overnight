@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { stripe, getOrCreateCustomer } from '@/lib/stripe';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { createClient } from '@supabase/supabase-js';
+import { rateLimit } from '@/lib/rate-limit';
 
 function getUserClient(req: NextRequest) {
   const authHeader = req.headers.get('Authorization');
@@ -14,6 +15,9 @@ function getUserClient(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const rateLimited = rateLimit(req, { windowMs: 60_000, max: 10 });
+  if (rateLimited) return rateLimited;
+
   const supabase = getUserClient(req);
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

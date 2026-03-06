@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
+import { rateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
 
 const signupSchema = z.object({
@@ -17,6 +18,9 @@ const signupSchema = z.object({
 }, { message: 'First name is required', path: ['firstName'] });
 
 export async function POST(req: NextRequest) {
+  const rateLimited = rateLimit(req, { windowMs: 60_000, max: 5 });
+  if (rateLimited) return rateLimited;
+
   let body;
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }); }
 
@@ -42,7 +46,11 @@ export async function POST(req: NextRequest) {
   });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    // Don't leak internal error details — provide user-friendly messages
+    const msg = error.message.includes('already registered')
+      ? 'An account with this email already exists.'
+      : 'Failed to create account. Please try again.';
+    return NextResponse.json({ error: msg }, { status: 400 });
   }
 
   // Create parent row in the public.parents table

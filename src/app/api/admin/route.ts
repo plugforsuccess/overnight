@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
   if (view === 'settings') {
     const { data: settings } = await supabaseAdmin
       .from('admin_settings')
-      .select('*')
+      .select('id, max_capacity, operating_nights, pricing_tiers, created_at, updated_at')
       .limit(1)
       .single();
 
@@ -92,12 +92,12 @@ export async function GET(req: NextRequest) {
   // Default: summary
   const { data: activePlans } = await supabaseAdmin
     .from('plans')
-    .select('*', { count: 'exact' })
+    .select('id, price_cents', { count: 'exact' })
     .eq('status', 'active');
 
   const { count: totalChildren } = await supabaseAdmin
     .from('children')
-    .select('*', { count: 'exact', head: true });
+    .select('id', { count: 'exact', head: true });
 
   const totalRevenue = activePlans?.reduce((sum, p) => sum + p.price_cents, 0) ?? 0;
 
@@ -185,7 +185,7 @@ export async function PUT(req: NextRequest) {
 
     const { data: entry } = await supabaseAdmin
       .from('waitlist')
-      .select('*')
+      .select('id, child_id, parent_id, night_date, position, status')
       .eq('id', waitlistId)
       .single();
 

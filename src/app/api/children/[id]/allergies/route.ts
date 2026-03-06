@@ -26,7 +26,8 @@ export async function POST(
 
   if (childError || !child) return notFound('Child not found');
 
-  const body = await req.json();
+  let body;
+  try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
   const parsed = allergiesListSchema.safeParse(body.allergies || []);
   if (!parsed.success) {
     return badRequest(parsed.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; '));

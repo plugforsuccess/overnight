@@ -25,7 +25,8 @@ export async function PATCH(
     return notFound('Emergency contact not found');
   }
 
-  const body = await req.json();
+  let body;
+  try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
   const parsed = emergencyContactSchema.safeParse(body);
   if (!parsed.success) {
     return badRequest(parsed.error.errors.map(e => e.message).join(', '));

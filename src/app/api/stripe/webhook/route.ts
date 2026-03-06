@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
       // Find the plan by subscription ID
       const { data: plan } = await supabaseAdmin
         .from('plans')
-        .select('*')
+        .select('id, parent_id')
         .eq('stripe_subscription_id', subscriptionId)
         .single();
 
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
 
       const { data: plan } = await supabaseAdmin
         .from('plans')
-        .select('*')
+        .select('id, parent_id')
         .eq('stripe_subscription_id', subscriptionId)
         .single();
 

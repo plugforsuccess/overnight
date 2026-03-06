@@ -43,7 +43,31 @@ export function unauthorized() {
 }
 
 export function badRequest(message: string) {
-  return NextResponse.json({ error: message }, { status: 400 });
+  // Sanitize database error messages to avoid leaking schema details
+  const sanitized = isDbError(message) ? 'An error occurred. Please try again.' : message;
+  return NextResponse.json({ error: sanitized }, { status: 400 });
+}
+
+function isDbError(message: string): boolean {
+  const dbPatterns = [
+    'violates',
+    'constraint',
+    'relation',
+    'column',
+    'duplicate key',
+    'syntax error',
+    'permission denied',
+    'does not exist',
+    'null value',
+    'foreign key',
+    'SQLSTATE',
+  ];
+  return dbPatterns.some(p => message.toLowerCase().includes(p.toLowerCase()));
+}
+
+export function safeJsonParse(body: unknown): { success: true; data: unknown } | { success: false } {
+  // Helper type guard - body is already parsed, this is for the try/catch pattern
+  return { success: true, data: body };
 }
 
 export function notFound(message = 'Not found') {

@@ -56,13 +56,27 @@ export async function POST(
 
   if (!child) return notFound('Child not found');
 
-  const body = await req.json();
+  // Enforce max 10 authorized pickups per child
+  const { count: pickupCount } = await auth.supabase
+    .from('child_authorized_pickups')
+    .select('*', { count: 'exact', head: true })
+    .eq('child_id', childId);
+
+  if ((pickupCount ?? 0) >= 10) {
+    return NextResponse.json(
+      { error: 'Maximum of 10 authorized pickups allowed per child. Please remove one before adding another.' },
+      { status: 422 }
+    );
+  }
+
+  let body;
+  try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
   const parsed = authorizedPickupSchema.safeParse(body);
   if (!parsed.success) {
     return badRequest(parsed.error.errors.map(e => e.message).join(', '));
   }
 
-  const pinHash = hashPin(parsed.data.pickup_pin);
+  const pinHash = await hashPin(parsed.data.pickup_pin);
 
   const { data, error } = await auth.supabase
     .from('child_authorized_pickups')

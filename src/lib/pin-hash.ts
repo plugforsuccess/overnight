@@ -1,25 +1,17 @@
-import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+import bcrypt from 'bcryptjs';
+
+const BCRYPT_ROUNDS = 10;
 
 /**
- * Hash a 4-6 digit PIN using PBKDF2-like approach with SHA-256.
- * Uses a random salt to prevent rainbow table attacks.
+ * Hash a 4-6 digit PIN using bcrypt.
  */
-export function hashPin(pin: string): string {
-  const salt = randomBytes(16).toString('hex');
-  const hash = createHash('sha256').update(salt + pin).digest('hex');
-  return `${salt}:${hash}`;
+export async function hashPin(pin: string): Promise<string> {
+  return bcrypt.hash(pin, BCRYPT_ROUNDS);
 }
 
 /**
- * Verify a PIN against a stored hash.
+ * Verify a PIN against a stored bcrypt hash.
  */
-export function verifyPin(pin: string, storedHash: string): boolean {
-  const [salt, hash] = storedHash.split(':');
-  if (!salt || !hash) return false;
-  const candidate = createHash('sha256').update(salt + pin).digest('hex');
-  try {
-    return timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(candidate, 'hex'));
-  } catch {
-    return false;
-  }
+export async function verifyPin(pin: string, storedHash: string): Promise<boolean> {
+  return bcrypt.compare(pin, storedHash);
 }
