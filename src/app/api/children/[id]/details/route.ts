@@ -17,9 +17,9 @@ export async function GET(
   // Verify child belongs to parent
   const { data: child, error: childError } = await auth.supabase
     .from('children')
-    .select('*')
+    .select('id, parent_id, first_name, last_name, date_of_birth, medical_notes, created_at, updated_at')
     .eq('id', childId)
-    .eq('parent_id', auth.userId)
+    .eq('parent_id', auth.parentId)
     .single();
 
   if (childError || !child) return notFound('Child not found');
@@ -33,7 +33,7 @@ export async function GET(
       .order('created_at', { ascending: true }),
     auth.supabase
       .from('child_emergency_contacts')
-      .select('*')
+      .select('id, child_id, first_name, last_name, relationship, phone, phone_alt, priority, authorized_for_pickup, created_at, updated_at')
       .eq('child_id', childId)
       .order('priority', { ascending: true }),
     auth.supabase
@@ -43,9 +43,9 @@ export async function GET(
       .order('created_at', { ascending: true }),
   ]);
 
-  if (allergiesRes.error) return badRequest(allergiesRes.error.message);
-  if (contactsRes.error) return badRequest(contactsRes.error.message);
-  if (pickupsRes.error) return badRequest(pickupsRes.error.message);
+  if (allergiesRes.error) return badRequest('Failed to load allergies');
+  if (contactsRes.error) return badRequest('Failed to load emergency contacts');
+  if (pickupsRes.error) return badRequest('Failed to load authorized pickups');
 
   return NextResponse.json({
     ...child,

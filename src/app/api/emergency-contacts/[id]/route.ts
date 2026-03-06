@@ -21,11 +21,12 @@ export async function PATCH(
     .eq('id', contactId)
     .single();
 
-  if (!existing || (existing as any).children?.parent_id !== auth.userId) {
+  if (!existing || (existing as any).children?.parent_id !== auth.parentId) {
     return notFound('Emergency contact not found');
   }
 
-  const body = await req.json();
+  let body;
+  try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
   const parsed = emergencyContactSchema.safeParse(body);
   if (!parsed.success) {
     return badRequest(parsed.error.errors.map(e => e.message).join(', '));
@@ -72,7 +73,7 @@ export async function DELETE(
     .eq('id', contactId)
     .single();
 
-  if (!existing || (existing as any).children?.parent_id !== auth.userId) {
+  if (!existing || (existing as any).children?.parent_id !== auth.parentId) {
     return notFound('Emergency contact not found');
   }
 

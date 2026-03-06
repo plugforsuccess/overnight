@@ -263,6 +263,7 @@ export default function SignupPage() {
           .from('children')
           .insert({
             parent_id: parentRow.id,
+            name: `${child.firstName.trim()} ${child.lastName.trim()}`,
             first_name: child.firstName.trim(),
             last_name: child.lastName.trim(),
             date_of_birth: child.dateOfBirth,

@@ -22,11 +22,12 @@ export async function PATCH(
     .eq('id', pickupId)
     .single();
 
-  if (!existing || (existing as any).children?.parent_id !== auth.userId) {
+  if (!existing || (existing as any).children?.parent_id !== auth.parentId) {
     return notFound('Authorized pickup not found');
   }
 
-  const body = await req.json();
+  let body;
+  try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
   const parsed = authorizedPickupUpdateSchema.safeParse(body);
   if (!parsed.success) {
     return badRequest(parsed.error.errors.map(e => e.message).join(', '));
@@ -42,7 +43,7 @@ export async function PATCH(
 
   // Only update PIN if provided (reset PIN action)
   if (parsed.data.pickup_pin) {
-    updateData.pickup_pin_hash = hashPin(parsed.data.pickup_pin);
+    updateData.pickup_pin_hash = await hashPin(parsed.data.pickup_pin);
   }
 
   const { data, error } = await auth.supabase
@@ -80,7 +81,7 @@ export async function DELETE(
     .eq('id', pickupId)
     .single();
 
-  if (!existing || (existing as any).children?.parent_id !== auth.userId) {
+  if (!existing || (existing as any).children?.parent_id !== auth.parentId) {
     return notFound('Authorized pickup not found');
   }
 

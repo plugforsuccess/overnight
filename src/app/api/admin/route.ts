@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { createClient } from '@supabase/supabase-js';
+import { z } from 'zod';
 
 async function checkAdmin(req: NextRequest) {
   const authHeader = req.headers.get('Authorization');
@@ -14,15 +15,27 @@ async function checkAdmin(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
+  // Use supabaseAdmin to check role from the parents table (trusted source, not user-writable)
+  const { data: parent } = await supabaseAdmin
+    .from('parents')
+    .select('id, role, is_admin')
+    .eq('auth_user_id', user.id)
     .single();
 
-  if (profile?.role !== 'admin') return null;
+  if (!parent || (parent.role !== 'admin' && !parent.is_admin)) return null;
   return user;
 }
+
+// Validation for admin settings update
+const settingsUpdateSchema = z.object({
+  id: z.string(),
+  max_capacity: z.number().int().min(1).max(50).optional(),
+  operating_nights: z.array(z.string()).optional(),
+  pricing_tiers: z.array(z.object({
+    nights: z.number().int().min(1).max(7),
+    price_cents: z.number().int().min(0),
+  })).optional(),
+}).passthrough();
 
 // GET: Admin dashboard data
 export async function GET(req: NextRequest) {
@@ -34,10 +47,9 @@ export async function GET(req: NextRequest) {
   const nightDate = searchParams.get('date');
 
   if (view === 'roster' && nightDate) {
-    // Get reservations for a specific night
     const { data: reservations } = await supabaseAdmin
       .from('reservations')
-      .select('*, child:children(*), parent:profiles(*)')
+      .select('*, child:children(id, first_name, last_name, date_of_birth), parent:parents(id, first_name, last_name, email, phone)')
       .eq('night_date', nightDate)
       .eq('status', 'confirmed');
 
@@ -47,11 +59,10 @@ export async function GET(req: NextRequest) {
   if (view === 'plans') {
     const { data: plans } = await supabaseAdmin
       .from('plans')
-      .select('*, child:children(*), parent:profiles(*)')
+      .select('*, child:children(id, first_name, last_name), parent:parents(id, first_name, last_name, email)')
       .eq('status', 'active')
       .order('created_at', { ascending: false });
 
-    // Calculate total weekly revenue
     const totalRevenue = plans?.reduce((sum, p) => sum + p.price_cents, 0) ?? 0;
 
     return NextResponse.json({ plans: plans || [], totalRevenue });
@@ -60,7 +71,7 @@ export async function GET(req: NextRequest) {
   if (view === 'waitlist') {
     const { data: waitlist } = await supabaseAdmin
       .from('waitlist')
-      .select('*, child:children(*), parent:profiles(*)')
+      .select('*, child:children(id, first_name, last_name), parent:parents(id, first_name, last_name, email)')
       .in('status', ['waiting', 'offered'])
       .order('night_date', { ascending: true })
       .order('position', { ascending: true });
@@ -71,7 +82,7 @@ export async function GET(req: NextRequest) {
   if (view === 'settings') {
     const { data: settings } = await supabaseAdmin
       .from('admin_settings')
-      .select('*')
+      .select('id, max_capacity, operating_nights, pricing_tiers, created_at, updated_at')
       .limit(1)
       .single();
 
@@ -81,12 +92,12 @@ export async function GET(req: NextRequest) {
   // Default: summary
   const { data: activePlans } = await supabaseAdmin
     .from('plans')
-    .select('*', { count: 'exact' })
+    .select('id, price_cents', { count: 'exact' })
     .eq('status', 'active');
 
   const { count: totalChildren } = await supabaseAdmin
     .from('children')
-    .select('*', { count: 'exact', head: true });
+    .select('id', { count: 'exact', head: true });
 
   const totalRevenue = activePlans?.reduce((sum, p) => sum + p.price_cents, 0) ?? 0;
 
@@ -102,38 +113,54 @@ export async function PUT(req: NextRequest) {
   const user = await checkAdmin(req);
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const body = await req.json();
+  let body;
+  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }); }
   const { action } = body;
 
   if (action === 'update_settings') {
     const { settings } = body;
+    const parsed = settingsUpdateSchema.safeParse(settings);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.errors.map(e => e.message).join(', ') }, { status: 400 });
+    }
+
+    // Only allow known fields to be updated
+    const { id, max_capacity, operating_nights, pricing_tiers } = parsed.data;
+    const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (max_capacity !== undefined) updatePayload.max_capacity = max_capacity;
+    if (operating_nights !== undefined) updatePayload.operating_nights = operating_nights;
+    if (pricing_tiers !== undefined) updatePayload.pricing_tiers = pricing_tiers;
+
     const { data, error } = await supabaseAdmin
       .from('admin_settings')
-      .update({
-        ...settings,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', settings.id)
+      .update(updatePayload)
+      .eq('id', id)
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) return NextResponse.json({ error: 'Failed to update settings' }, { status: 400 });
     return NextResponse.json({ settings: data });
   }
 
   if (action === 'cancel_reservation') {
-    const { reservationId } = body;
+    const reservationId = body.reservationId;
+    if (!reservationId || typeof reservationId !== 'string') {
+      return NextResponse.json({ error: 'reservationId is required' }, { status: 400 });
+    }
     const { error } = await supabaseAdmin
       .from('reservations')
       .update({ status: 'cancelled', updated_at: new Date().toISOString() })
       .eq('id', reservationId);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) return NextResponse.json({ error: 'Failed to cancel reservation' }, { status: 400 });
     return NextResponse.json({ success: true });
   }
 
   if (action === 'add_reservation') {
     const { childId, parentId, planId, nightDate } = body;
+    if (!childId || !parentId || !planId || !nightDate) {
+      return NextResponse.json({ error: 'childId, parentId, planId, and nightDate are required' }, { status: 400 });
+    }
     const { data, error } = await supabaseAdmin
       .from('reservations')
       .insert({
@@ -146,29 +173,29 @@ export async function PUT(req: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) return NextResponse.json({ error: 'Failed to add reservation' }, { status: 400 });
     return NextResponse.json({ reservation: data });
   }
 
   if (action === 'promote_waitlist') {
-    const { waitlistId } = body;
+    const waitlistId = body.waitlistId;
+    if (!waitlistId || typeof waitlistId !== 'string') {
+      return NextResponse.json({ error: 'waitlistId is required' }, { status: 400 });
+    }
 
-    // Get the waitlist entry
     const { data: entry } = await supabaseAdmin
       .from('waitlist')
-      .select('*')
+      .select('id, child_id, parent_id, night_date, position, status')
       .eq('id', waitlistId)
       .single();
 
     if (!entry) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    // Update waitlist status
     await supabaseAdmin
       .from('waitlist')
       .update({ status: 'confirmed' })
       .eq('id', waitlistId);
 
-    // Find an active plan for this child
     const { data: plan } = await supabaseAdmin
       .from('plans')
       .select('id')
@@ -177,7 +204,6 @@ export async function PUT(req: NextRequest) {
       .limit(1)
       .single();
 
-    // Create reservation
     const { data: reservation, error: resError } = await supabaseAdmin
       .from('reservations')
       .insert({
@@ -190,12 +216,15 @@ export async function PUT(req: NextRequest) {
       .select()
       .single();
 
-    if (resError) return NextResponse.json({ error: resError.message }, { status: 400 });
+    if (resError) return NextResponse.json({ error: 'Failed to create reservation' }, { status: 400 });
     return NextResponse.json({ reservation });
   }
 
   if (action === 'comp_week') {
     const { parentId, planId, weekStart } = body;
+    if (!parentId || !planId || !weekStart) {
+      return NextResponse.json({ error: 'parentId, planId, and weekStart are required' }, { status: 400 });
+    }
     const { data, error } = await supabaseAdmin
       .from('payments')
       .insert({
@@ -209,7 +238,7 @@ export async function PUT(req: NextRequest) {
       .select()
       .single();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error) return NextResponse.json({ error: 'Failed to create payment' }, { status: 400 });
     return NextResponse.json({ payment: data });
   }
 

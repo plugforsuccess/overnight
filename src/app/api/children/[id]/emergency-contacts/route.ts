@@ -19,14 +19,14 @@ export async function GET(
     .from('children')
     .select('id')
     .eq('id', childId)
-    .eq('parent_id', auth.userId)
+    .eq('parent_id', auth.parentId)
     .single();
 
   if (!child) return notFound('Child not found');
 
   const { data, error } = await auth.supabase
     .from('child_emergency_contacts')
-    .select('*')
+    .select('id, child_id, first_name, last_name, relationship, phone, phone_alt, priority, authorized_for_pickup, created_at, updated_at')
     .eq('child_id', childId)
     .order('priority', { ascending: true });
 
@@ -52,12 +52,13 @@ export async function POST(
     .from('children')
     .select('id')
     .eq('id', childId)
-    .eq('parent_id', auth.userId)
+    .eq('parent_id', auth.parentId)
     .single();
 
   if (!child) return notFound('Child not found');
 
-  const body = await req.json();
+  let body;
+  try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
   const parsed = emergencyContactSchema.safeParse(body);
   if (!parsed.success) {
     return badRequest(parsed.error.errors.map(e => e.message).join(', '));
@@ -91,7 +92,7 @@ export async function POST(
         { status: 422 }
       );
     }
-    return badRequest(error.message);
+    return badRequest('Failed to add emergency contact');
   }
 
   await logAuditEvent(auth.supabase, auth.userId, 'add_emergency_contact', 'child_emergency_contact', data.id, {

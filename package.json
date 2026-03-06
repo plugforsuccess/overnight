@@ -19,6 +19,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.27",
+    "bcryptjs": "^3.0.3",
     "date-fns": "^4.1.0",
     "dotenv": "^16.3.1",
     "express": "^5.2.1",
@@ -36,6 +37,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/express": "^5.0.6",
     "@types/pg": "^8.11.0",
     "jest": "^30.2.0",

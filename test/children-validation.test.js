@@ -337,33 +337,33 @@ describe('PIN Hashing', () => {
     }
   });
 
-  test('hashPin produces different hashes for same PIN (salted)', () => {
+  test('hashPin produces different hashes for same PIN (salted)', async () => {
     if (!pinHash) return;
-    const hash1 = pinHash.hashPin('1234');
-    const hash2 = pinHash.hashPin('1234');
+    const hash1 = await pinHash.hashPin('1234');
+    const hash2 = await pinHash.hashPin('1234');
     expect(hash1).not.toBe(hash2);
   });
 
-  test('verifyPin returns true for correct PIN', () => {
+  test('verifyPin returns true for correct PIN', async () => {
     if (!pinHash) return;
-    const hash = pinHash.hashPin('5678');
-    expect(pinHash.verifyPin('5678', hash)).toBe(true);
+    const hash = await pinHash.hashPin('5678');
+    expect(await pinHash.verifyPin('5678', hash)).toBe(true);
   });
 
-  test('verifyPin returns false for wrong PIN', () => {
+  test('verifyPin returns false for wrong PIN', async () => {
     if (!pinHash) return;
-    const hash = pinHash.hashPin('5678');
-    expect(pinHash.verifyPin('0000', hash)).toBe(false);
+    const hash = await pinHash.hashPin('5678');
+    expect(await pinHash.verifyPin('0000', hash)).toBe(false);
   });
 
-  test('verifyPin returns false for invalid hash format', () => {
+  test('verifyPin returns false for invalid hash format', async () => {
     if (!pinHash) return;
-    expect(pinHash.verifyPin('1234', 'invalid')).toBe(false);
+    expect(await pinHash.verifyPin('1234', 'invalid')).toBe(false);
   });
 
-  test('hashPin never stores raw PIN', () => {
+  test('hashPin never stores raw PIN', async () => {
     if (!pinHash) return;
-    const hash = pinHash.hashPin('1234');
+    const hash = await pinHash.hashPin('1234');
     expect(hash).not.toContain('1234');
   });
 });

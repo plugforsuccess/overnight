@@ -49,7 +49,7 @@ async function authenticate(req, res, next) {
 
     next();
   } catch (err) {
-    console.error("Auth error:", err);
+    console.error("Auth error:", err.message);
     res.status(500).json({ error: "Authentication failure" });
   }
 }
