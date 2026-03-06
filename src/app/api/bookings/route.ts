@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { createClient } from '@supabase/supabase-js';
+import { z } from 'zod';
+import { DEFAULT_PRICING_TIERS } from '@/lib/constants';
 
 function getUserClient(req: NextRequest) {
   const authHeader = req.headers.get('Authorization');
@@ -21,6 +23,14 @@ async function resolveParentId(authUserId: string): Promise<string | null> {
   return data?.id ?? null;
 }
 
+// Validation schema for booking requests
+const bookingSchema = z.object({
+  childId: z.string().uuid('Invalid child ID'),
+  nightsPerWeek: z.number().int().min(1).max(7),
+  selectedNights: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format')).min(1).max(7),
+  weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
+});
+
 export async function GET(req: NextRequest) {
   const supabase = getUserClient(req);
   const { data: { user } } = await supabase.auth.getUser();
@@ -35,7 +45,7 @@ export async function GET(req: NextRequest) {
     .eq('parent_id', parentId)
     .order('created_at', { ascending: false });
 
-  if (plansError) return NextResponse.json({ error: plansError.message }, { status: 400 });
+  if (plansError) return NextResponse.json({ error: 'Failed to load plans' }, { status: 400 });
 
   const { data: reservations, error: resError } = await supabase
     .from('reservations')
@@ -43,7 +53,7 @@ export async function GET(req: NextRequest) {
     .eq('parent_id', parentId)
     .order('night_date', { ascending: true });
 
-  if (resError) return NextResponse.json({ error: resError.message }, { status: 400 });
+  if (resError) return NextResponse.json({ error: 'Failed to load reservations' }, { status: 400 });
 
   const { data: waitlist } = await supabase
     .from('waitlist')
@@ -62,7 +72,38 @@ export async function POST(req: NextRequest) {
   const parentId = await resolveParentId(user.id);
   if (!parentId) return NextResponse.json({ error: 'Parent profile not found' }, { status: 400 });
 
-  const { childId, nightsPerWeek, priceCents, selectedNights, weekStart } = await req.json();
+  let body;
+  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }); }
+
+  const parsed = bookingSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.errors.map(e => e.message).join(', ') }, { status: 400 });
+  }
+
+  const { childId, nightsPerWeek, selectedNights, weekStart } = parsed.data;
+
+  // Verify child belongs to this parent
+  const { data: child } = await supabaseAdmin
+    .from('children')
+    .select('id')
+    .eq('id', childId)
+    .eq('parent_id', parentId)
+    .single();
+
+  if (!child) return NextResponse.json({ error: 'Child not found or does not belong to you' }, { status: 403 });
+
+  // Look up the canonical price from pricing tiers — never trust client-provided prices
+  const tier = DEFAULT_PRICING_TIERS.find(t => t.nights === nightsPerWeek);
+  if (!tier) return NextResponse.json({ error: 'Invalid plan tier' }, { status: 400 });
+  const priceCents = tier.price_cents;
+
+  // Validate night count matches plan
+  if (selectedNights.length !== nightsPerWeek) {
+    return NextResponse.json(
+      { error: `You must select exactly ${nightsPerWeek} nights for this plan` },
+      { status: 400 }
+    );
+  }
 
   // Get admin settings for capacity
   const { data: settings } = await supabaseAdmin
@@ -73,15 +114,7 @@ export async function POST(req: NextRequest) {
 
   const maxCapacity = settings?.max_capacity ?? 6;
 
-  // Validate night count matches plan
-  if (selectedNights.length !== nightsPerWeek) {
-    return NextResponse.json(
-      { error: `You must select exactly ${nightsPerWeek} nights for this plan` },
-      { status: 400 }
-    );
-  }
-
-  // Check capacity for each night
+  // Check capacity for each night (server-side)
   const fullNights: string[] = [];
   for (const nightDate of selectedNights) {
     const { count } = await supabaseAdmin
@@ -95,7 +128,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Create plan
+  // Create plan with server-verified price
   const { data: plan, error: planError } = await supabaseAdmin
     .from('plans')
     .insert({
@@ -109,7 +142,7 @@ export async function POST(req: NextRequest) {
     .select()
     .single();
 
-  if (planError) return NextResponse.json({ error: planError.message }, { status: 400 });
+  if (planError) return NextResponse.json({ error: 'Failed to create plan' }, { status: 400 });
 
   // Create confirmed reservations for available nights
   const availableNights = selectedNights.filter((n: string) => !fullNights.includes(n));
@@ -125,7 +158,7 @@ export async function POST(req: NextRequest) {
           status: 'confirmed',
         }))
       );
-    if (resError) return NextResponse.json({ error: resError.message }, { status: 400 });
+    if (resError) return NextResponse.json({ error: 'Failed to create reservations' }, { status: 400 });
   }
 
   // Add to waitlist for full nights
@@ -162,6 +195,7 @@ export async function DELETE(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const reservationId = searchParams.get('id');
+  if (!reservationId) return NextResponse.json({ error: 'Reservation ID is required' }, { status: 400 });
 
   const { error } = await supabase
     .from('reservations')
@@ -169,6 +203,6 @@ export async function DELETE(req: NextRequest) {
     .eq('id', reservationId)
     .eq('parent_id', parentId);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return NextResponse.json({ error: 'Failed to cancel reservation' }, { status: 400 });
   return NextResponse.json({ success: true });
 }

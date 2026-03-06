@@ -23,7 +23,6 @@ export async function POST(req: NextRequest) {
     case 'checkout.session.completed': {
       const session = event.data.object as Stripe.Checkout.Session;
       const planId = session.metadata?.plan_id;
-      const userId = session.metadata?.user_id;
 
       if (planId && session.subscription) {
         // Update plan with subscription ID
@@ -35,15 +34,26 @@ export async function POST(req: NextRequest) {
           })
           .eq('id', planId);
 
-        // Record payment
-        await supabaseAdmin.from('payments').insert({
-          parent_id: userId,
-          plan_id: planId,
-          amount_cents: session.amount_total ?? 0,
-          status: 'succeeded',
-          description: 'Weekly plan subscription started',
-          stripe_payment_intent_id: session.payment_intent as string,
-        });
+        // Resolve parent_id from the plan (canonical FK, not auth UUID)
+        const { data: planRow } = await supabaseAdmin
+          .from('plans')
+          .select('parent_id')
+          .eq('id', planId)
+          .single();
+
+        const parentId = planRow?.parent_id ?? session.metadata?.parent_id;
+
+        if (parentId) {
+          // Record payment
+          await supabaseAdmin.from('payments').insert({
+            parent_id: parentId,
+            plan_id: planId,
+            amount_cents: session.amount_total ?? 0,
+            status: 'succeeded',
+            description: 'Weekly plan subscription started',
+            stripe_payment_intent_id: session.payment_intent as string,
+          });
+        }
       }
       break;
     }
