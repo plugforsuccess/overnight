@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Calendar, Users, CreditCard, Clock, AlertCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
@@ -14,8 +13,14 @@ import { QuickActions } from '@/components/dashboard/QuickActions';
 import { TodoAlertsFeed } from '@/components/dashboard/TodoAlertsFeed';
 import { BillingSummaryCard } from '@/components/dashboard/BillingSummaryCard';
 
+/**
+ * Dashboard page — client component for interactivity.
+ *
+ * Auth is already validated server-side by dashboard/layout.tsx.
+ * This component does NOT redirect to /login — the server layout
+ * handles that before this component ever mounts.
+ */
 export default function DashboardPage() {
-  const router = useRouter();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -23,39 +28,61 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/login');
-        return;
-      }
-
       try {
+        // Session is guaranteed by server layout — get the token for API call
         const { data: { session } } = await supabase.auth.getSession();
-        const res = await fetch('/api/dashboard', {
-          headers: {
-            'Authorization': `Bearer ${session?.access_token}`,
-          },
-        });
 
-        if (!res.ok) {
-          throw new Error('Failed to load dashboard');
+        console.log(`[dashboard/page] client session: exists=${!!session} userId=${session?.user?.id ?? 'null'}`);
+
+        if (!session) {
+          // Session cookie exists (middleware passed us through) but the
+          // browser client hasn't hydrated yet. Wait briefly and retry once.
+          console.log('[dashboard/page] Session not yet hydrated — retrying in 500ms');
+          await new Promise(r => setTimeout(r, 500));
+          const { data: { session: retrySession } } = await supabase.auth.getSession();
+          if (!retrySession) {
+            setError('Session expired. Please refresh the page or log in again.');
+            setLoading(false);
+            return;
+          }
+          return loadDashboard(retrySession.access_token);
         }
 
-        const dashboardData: DashboardData = await res.json();
-        setData(dashboardData);
-
-        // Default to first child
-        if (dashboardData.children.length > 0) {
-          setSelectedChildId(dashboardData.children[0].id);
-        }
+        return loadDashboard(session.access_token);
       } catch (err: any) {
+        console.error('[dashboard/page] load error:', err);
         setError(err.message);
-      } finally {
         setLoading(false);
       }
     }
+
+    async function loadDashboard(accessToken: string) {
+      const res = await fetch('/api/dashboard', {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      });
+
+      console.log(`[dashboard/page] /api/dashboard response: status=${res.status}`);
+
+      if (!res.ok) {
+        const body = await res.text();
+        console.error(`[dashboard/page] /api/dashboard error body: ${body}`);
+        throw new Error('Failed to load dashboard');
+      }
+
+      const dashboardData: DashboardData = await res.json();
+      setData(dashboardData);
+
+      // Default to first child
+      if (dashboardData.children.length > 0) {
+        setSelectedChildId(dashboardData.children[0].id);
+      }
+      setLoading(false);
+    }
+
     load();
-  }, [router]);
+  }, []);
 
   // Loading state with skeleton cards
   if (loading) {

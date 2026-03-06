@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createSupabaseMiddlewareClient } from '@/lib/supabase-ssr';
 
 const PROTECTED_ROUTES = ['/dashboard', '/schedule', '/account'];
 const AUTH_ROUTES = ['/login', '/signup'];
@@ -11,31 +12,42 @@ const SECURITY_HEADERS = {
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
 };
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const response = NextResponse.next();
+  const response = NextResponse.next({ request: req });
 
   // Add security headers to all responses
   for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
     response.headers.set(key, value);
   }
 
-  // Check for auth token on protected routes
   const isProtected = PROTECTED_ROUTES.some(route => pathname.startsWith(route));
   const isAuthRoute = AUTH_ROUTES.some(route => pathname.startsWith(route));
 
-  const token = req.cookies.get('sb-access-token')?.value
-    || req.cookies.get('sb-refresh-token')?.value
-    || req.headers.get('Authorization')?.replace('Bearer ', '');
+  // Only do session validation for protected or auth routes
+  if (!isProtected && !isAuthRoute) {
+    return response;
+  }
 
-  if (isProtected && !token) {
+  // Create Supabase client that can read/refresh cookies
+  const supabase = createSupabaseMiddlewareClient(req, response);
+
+  // getUser() validates the JWT server-side (not just reading from cookie).
+  // This also refreshes the session if the access token is expired.
+  const { data: { user }, error } = await supabase.auth.getUser();
+
+  console.log(`[middleware] path=${pathname} user=${user?.id ?? 'null'} error=${error?.message ?? 'none'}`);
+
+  if (isProtected && !user) {
     const loginUrl = new URL('/login', req.url);
     loginUrl.searchParams.set('redirect', pathname);
+    console.log(`[middleware] Redirecting unauthenticated user to /login from ${pathname}`);
     return NextResponse.redirect(loginUrl);
   }
 
   // Redirect authenticated users away from auth pages
-  if (isAuthRoute && token) {
+  if (isAuthRoute && user) {
+    console.log(`[middleware] Redirecting authenticated user from ${pathname} to /dashboard`);
     return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 

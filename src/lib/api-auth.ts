@@ -23,17 +23,19 @@ export async function authenticateRequest(req: NextRequest): Promise<AuthResult 
     { global: { headers: { Authorization: `Bearer ${token}` } } }
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  console.log(`[api-auth] getUser: id=${user?.id ?? 'null'} error=${userError?.message ?? 'none'}`);
   if (!user) return null;
 
   // parents.id = auth.users.id — single canonical identity, no extra lookup needed
   // Verify the parent row exists
-  const { data: parentRow } = await supabaseAdmin
+  const { data: parentRow, error: parentError } = await supabaseAdmin
     .from('parents')
     .select('id')
     .eq('id', user.id)
     .single();
 
+  console.log(`[api-auth] parent lookup: found=${!!parentRow} error=${parentError?.message ?? 'none'}`);
   if (!parentRow) return null;
 
   return { supabase, userId: user.id, parentId: user.id };

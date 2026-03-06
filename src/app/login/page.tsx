@@ -2,12 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Moon } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -25,6 +26,7 @@ export default function LoginPage() {
       });
 
       if (authError) {
+        console.log(`[login] signInWithPassword failed: ${authError.message}`);
         setError(authError.message);
         setLoading(false);
         return;
@@ -32,15 +34,33 @@ export default function LoginPage() {
 
       // Resolve parent profile server-side (bypasses RLS)
       const { data: { session } } = await supabase.auth.getSession();
+      console.log(`[login] session after sign-in: exists=${!!session} userId=${session?.user?.id ?? 'null'}`);
+
+      if (!session) {
+        setError('Sign-in succeeded but session was not established. Please try again.');
+        setLoading(false);
+        return;
+      }
+
       const meRes = await fetch('/api/auth/me', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${session!.access_token}` },
+        headers: { Authorization: `Bearer ${session.access_token}` },
       });
+
+      console.log(`[login] /api/auth/me response: status=${meRes.status}`);
 
       if (meRes.ok) {
         const { role } = await meRes.json();
-        router.push(role === 'admin' ? '/admin' : '/dashboard');
+        const redirectTo = searchParams.get('redirect');
+        const destination = role === 'admin' ? '/admin' : (redirectTo || '/dashboard');
+
+        // Use router.replace (not push) so back button doesn't return to login
+        // Then router.refresh() to ensure server components re-evaluate auth
+        router.replace(destination);
+        router.refresh();
       } else {
+        const body = await meRes.text();
+        console.error(`[login] /api/auth/me error: ${body}`);
         setError('Your account exists but no parent profile was found. Please contact support.');
         setLoading(false);
         return;

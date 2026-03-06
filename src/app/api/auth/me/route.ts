@@ -23,17 +23,21 @@ export async function POST(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { global: { headers: { Authorization: `Bearer ${token}` } } },
   );
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  console.log(`[api/auth/me] getUser: id=${user?.id ?? 'null'} error=${userError?.message ?? 'none'}`);
+
   if (!user) {
     return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
   }
 
   // parents.id = auth.users.id — look up directly by id
-  const { data: parent } = await supabaseAdmin
+  const { data: parent, error: parentError } = await supabaseAdmin
     .from('parents')
     .select('id, role')
     .eq('id', user.id)
     .single();
+
+  console.log(`[api/auth/me] parent lookup: found=${!!parent} role=${parent?.role ?? 'null'} error=${parentError?.message ?? 'none'}`);
 
   if (!parent) {
     return NextResponse.json({ error: 'No parent profile found for this account' }, { status: 404 });

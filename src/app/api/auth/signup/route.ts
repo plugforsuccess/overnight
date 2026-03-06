@@ -56,6 +56,8 @@ export async function POST(req: NextRequest) {
   // Create parent row in the public.parents table
   // parents.id = auth.users.id — single canonical identity
   if (data.user) {
+    console.log(`[api/auth/signup] Creating parent row for user ${data.user.id} (${email})`);
+
     const { error: parentError } = await supabaseAdmin.from('parents').upsert({
       id: data.user.id,
       name: `${derivedFirst} ${derivedLast}`.trim() || email,
@@ -68,11 +70,20 @@ export async function POST(req: NextRequest) {
     }, { onConflict: 'id' });
 
     if (parentError) {
+      console.error(`[api/auth/signup] Parent row creation failed: ${parentError.message}`);
       return NextResponse.json(
         { error: 'Account created but parent profile failed. Please contact support.' },
         { status: 500 },
       );
     }
+
+    // Verify the row was actually created
+    const { data: verifyRow } = await supabaseAdmin
+      .from('parents')
+      .select('id, role')
+      .eq('id', data.user.id)
+      .single();
+    console.log(`[api/auth/signup] Parent row verification: exists=${!!verifyRow} id=${verifyRow?.id ?? 'null'} role=${verifyRow?.role ?? 'null'}`);
   }
 
   return NextResponse.json({ user: data.user });
