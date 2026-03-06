@@ -5,10 +5,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Moon, Check, Shield, Heart, Building2, Users, ChevronRight, ChevronLeft, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
+import type { ChildRow, ChildEmergencyContactRow, ChildAuthorizedPickupRow } from '@/types/children';
 
-type Step = 'account' | 'child' | 'emergency' | 'done';
-const STEPS: Step[] = ['account', 'child', 'emergency', 'done'];
-const STEP_LABELS = ['Account', 'Child', 'Emergency', 'Done'];
+import { ChildFormBasics } from '@/components/children/ChildFormBasics';
+import { EmergencyContactsEditor } from '@/components/children/EmergencyContactsEditor';
+import { AuthorizedPickupsEditor } from '@/components/children/AuthorizedPickupsEditor';
+
+type Step = 'account' | 'child' | 'emergency' | 'pickup' | 'done';
+const STEPS: Step[] = ['account', 'child', 'emergency', 'pickup', 'done'];
+const STEP_LABELS = ['Account', 'Child', 'Emergency', 'Pickup', 'Done'];
 
 interface FieldErrors {
   [key: string]: string;
@@ -44,6 +49,9 @@ function formatPhoneInput(value: string): string {
   return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 }
 
+// Omit the hash from the pickup type for display
+type PickupDisplay = Omit<ChildAuthorizedPickupRow, 'pickup_pin_hash'>;
+
 export default function SignupPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>('account');
@@ -54,6 +62,14 @@ export default function SignupPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
+  // Created child record (from step 2)
+  const [createdChild, setCreatedChild] = useState<ChildRow | null>(null);
+
+  // Emergency contacts and authorized pickups (from steps 3 & 4)
+  const [emergencyContacts, setEmergencyContacts] = useState<ChildEmergencyContactRow[]>([]);
+  const [authorizedPickups, setAuthorizedPickups] = useState<PickupDisplay[]>([]);
+  const [saving, setSaving] = useState(false);
+
   // Step 1 — Parent Account
   const [account, setAccount] = useState({
     firstName: '',
@@ -63,24 +79,6 @@ export default function SignupPage() {
     address: '',
     password: '',
     confirmPassword: '',
-  });
-
-  // Step 2 — Child Profile
-  const [child, setChild] = useState({
-    firstName: '',
-    lastName: '',
-    dateOfBirth: '',
-    hasAllergies: false,
-    allergyNotes: '',
-  });
-
-  // Step 3 — Emergency Contact
-  const [emergency, setEmergency] = useState({
-    firstName: '',
-    lastName: '',
-    relationship: '',
-    phone: '',
-    pickupPerson: '',
   });
 
   const stepIndex = STEPS.indexOf(step);
@@ -96,6 +94,16 @@ export default function SignupPage() {
       return next;
     });
   }, []);
+
+  // ── Auth token helper ──────────────────────────────────────────────
+  async function getAuthHeaders(): Promise<Record<string, string>> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error('Not authenticated');
+    return {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    };
+  }
 
   // ── Inline validators ──────────────────────────────────────────────
 
@@ -120,158 +128,191 @@ export default function SignupPage() {
     }
   }
 
-  function validateStep(): boolean {
+  function validateAccountStep(): boolean {
     const errors: FieldErrors = {};
-
-    if (step === 'account') {
-      if (!account.firstName.trim()) errors.firstName = 'First name is required';
-      if (!account.lastName.trim()) errors.lastName = 'Last name is required';
-      if (!account.email.trim()) errors.email = 'Email is required';
-      else if (!validateEmail(account.email.trim())) errors.email = 'Please enter a valid email address';
-      if (!account.phone.trim()) errors.phone = 'Phone number is required';
-      else if (!validatePhone(account.phone)) errors.phone = 'Please enter a valid 10-digit phone number';
-      if (!account.address.trim()) errors.address = 'Address or ZIP code is required';
-      if (!account.password) errors.password = 'Password is required';
-      else if (account.password.length < 8) errors.password = 'Password must be at least 8 characters';
-      if (account.password !== account.confirmPassword) errors.confirmPassword = 'Passwords do not match';
-    }
-
-    if (step === 'child') {
-      if (!child.firstName.trim()) errors.childFirstName = 'First name is required';
-      if (!child.lastName.trim()) errors.childLastName = 'Last name is required';
-      if (!child.dateOfBirth) errors.childDob = 'Date of birth is required';
-      if (child.hasAllergies && !child.allergyNotes.trim()) errors.allergyNotes = 'Please describe the allergies or conditions';
-    }
-
-    if (step === 'emergency') {
-      if (!emergency.firstName.trim()) errors.emergencyFirstName = 'First name is required';
-      if (!emergency.lastName.trim()) errors.emergencyLastName = 'Last name is required';
-      if (!emergency.relationship.trim()) errors.emergencyRelationship = 'Relationship is required';
-      if (!emergency.phone.trim()) errors.emergencyPhone = 'Phone number is required';
-      else if (!validatePhone(emergency.phone)) errors.emergencyPhone = 'Please enter a valid phone number';
-    }
-
+    if (!account.firstName.trim()) errors.firstName = 'First name is required';
+    if (!account.lastName.trim()) errors.lastName = 'Last name is required';
+    if (!account.email.trim()) errors.email = 'Email is required';
+    else if (!validateEmail(account.email.trim())) errors.email = 'Please enter a valid email address';
+    if (!account.phone.trim()) errors.phone = 'Phone number is required';
+    else if (!validatePhone(account.phone)) errors.phone = 'Please enter a valid 10-digit phone number';
+    if (!account.address.trim()) errors.address = 'Address or ZIP code is required';
+    if (!account.password) errors.password = 'Password is required';
+    else if (account.password.length < 8) errors.password = 'Password must be at least 8 characters';
+    if (account.password !== account.confirmPassword) errors.confirmPassword = 'Passwords do not match';
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   }
 
   // ── Step navigation ────────────────────────────────────────────────
 
-  async function handleNext() {
-    if (!validateStep()) return;
+  async function handleAccountNext() {
+    if (!validateAccountStep()) return;
     setError('');
+    setLoading(true);
 
-    if (step === 'account') {
-      setLoading(true);
-      try {
-        // Skip signUp if user already created (e.g. navigated back to this step)
-        if (!userId) {
-          // Use admin API to create user with email auto-confirmed
-          const res = await fetch('/api/auth/signup', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email: account.email.trim(),
-              password: account.password,
-              fullName: `${account.firstName.trim()} ${account.lastName.trim()}`,
-              firstName: account.firstName.trim(),
-              lastName: account.lastName.trim(),
-              phone: account.phone.replace(/\D/g, ''),
-              address: account.address,
-            }),
-          });
-          const result = await res.json();
-
-          if (!res.ok) {
-            const msg = (result.error || '').toLowerCase();
-            if (msg.includes('rate limit')) {
-              setError('Too many sign up attempts. Please wait a few minutes and try again.');
-            } else if (msg.includes('already registered') || msg.includes('already been registered') || msg.includes('already exists')) {
-              setError('This email is already registered. Please sign in instead.');
-            } else {
-              setError(result.error || 'Signup failed. Please try again.');
-            }
-            setLoading(false);
-            return;
-          }
-
-          // Sign in to establish a session
-          const { error: signInError } = await supabase.auth.signInWithPassword({
+    try {
+      if (!userId) {
+        const res = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             email: account.email.trim(),
             password: account.password,
-          });
-          if (signInError) {
-            setError(`Account created but could not sign in: ${signInError.message}`);
-            setLoading(false);
-            return;
+            fullName: `${account.firstName.trim()} ${account.lastName.trim()}`,
+            firstName: account.firstName.trim(),
+            lastName: account.lastName.trim(),
+            phone: account.phone.replace(/\D/g, ''),
+            address: account.address,
+          }),
+        });
+        const result = await res.json();
+
+        if (!res.ok) {
+          const msg = (result.error || '').toLowerCase();
+          if (msg.includes('rate limit')) {
+            setError('Too many sign up attempts. Please wait a few minutes and try again.');
+          } else if (msg.includes('already registered') || msg.includes('already been registered') || msg.includes('already exists')) {
+            setError('This email is already registered. Please sign in instead.');
+          } else {
+            setError(result.error || 'Signup failed. Please try again.');
           }
-
-          const { data: { user } } = await supabase.auth.getUser();
-          if (!user) {
-            setError('Account created but session could not be established. Please try logging in.');
-            setLoading(false);
-            return;
-          }
-          setUserId(user.id);
-        }
-
-        setLoading(false);
-        setStep('child');
-      } catch {
-        setError('Something went wrong. Please try again.');
-        setLoading(false);
-      }
-      return;
-    }
-
-    if (step === 'child') {
-      if (!userId) {
-        setError('Account not found. Please go back and try again.');
-        return;
-      }
-      setStep('emergency');
-      return;
-    }
-
-    if (step === 'emergency') {
-      if (!userId) {
-        setError('Account not found. Please go back and try again.');
-        return;
-      }
-      setLoading(true);
-      try {
-        // parents.id = auth.users.id — use userId directly as parent_id
-        const emergencyInfo = [
-          `Emergency Contact: ${emergency.firstName} ${emergency.lastName} (${emergency.relationship})`,
-          `Phone: ${emergency.phone.replace(/\D/g, '')}`,
-          emergency.pickupPerson ? `Authorized Pickup: ${emergency.pickupPerson}` : '',
-        ].filter(Boolean).join('\n');
-
-        const { error: childError } = await supabase
-          .from('children')
-          .insert({
-            parent_id: userId,
-            name: `${child.firstName.trim()} ${child.lastName.trim()}`,
-            first_name: child.firstName.trim(),
-            last_name: child.lastName.trim(),
-            date_of_birth: child.dateOfBirth,
-            medical_notes: child.hasAllergies ? child.allergyNotes : emergencyInfo,
-          });
-
-        if (childError) {
-          setError(childError.message);
           setLoading(false);
           return;
         }
 
-        setLoading(false);
-        setStep('done');
-      } catch {
-        setError('Something went wrong. Please try again.');
-        setLoading(false);
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: account.email.trim(),
+          password: account.password,
+        });
+        if (signInError) {
+          setError(`Account created but could not sign in: ${signInError.message}`);
+          setLoading(false);
+          return;
+        }
+
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setError('Account created but session could not be established. Please try logging in.');
+          setLoading(false);
+          return;
+        }
+        setUserId(user.id);
       }
+
+      setLoading(false);
+      setStep('child');
+    } catch {
+      setError('Something went wrong. Please try again.');
+      setLoading(false);
+    }
+  }
+
+  // ── Child form save (uses shared ChildFormBasics component) ────────
+
+  async function handleSaveChild(data: { first_name: string; last_name: string; date_of_birth: string; medical_notes: string }) {
+    if (!userId) {
+      setError('Account not found. Please go back and try again.');
       return;
     }
+    setSaving(true);
+    setError('');
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/children', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(data),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Failed to create child profile');
+      setCreatedChild(result.child);
+      setSaving(false);
+      setStep('emergency');
+    } catch (err: any) {
+      setError(err.message);
+      setSaving(false);
+    }
+  }
+
+  // ── Emergency contact handlers (reuse same API as dashboard) ──────
+
+  async function handleAddContact(contact: any) {
+    if (!createdChild) return;
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/children/${createdChild.id}/emergency-contacts`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(contact),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to add contact');
+    setEmergencyContacts(prev => [...prev, data.contact]);
+  }
+
+  async function handleUpdateContact(id: string, contact: any) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/emergency-contacts/${id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(contact),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to update contact');
+    setEmergencyContacts(prev => prev.map(c => c.id === id ? data.contact : c));
+  }
+
+  async function handleDeleteContact(id: string) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/emergency-contacts/${id}`, {
+      method: 'DELETE',
+      headers,
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to delete contact');
+    }
+    setEmergencyContacts(prev => prev.filter(c => c.id !== id));
+  }
+
+  // ── Authorized pickup handlers (reuse same API as dashboard) ──────
+
+  async function handleAddPickup(pickup: any) {
+    if (!createdChild) return;
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/children/${createdChild.id}/authorized-pickups`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(pickup),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to add pickup');
+    setAuthorizedPickups(prev => [...prev, data.pickup]);
+  }
+
+  async function handleUpdatePickup(id: string, pickup: any) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/authorized-pickups/${id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(pickup),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to update pickup');
+    setAuthorizedPickups(prev => prev.map(p => p.id === id ? data.pickup : p));
+  }
+
+  async function handleDeletePickup(id: string) {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/authorized-pickups/${id}`, {
+      method: 'DELETE',
+      headers,
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to delete pickup');
+    }
+    setAuthorizedPickups(prev => prev.filter(p => p.id !== id));
   }
 
   function handleBack() {
@@ -279,6 +320,7 @@ export default function SignupPage() {
     setFieldErrors({});
     if (step === 'child') setStep('account');
     if (step === 'emergency') setStep('child');
+    if (step === 'pickup') setStep('emergency');
   }
 
   // ── Derived values ──────────────────────────────────────────────────
@@ -289,6 +331,7 @@ export default function SignupPage() {
     account: 'Create Your Account',
     child: 'Add Your Child',
     emergency: 'Emergency Contact',
+    pickup: 'Authorized Pickup',
     done: '',
   };
 
@@ -296,6 +339,7 @@ export default function SignupPage() {
     account: 'Join DreamWatch Overnight',
     child: 'Tell us about your little one',
     emergency: 'Who should we call in an emergency?',
+    pickup: 'Who is authorized to pick up your child?',
     done: '',
   };
 
@@ -592,256 +636,94 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* Step 2: Child Profile */}
+          {/* Step 2: Child Profile — uses shared ChildFormBasics component */}
           {step === 'child' && (
-            <div className="space-y-5">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="childFirstName" className="onboarding-label">
-                    Child&apos;s First Name
-                  </label>
-                  <input
-                    id="childFirstName"
-                    type="text"
-                    value={child.firstName}
-                    onChange={e => {
-                      setChild(prev => ({ ...prev, firstName: e.target.value }));
-                      clearFieldError('childFirstName');
-                    }}
-                    className="onboarding-input"
-                    placeholder="First name"
-                    required
-                    aria-invalid={!!fieldErrors.childFirstName}
-                  />
-                  {fieldErrors.childFirstName && (
-                    <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.childFirstName}</p>
-                  )}
-                </div>
-                <div>
-                  <label htmlFor="childLastName" className="onboarding-label">
-                    Child&apos;s Last Name
-                  </label>
-                  <input
-                    id="childLastName"
-                    type="text"
-                    value={child.lastName}
-                    onChange={e => {
-                      setChild(prev => ({ ...prev, lastName: e.target.value }));
-                      clearFieldError('childLastName');
-                    }}
-                    className="onboarding-input"
-                    placeholder="Last name"
-                    required
-                    aria-invalid={!!fieldErrors.childLastName}
-                  />
-                  {fieldErrors.childLastName && (
-                    <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.childLastName}</p>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="childDob" className="onboarding-label">
-                  Date of Birth
-                </label>
-                <input
-                  id="childDob"
-                  type="date"
-                  value={child.dateOfBirth}
-                  onChange={e => {
-                    setChild(prev => ({ ...prev, dateOfBirth: e.target.value }));
-                    clearFieldError('childDob');
-                  }}
-                  className="onboarding-input"
-                  required
-                  aria-invalid={!!fieldErrors.childDob}
-                />
-                {fieldErrors.childDob && (
-                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.childDob}</p>
-                )}
-              </div>
-
-              <fieldset className="space-y-3">
-                <legend className="onboarding-label">
-                  Does your child have allergies or medical conditions?
-                </legend>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="hasAllergies"
-                      checked={!child.hasAllergies}
-                      onChange={() => setChild(prev => ({ ...prev, hasAllergies: false, allergyNotes: '' }))}
-                      className="w-4 h-4 text-accent-600 focus:ring-accent-500"
-                    />
-                    <span className="text-sm text-gray-700">No</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="hasAllergies"
-                      checked={child.hasAllergies}
-                      onChange={() => setChild(prev => ({ ...prev, hasAllergies: true }))}
-                      className="w-4 h-4 text-accent-600 focus:ring-accent-500"
-                    />
-                    <span className="text-sm text-gray-700">Yes</span>
-                  </label>
-                </div>
-                {child.hasAllergies && (
-                  <div>
-                    <label htmlFor="allergyNotes" className="onboarding-label">
-                      Describe allergies or medical conditions
-                    </label>
-                    <textarea
-                      id="allergyNotes"
-                      value={child.allergyNotes}
-                      onChange={e => {
-                        setChild(prev => ({ ...prev, allergyNotes: e.target.value }));
-                        clearFieldError('allergyNotes');
-                      }}
-                      className="onboarding-input min-h-[80px] resize-none"
-                      placeholder="e.g., Peanut allergy, asthma inhaler needed"
-                      aria-invalid={!!fieldErrors.allergyNotes}
-                    />
-                    {fieldErrors.allergyNotes && (
-                      <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.allergyNotes}</p>
-                    )}
+            <div>
+              {createdChild ? (
+                <div className="space-y-4">
+                  <div className="bg-green-50 text-green-700 px-4 py-3 rounded-lg text-sm">
+                    <Check className="w-4 h-4 inline mr-1" />
+                    {createdChild.first_name} {createdChild.last_name}&apos;s profile has been created.
                   </div>
-                )}
-              </fieldset>
+                  <p className="text-sm text-gray-600">
+                    You can edit this profile later in the dashboard. Click Continue to add an emergency contact.
+                  </p>
+                </div>
+              ) : (
+                <ChildFormBasics
+                  child={null}
+                  onSave={handleSaveChild}
+                  saving={saving}
+                />
+              )}
             </div>
           )}
 
-          {/* Step 3: Emergency Contact */}
-          {step === 'emergency' && (
-            <div className="space-y-5">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="emergencyFirstName" className="onboarding-label">
-                    Emergency Contact First Name
-                  </label>
-                  <input
-                    id="emergencyFirstName"
-                    type="text"
-                    value={emergency.firstName}
-                    onChange={e => {
-                      setEmergency(prev => ({ ...prev, firstName: e.target.value }));
-                      clearFieldError('emergencyFirstName');
-                    }}
-                    className="onboarding-input"
-                    placeholder="First name"
-                    required
-                    aria-invalid={!!fieldErrors.emergencyFirstName}
-                  />
-                  {fieldErrors.emergencyFirstName && (
-                    <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.emergencyFirstName}</p>
-                  )}
-                </div>
-                <div>
-                  <label htmlFor="emergencyLastName" className="onboarding-label">
-                    Emergency Contact Last Name
-                  </label>
-                  <input
-                    id="emergencyLastName"
-                    type="text"
-                    value={emergency.lastName}
-                    onChange={e => {
-                      setEmergency(prev => ({ ...prev, lastName: e.target.value }));
-                      clearFieldError('emergencyLastName');
-                    }}
-                    className="onboarding-input"
-                    placeholder="Last name"
-                    required
-                    aria-invalid={!!fieldErrors.emergencyLastName}
-                  />
-                  {fieldErrors.emergencyLastName && (
-                    <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.emergencyLastName}</p>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="emergencyRelationship" className="onboarding-label">
-                  Relationship
-                </label>
-                <select
-                  id="emergencyRelationship"
-                  value={emergency.relationship}
-                  onChange={e => {
-                    setEmergency(prev => ({ ...prev, relationship: e.target.value }));
-                    clearFieldError('emergencyRelationship');
-                  }}
-                  className="onboarding-input"
-                  required
-                  aria-invalid={!!fieldErrors.emergencyRelationship}
-                >
-                  <option value="">Select relationship</option>
-                  <option value="Grandmother">Grandmother</option>
-                  <option value="Grandfather">Grandfather</option>
-                  <option value="Aunt">Aunt</option>
-                  <option value="Uncle">Uncle</option>
-                  <option value="Sibling">Sibling</option>
-                  <option value="Partner">Partner</option>
-                  <option value="Friend">Friend</option>
-                  <option value="Other">Other</option>
-                </select>
-                {fieldErrors.emergencyRelationship && (
-                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.emergencyRelationship}</p>
-                )}
-              </div>
-
-              <div>
-                <label htmlFor="emergencyPhone" className="onboarding-label">
-                  Phone Number
-                </label>
-                <input
-                  id="emergencyPhone"
-                  type="tel"
-                  value={emergency.phone}
-                  onChange={e => {
-                    const formatted = formatPhoneInput(e.target.value);
-                    setEmergency(prev => ({ ...prev, phone: formatted }));
-                    if (formatted && !validatePhone(formatted)) {
-                      setFieldError('emergencyPhone', 'Please enter a valid phone number');
-                    } else {
-                      clearFieldError('emergencyPhone');
-                    }
-                  }}
-                  className="onboarding-input"
-                  placeholder="(404) 555-0123"
-                  autoComplete="tel"
-                  required
-                  aria-invalid={!!fieldErrors.emergencyPhone}
-                />
-                {fieldErrors.emergencyPhone && (
-                  <p className="mt-1 text-sm text-red-600" role="alert">{fieldErrors.emergencyPhone}</p>
-                )}
-              </div>
-
-              <div>
-                <label htmlFor="pickupPerson" className="onboarding-label">
-                  Authorized Pickup Person <span className="text-gray-400 font-normal">(optional)</span>
-                </label>
-                <input
-                  id="pickupPerson"
-                  type="text"
-                  value={emergency.pickupPerson}
-                  onChange={e => setEmergency(prev => ({ ...prev, pickupPerson: e.target.value }))}
-                  className="onboarding-input"
-                  placeholder="Name of additional authorized pickup"
-                />
-              </div>
+          {/* Step 3: Emergency Contact — uses shared EmergencyContactsEditor */}
+          {step === 'emergency' && createdChild && (
+            <div>
+              <EmergencyContactsEditor
+                childId={createdChild.id}
+                contacts={emergencyContacts}
+                onAdd={handleAddContact}
+                onUpdate={handleUpdateContact}
+                onDelete={handleDeleteContact}
+                saving={saving}
+              />
+              {emergencyContacts.length === 0 && (
+                <p className="text-sm text-yellow-700 bg-yellow-50 px-4 py-3 rounded-lg mt-4">
+                  At least 1 emergency contact is required before you can book overnight care.
+                </p>
+              )}
             </div>
           )}
 
-          {/* Step 4: Done */}
+          {/* Step 4: Authorized Pickup — uses shared AuthorizedPickupsEditor */}
+          {step === 'pickup' && createdChild && (
+            <div>
+              <AuthorizedPickupsEditor
+                childId={createdChild.id}
+                pickups={authorizedPickups}
+                onAdd={handleAddPickup}
+                onUpdate={handleUpdatePickup}
+                onDelete={handleDeletePickup}
+                saving={saving}
+              />
+              {authorizedPickups.length === 0 && (
+                <p className="text-sm text-yellow-700 bg-yellow-50 px-4 py-3 rounded-lg mt-4">
+                  At least 1 authorized pickup is required before you can book overnight care.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Step 5: Done */}
           {step === 'done' && (
             <div className="text-center py-6">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
                 <Check className="w-8 h-8 text-green-600" />
               </div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Your account is ready</h2>
-              <p className="text-gray-600 mb-8">You can now schedule overnight care for your child.</p>
+              <p className="text-gray-600 mb-4">You can now schedule overnight care for your child.</p>
+
+              {/* Summary */}
+              {createdChild && (
+                <div className="bg-gray-50 rounded-lg p-4 text-left mb-6 text-sm space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Child</span>
+                    <span className="font-medium">{createdChild.first_name} {createdChild.last_name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Emergency Contacts</span>
+                    <span className="font-medium">{emergencyContacts.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Authorized Pickups</span>
+                    <span className="font-medium">{authorizedPickups.length}</span>
+                  </div>
+                </div>
+              )}
+
               <button
                 onClick={() => router.push('/schedule')}
                 className="btn-primary w-full text-base py-3"
@@ -866,23 +748,50 @@ export default function SignupPage() {
                   type="button"
                   onClick={handleBack}
                   className="btn-secondary flex-none px-4 py-3"
-                  disabled={loading}
+                  disabled={loading || saving}
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </button>
               )}
-              <button
-                type="button"
-                onClick={handleNext}
-                className="btn-primary flex-1 py-3 text-base font-semibold"
-                disabled={loading}
-              >
-                {loading
-                  ? 'Please wait...'
-                  : step === 'emergency'
-                  ? 'Complete Signup'
-                  : 'Continue'}
-              </button>
+              {step === 'account' && (
+                <button
+                  type="button"
+                  onClick={handleAccountNext}
+                  className="btn-primary flex-1 py-3 text-base font-semibold"
+                  disabled={loading}
+                >
+                  {loading ? 'Please wait...' : 'Continue'}
+                </button>
+              )}
+              {step === 'child' && createdChild && (
+                <button
+                  type="button"
+                  onClick={() => setStep('emergency')}
+                  className="btn-primary flex-1 py-3 text-base font-semibold"
+                >
+                  Continue
+                </button>
+              )}
+              {step === 'emergency' && (
+                <button
+                  type="button"
+                  onClick={() => setStep('pickup')}
+                  className="btn-primary flex-1 py-3 text-base font-semibold"
+                  disabled={emergencyContacts.length === 0}
+                >
+                  {emergencyContacts.length === 0 ? 'Add a Contact First' : 'Continue'}
+                </button>
+              )}
+              {step === 'pickup' && (
+                <button
+                  type="button"
+                  onClick={() => setStep('done')}
+                  className="btn-primary flex-1 py-3 text-base font-semibold"
+                  disabled={authorizedPickups.length === 0}
+                >
+                  {authorizedPickups.length === 0 ? 'Add a Pickup First' : 'Complete Signup'}
+                </button>
+              )}
             </div>
           )}
 
