@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, unauthorized, badRequest, notFound, logAuditEvent } from '@/lib/api-auth';
 import { emergencyContactSchema } from '@/lib/validation/children';
+import { hashPin } from '@/lib/pin-hash';
 
 /**
  * GET /api/children/:id/emergency-contacts
@@ -37,6 +38,8 @@ export async function GET(
 /**
  * POST /api/children/:id/emergency-contacts
  * Add an emergency contact (DB enforces max 2).
+ * If authorized_for_pickup is true and pickup_pin is provided,
+ * auto-creates an authorized pickup record with the hashed PIN.
  */
 export async function POST(
   req: NextRequest,
@@ -59,9 +62,20 @@ export async function POST(
 
   let body;
   try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
+
+  // Extract pickup_pin before Zod validation (it's not in the schema)
+  const pickupPin: string | undefined = body.pickup_pin;
   const parsed = emergencyContactSchema.safeParse(body);
   if (!parsed.success) {
     return badRequest(parsed.error.issues.map(e => e.message).join(', '));
+  }
+
+  // If authorized_for_pickup, require a valid pickup_pin
+  if (parsed.data.authorized_for_pickup && (!pickupPin || !/^\d{4,6}$/.test(pickupPin))) {
+    return NextResponse.json(
+      { error: 'A 4-6 digit pickup PIN is required when authorizing for pickup.' },
+      { status: 400 }
+    );
   }
 
   const { data, error } = await auth.supabase
@@ -99,5 +113,33 @@ export async function POST(
     child_id: childId,
   });
 
-  return NextResponse.json({ contact: data });
+  // Auto-create authorized pickup record when toggle is checked
+  let pickup = null;
+  if (parsed.data.authorized_for_pickup && pickupPin) {
+    const pinHash = await hashPin(pickupPin);
+
+    const { data: pickupData, error: pickupError } = await auth.supabase
+      .from('child_authorized_pickups')
+      .insert({
+        child_id: childId,
+        first_name: parsed.data.first_name,
+        last_name: parsed.data.last_name,
+        relationship: parsed.data.relationship,
+        phone: parsed.data.phone.replace(/\D/g, ''),
+        pickup_pin_hash: pinHash,
+        notes: `Auto-created from emergency contact (priority ${parsed.data.priority})`,
+      })
+      .select('id, child_id, first_name, last_name, relationship, phone, id_verified, id_verified_at, notes, created_at, updated_at')
+      .single();
+
+    if (!pickupError && pickupData) {
+      pickup = pickupData;
+      await logAuditEvent(auth.supabase, auth.userId, 'add_authorized_pickup', 'child_authorized_pickup', pickupData.id, {
+        child_id: childId,
+        promoted_from_emergency_contact: data.id,
+      });
+    }
+  }
+
+  return NextResponse.json({ contact: data, pickup });
 }

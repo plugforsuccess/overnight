@@ -56,6 +56,8 @@ model Parent {
   payments         Payment[]
   subscriptions    Subscription[]
   audit_logs       AuditLog[]
+  pickup_verifications PickupEvent[] @relation("pickup_verifier")
+  settings        ParentSettings?
 
   @@map("parents")
 }
@@ -83,6 +85,7 @@ model Child {
   child_allergies    ChildAllergy[]
   emergency_contacts ChildEmergencyContact[]
   authorized_pickups ChildAuthorizedPickup[]
+  pickup_events      PickupEvent[]
 
   @@index([parent_id], map: "idx_children_parent_id")
   @@map("children")
@@ -173,7 +176,8 @@ model ChildAuthorizedPickup {
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  child Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  child         Child         @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  pickup_events PickupEvent[]
 
   @@map("child_authorized_pickups")
 }
@@ -385,6 +389,55 @@ model AuditLog {
   @@index([entity_type, entity_id], map: "idx_audit_log_entity")
   @@index([created_at], map: "idx_audit_log_created")
   @@map("audit_log")
+}
+
+// ─── pickup_events ───────────────────────────────────────────────────────────
+// Logs every child pickup for legal protection and parent notifications.
+// Created automatically when staff verifies a pickup via PIN or photo ID.
+model PickupEvent {
+  id                  String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  child_id            String   @db.Uuid
+  pickup_person_id    String?  @db.Uuid
+  verified_by_staff_id String? @db.Uuid
+  verification_method String   // 'pin' | 'photo_id' | 'parent_self'
+  notes               String?
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  child         Child                  @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  pickup_person ChildAuthorizedPickup? @relation(fields: [pickup_person_id], references: [id], onDelete: SetNull)
+  verified_by   Parent?                @relation("pickup_verifier", fields: [verified_by_staff_id], references: [id])
+
+  @@index([child_id, created_at], map: "idx_pickup_events_child")
+  @@map("pickup_events")
+}
+
+// ─── parent_settings ────────────────────────────────────────────────────────
+// Per-parent notification, safety, and preference settings.
+model ParentSettings {
+  id                       String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  parent_id                String   @unique @db.Uuid
+  email_notifications      Boolean  @default(true)
+  sms_notifications        Boolean  @default(false)
+  reservation_reminders    Boolean  @default(true)
+  billing_reminders        Boolean  @default(true)
+  emergency_alerts         Boolean  @default(true)
+  require_pickup_pin       Boolean  @default(true)
+  notify_on_check_in_out   Boolean  @default(true)
+  notify_on_pickup_changes Boolean  @default(true)
+  emergency_contact_reminder Boolean @default(true)
+  preferred_contact_method String?
+  preferred_reminder_timing String?
+  staff_notes              String?
+  language_preference      String?
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  parent Parent @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+
+  @@map("parent_settings")
 }
 
 // ─── config ───────────────────────────────────────────────────────────────────

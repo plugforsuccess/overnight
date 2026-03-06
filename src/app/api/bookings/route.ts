@@ -155,29 +155,19 @@ export async function POST(req: NextRequest) {
   }
   console.log(`[bookings POST] child ownership valid: childId=${childId} name=${child.first_name} ${child.last_name}`);
 
-  // Check profile completeness: emergency contacts + authorized pickups
-  const [ecRes, apRes] = await Promise.all([
-    supabaseAdmin
-      .from('child_emergency_contacts')
-      .select('id', { count: 'exact', head: true })
-      .eq('child_id', childId),
-    supabaseAdmin
-      .from('child_authorized_pickups')
-      .select('id', { count: 'exact', head: true })
-      .eq('child_id', childId),
-  ]);
+  // Check profile completeness: at least 1 emergency contact required.
+  // Authorized pickups are optional — the parent is implicitly authorized.
+  const { count: ecCount } = await supabaseAdmin
+    .from('child_emergency_contacts')
+    .select('id', { count: 'exact', head: true })
+    .eq('child_id', childId);
 
-  const ecCount = ecRes.count ?? 0;
-  const apCount = apRes.count ?? 0;
-  console.log(`[bookings POST] profile check: emergencyContacts=${ecCount} authorizedPickups=${apCount}`);
+  console.log(`[bookings POST] profile check: emergencyContacts=${ecCount ?? 0}`);
 
-  if (ecCount < 1 || apCount < 1) {
-    const missing: string[] = [];
-    if (ecCount < 1) missing.push('at least 1 emergency contact');
-    if (apCount < 1) missing.push('at least 1 authorized pickup');
+  if ((ecCount ?? 0) < 1) {
     return errorResponse(
       'PROFILE_INCOMPLETE',
-      `Complete ${child.first_name} ${child.last_name}'s profile before booking: add ${missing.join(' and ')}.`,
+      `Complete ${child.first_name} ${child.last_name}'s profile before booking: add at least 1 emergency contact.`,
       400,
     );
   }

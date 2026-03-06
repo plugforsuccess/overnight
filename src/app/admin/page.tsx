@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Calendar, Users, DollarSign, Clock, Settings, List, CreditCard } from 'lucide-react';
+import { Calendar, Users, DollarSign, Clock, Settings, List, CreditCard, ShieldCheck } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { formatCents, DEFAULT_CAPACITY, DEFAULT_OPERATING_NIGHTS, DAY_LABELS } from '@/lib/constants';
 import { getWeekNights, getCurrentWeekStart } from '@/lib/utils';
@@ -175,7 +175,7 @@ export default function AdminPage() {
         </div>
 
         {/* Navigation */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <Link href="/admin/roster" className="card hover:shadow-md transition-shadow text-center">
             <Calendar className="h-10 w-10 text-navy-700 mx-auto mb-3" />
             <div className="font-semibold text-gray-900">Nightly Roster</div>
@@ -190,6 +190,11 @@ export default function AdminPage() {
             <Clock className="h-10 w-10 text-yellow-600 mx-auto mb-3" />
             <div className="font-semibold text-gray-900">Waitlist</div>
             <div className="text-sm text-gray-500">Manage waitlisted families</div>
+          </Link>
+          <Link href="/admin/pickup-verification" className="card hover:shadow-md transition-shadow text-center">
+            <ShieldCheck className="h-10 w-10 text-green-600 mx-auto mb-3" />
+            <div className="font-semibold text-gray-900">Pickup Verification</div>
+            <div className="text-sm text-gray-500">Verify pickup PIN codes</div>
           </Link>
           <Link href="/admin/settings" className="card hover:shadow-md transition-shadow text-center">
             <Settings className="h-10 w-10 text-gray-600 mx-auto mb-3" />

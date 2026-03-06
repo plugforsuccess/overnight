@@ -147,8 +147,9 @@ export default function DashboardPage() {
   const hasChildren = children.length > 0;
 
   // Check if reservation should be blocked (missing safety info)
+  // Only emergency contacts are required — parent is implicitly authorized for pickup
   const canReserve = selectedChild
-    ? selectedChild.emergency_contacts_count >= 1 && selectedChild.authorized_pickups_count >= 1
+    ? selectedChild.emergency_contacts_count >= 1
     : false;
 
   return (
@@ -271,7 +272,7 @@ export default function DashboardPage() {
               <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800 flex items-start gap-2">
                 <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                 <span>
-                  Reservations require at least 1 emergency contact and 1 authorized pickup for {selectedChild.first_name}.{' '}
+                  Reservations require at least 1 emergency contact for {selectedChild.first_name}.{' '}
                   <Link href="/dashboard/children" className="font-medium underline">Complete profile</Link>
                 </span>
               </div>
@@ -298,11 +299,16 @@ export default function DashboardPage() {
         )}
 
         {/* Row E — Navigation Links */}
-        <div className="grid sm:grid-cols-3 gap-4 mt-8">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
           <Link href="/dashboard/children" className="card hover:shadow-md transition-shadow text-center">
             <Users className="h-8 w-8 text-navy-700 mx-auto mb-2" />
             <div className="font-semibold">Manage Children</div>
             <div className="text-sm text-gray-500">Add/edit child profiles</div>
+          </Link>
+          <Link href="/dashboard/reservations" className="card hover:shadow-md transition-shadow text-center">
+            <Calendar className="h-8 w-8 text-navy-700 mx-auto mb-2" />
+            <div className="font-semibold">Reservations</div>
+            <div className="text-sm text-gray-500">View bookings & history</div>
           </Link>
           <Link href="/dashboard/payments" className="card hover:shadow-md transition-shadow text-center">
             <CreditCard className="h-8 w-8 text-navy-700 mx-auto mb-2" />
