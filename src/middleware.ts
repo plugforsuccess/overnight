@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const PROTECTED_ROUTES = ['/dashboard', '/schedule', '/account'];
-const AUTH_ROUTES = ['/login', '/signup'];
-
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
@@ -12,7 +9,6 @@ const SECURITY_HEADERS = {
 };
 
 export function middleware(req: NextRequest) {
-  const { pathname } = req.nextUrl;
   const response = NextResponse.next();
 
   // Add security headers to all responses
@@ -20,24 +16,9 @@ export function middleware(req: NextRequest) {
     response.headers.set(key, value);
   }
 
-  // Check for auth token on protected routes
-  const isProtected = PROTECTED_ROUTES.some(route => pathname.startsWith(route));
-  const isAuthRoute = AUTH_ROUTES.some(route => pathname.startsWith(route));
-
-  const token = req.cookies.get('sb-access-token')?.value
-    || req.cookies.get('sb-refresh-token')?.value
-    || req.headers.get('Authorization')?.replace('Bearer ', '');
-
-  if (isProtected && !token) {
-    const loginUrl = new URL('/login', req.url);
-    loginUrl.searchParams.set('redirect', pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  // Redirect authenticated users away from auth pages
-  if (isAuthRoute && token) {
-    return NextResponse.redirect(new URL('/dashboard', req.url));
-  }
+  // NOTE: Auth redirects are handled client-side in each page's useEffect.
+  // The Supabase JS client stores sessions in localStorage (not cookies),
+  // so server-side middleware cannot reliably check auth state.
 
   return response;
 }
