@@ -3,7 +3,8 @@ export type DayOfWeek = 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursda
 export interface Profile {
   id: string;
   email: string;
-  full_name: string;
+  first_name: string;
+  last_name: string;
   phone: string | null;
   address: string | null;
   role: 'parent' | 'admin';

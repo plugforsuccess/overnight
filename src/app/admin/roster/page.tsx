@@ -137,7 +137,7 @@ export default function RosterPage() {
                       <div className="grid sm:grid-cols-2 gap-3 mt-3 text-sm">
                         <div>
                           <span className="text-gray-500">Parent:</span>{' '}
-                          <span className="text-gray-900">{parent?.full_name}</span>
+                          <span className="text-gray-900">{parent?.first_name} {parent?.last_name}</span>
                         </div>
                         <div className="flex items-center gap-1">
                           <Phone className="h-3 w-3 text-gray-400" />
