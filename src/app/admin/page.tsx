@@ -57,15 +57,15 @@ export default function AdminPage() {
 
       const { data: reservations } = await supabase
         .from('reservations')
-        .select('night_date')
-        .in('night_date', nightDates)
+        .select('date')
+        .in('date', nightDates)
         .eq('status', 'confirmed');
 
       const counts: Record<string, { day: DayOfWeek; count: number }> = {};
       weekNights.forEach(n => counts[n.dateStr] = { day: n.day, count: 0 });
       reservations?.forEach(r => {
-        if (counts[r.night_date]) {
-          counts[r.night_date].count += 1;
+        if (counts[r.date]) {
+          counts[r.date].count += 1;
         }
       });
       setNightCounts(counts);

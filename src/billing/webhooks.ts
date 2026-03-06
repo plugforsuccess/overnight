@@ -56,7 +56,7 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
         .ignore();
 
       // If insert did nothing -> duplicate
-      if (Array.isArray(insertRes) ? insertRes.length === 0 : insertRes?.rowCount === 0) {
+      if (Array.isArray(insertRes) ? insertRes.length === 0 : (insertRes as unknown as { rowCount?: number })?.rowCount === 0) {
         return { duplicate: true };
       }
 

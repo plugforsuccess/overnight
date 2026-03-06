@@ -30,7 +30,7 @@ export async function POST(
   try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
   const parsed = allergiesListSchema.safeParse(body.allergies || []);
   if (!parsed.success) {
-    return badRequest(parsed.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; '));
+    return badRequest(parsed.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join('; '));
   }
 
   const allergies = parsed.data;

@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return errorResponse(
       'INVALID_PLAN_SELECTION',
-      parsed.error.errors.map((e: { message: string }) => e.message).join(', '),
+      parsed.error.issues.map((e: { message: string }) => e.message).join(', '),
       400,
     );
   }
@@ -185,7 +185,7 @@ export async function POST(req: NextRequest) {
   // Look up the plan tier from the plans catalog table
   const { data: planTier, error: planLookupError } = await supabaseAdmin
     .from('plans')
-    .select('id, plan_key, nights_per_week, weekly_price_cents')
+    .select('id, name, nights_per_week, weekly_price_cents')
     .eq('nights_per_week', nightsPerWeek)
     .eq('active', true)
     .single();
@@ -202,9 +202,9 @@ export async function POST(req: NextRequest) {
   const priceCents = planTier?.weekly_price_cents
     ?? DEFAULT_PRICING_TIERS.find(t => t.nights === nightsPerWeek)!.price_cents;
   const planId = planTier?.id;
-  const planKey = planTier?.plan_key ?? `plan_${nightsPerWeek}n`;
+  const planName = planTier?.name ?? `${nightsPerWeek} nights`;
 
-  console.log(`[bookings POST] plan tier: planId=${planId} planKey=${planKey} priceCents=${priceCents}`);
+  console.log(`[bookings POST] plan tier: planId=${planId} planName=${planName} priceCents=${priceCents}`);
 
   // Validate night count matches plan
   if (selectedNights.length !== nightsPerWeek) {

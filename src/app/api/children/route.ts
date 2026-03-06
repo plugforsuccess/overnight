@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
   const parsed = childBasicsSchema.safeParse(body);
   if (!parsed.success) {
-    return badRequest(parsed.error.errors.map(e => e.message).join(', '));
+    return badRequest(parsed.error.issues.map(e => e.message).join(', '));
   }
 
   const { data, error } = await auth.supabase
@@ -55,7 +55,7 @@ export async function PUT(req: NextRequest) {
 
   const parsed = childBasicsSchema.safeParse(updates);
   if (!parsed.success) {
-    return badRequest(parsed.error.errors.map(e => e.message).join(', '));
+    return badRequest(parsed.error.issues.map(e => e.message).join(', '));
   }
 
   const { data, error } = await auth.supabase

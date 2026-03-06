@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = signupSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.errors.map(e => e.message).join(', ') }, { status: 400 });
+    return NextResponse.json({ error: parsed.error.issues.map(e => e.message).join(', ') }, { status: 400 });
   }
 
   const { email, password, fullName, firstName, lastName, phone, address } = parsed.data;

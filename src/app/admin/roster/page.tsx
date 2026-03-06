@@ -7,7 +7,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, UserX, Phone, AlertTriangle } fro
 import { supabase } from '@/lib/supabase-client';
 import { DEFAULT_CAPACITY, DEFAULT_OPERATING_NIGHTS, DAY_LABELS } from '@/lib/constants';
 import { getWeekNights, getCurrentWeekStart, cn } from '@/lib/utils';
-import { Reservation, AdminSettings, DayOfWeek } from '@/types/database';
+import { Reservation, AdminSettings, DayOfWeek, OvernightBlock, Profile } from '@/types/database';
 import { format, addDays, subDays } from 'date-fns';
 
 export default function RosterPage() {
@@ -43,8 +43,8 @@ export default function RosterPage() {
     async function loadRoster() {
       const { data } = await supabase
         .from('reservations')
-        .select('*, child:children(*), parent:parents(*)')
-        .eq('night_date', selectedDate)
+        .select('*, child:children(*), overnight_block:overnight_blocks(*, parent:parents(*))')
+        .eq('date', selectedDate)
         .eq('status', 'confirmed');
       setReservations(data || []);
     }
@@ -122,7 +122,8 @@ export default function RosterPage() {
               <div className="space-y-4">
                 {reservations.map(r => {
                   const child = r.child;
-                  const parent = r.parent;
+                  const block = r.overnight_block as OvernightBlock & { parent?: Profile } | undefined;
+                  const parent = block?.parent;
                   return (
                     <div key={r.id} className="border border-gray-200 rounded-lg p-4">
                       <div className="flex justify-between items-start">
@@ -149,14 +150,6 @@ export default function RosterPage() {
                             Allergies: {child.allergies}
                           </div>
                         )}
-                        <div>
-                          <span className="text-gray-500">Emergency:</span>{' '}
-                          <span className="text-gray-900">{child?.emergency_contact_name} ({child?.emergency_contact_phone})</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Authorized Pickup:</span>{' '}
-                          <span className="text-gray-900">{child?.authorized_pickup}</span>
-                        </div>
                       </div>
                     </div>
                   );
