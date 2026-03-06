@@ -299,11 +299,16 @@ export default function DashboardPage() {
         )}
 
         {/* Row E — Navigation Links */}
-        <div className="grid sm:grid-cols-3 gap-4 mt-8">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
           <Link href="/dashboard/children" className="card hover:shadow-md transition-shadow text-center">
             <Users className="h-8 w-8 text-navy-700 mx-auto mb-2" />
             <div className="font-semibold">Manage Children</div>
             <div className="text-sm text-gray-500">Add/edit child profiles</div>
+          </Link>
+          <Link href="/dashboard/reservations" className="card hover:shadow-md transition-shadow text-center">
+            <Calendar className="h-8 w-8 text-navy-700 mx-auto mb-2" />
+            <div className="font-semibold">Reservations</div>
+            <div className="text-sm text-gray-500">View bookings & history</div>
           </Link>
           <Link href="/dashboard/payments" className="card hover:shadow-md transition-shadow text-center">
             <CreditCard className="h-8 w-8 text-navy-700 mx-auto mb-2" />
