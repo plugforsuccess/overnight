@@ -1,7 +1,8 @@
 // src/db/connection.ts
 //
-// Single shared Knex + pg connection configuration.
-// Works with Supabase (SSL) and local Postgres.
+// @deprecated — Legacy Knex connection. Not used by the active Next.js application.
+// Retained only for Express billing services (src/billing/, src/routes/).
+// See ARCHITECTURE.md > Legacy Code Boundary.
 
 import type { Knex } from "knex";
 
