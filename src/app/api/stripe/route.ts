@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   const { data: parentRow } = await supabaseAdmin
     .from('parents')
     .select('id, email, first_name, last_name, stripe_customer_id')
-    .eq('auth_user_id', user.id)
+    .eq('id', user.id)
     .single();
 
   if (!parentRow) return NextResponse.json({ error: 'Parent profile not found' }, { status: 404 });

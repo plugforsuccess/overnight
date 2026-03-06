@@ -54,9 +54,10 @@ export async function POST(req: NextRequest) {
   }
 
   // Create parent row in the public.parents table
+  // parents.id = auth.users.id — single canonical identity
   if (data.user) {
-    const { error: parentError } = await supabaseAdmin.from('parents').insert({
-      auth_user_id: data.user.id,
+    const { error: parentError } = await supabaseAdmin.from('parents').upsert({
+      id: data.user.id,
       name: `${derivedFirst} ${derivedLast}`.trim() || email,
       first_name: derivedFirst,
       last_name: derivedLast,
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
       phone: phone?.replace(/\D/g, '') || null,
       address: address || null,
       role: 'parent',
-    });
+    }, { onConflict: 'id' });
 
     if (parentError) {
       return NextResponse.json(

@@ -19,11 +19,11 @@ export default function PaymentsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
-      // Resolve the parents.id (PK) from auth user ID
+      // parents.id = auth user ID
       const { data: parentRow } = await supabase
         .from('parents')
         .select('id')
-        .eq('auth_user_id', user.id)
+        .eq('id', user.id)
         .single();
 
       const parentId = parentRow?.id ?? user.id;

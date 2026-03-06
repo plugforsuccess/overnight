@@ -20,7 +20,7 @@ async function resolveParentId(authUserId: string): Promise<string | null> {
   const { data } = await supabaseAdmin
     .from('parents')
     .select('id')
-    .eq('auth_user_id', authUserId)
+    .eq('id', authUserId)
     .single();
   return data?.id ?? null;
 }

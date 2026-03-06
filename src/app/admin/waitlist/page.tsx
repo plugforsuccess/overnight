@@ -18,7 +18,7 @@ export default function AdminWaitlistPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
-      const { data: profile } = await supabase.from('parents').select('role').eq('auth_user_id', user.id).single();
+      const { data: profile } = await supabase.from('parents').select('role').eq('id', user.id).single();
       if (profile?.role !== 'admin') { router.push('/dashboard'); return; }
 
       const { data } = await supabase
