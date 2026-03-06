@@ -1,8 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect, useRef } from 'react';
-import { Moon, Menu, X, User, LogOut, Users, CreditCard, Bell, HelpCircle, ChevronDown } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  Moon, Menu, X, User, LogOut, Users, CreditCard, ChevronDown,
+  CalendarCheck, Phone, Shield, Settings,
+} from 'lucide-react';
 import { APP_NAME } from '@/lib/constants';
 import { supabase } from '@/lib/supabase-client';
 
@@ -13,36 +16,52 @@ interface UserProfile {
 }
 
 export function Navbar() {
-  const [open, setOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [user, setUser] = useState<{ id: string } | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  const loadProfile = useCallback(async (userId: string) => {
+    const { data } = await supabase
+      .from('parents')
+      .select('first_name, last_name, email')
+      .eq('id', userId)
+      .single();
+    if (data) setProfile(data);
+  }, []);
+
   useEffect(() => {
+    let cancelled = false;
+
     async function loadUser() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (cancelled) return;
       if (authUser) {
         setUser(authUser);
-        const { data } = await supabase
-          .from('parents')
-          .select('first_name, last_name, email')
-          .eq('id', authUser.id)
-          .single();
-        if (data) setProfile(data);
+        await loadProfile(authUser.id);
       }
+      setAuthLoading(false);
     }
     loadUser();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session?.user) {
+      if (session?.user) {
+        setUser(session.user);
+        loadProfile(session.user.id);
+      } else {
         setUser(null);
         setProfile(null);
       }
+      setAuthLoading(false);
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [loadProfile]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -63,9 +82,19 @@ export function Navbar() {
     window.location.href = '/login';
   }
 
+  const isAuthenticated = !!user && !!profile;
+
   const initials = profile
     ? `${profile.first_name.charAt(0)}${profile.last_name.charAt(0)}`.toUpperCase()
     : '';
+
+  // Skeleton placeholder while auth state resolves
+  const authSkeleton = (
+    <div className="flex items-center gap-2 animate-pulse">
+      <div className="h-8 w-8 rounded-full bg-gray-200" />
+      <div className="h-4 w-16 rounded bg-gray-200 hidden sm:block" />
+    </div>
+  );
 
   return (
     <nav className="bg-white border-b border-[#E2E8F0] sticky top-0 z-50 shadow-soft-sm">
@@ -78,20 +107,40 @@ export function Navbar() {
 
           {/* Desktop nav */}
           <div className="hidden md:flex items-center gap-6">
-            <Link href="/pricing" className="text-gray-600 hover:text-navy-700 font-medium transition-colors">
-              Pricing
-            </Link>
-            <Link href="/schedule" className="text-gray-600 hover:text-navy-700 font-medium transition-colors">
-              Reserve Nights
-            </Link>
-            <Link href="/policies" className="text-gray-600 hover:text-navy-700 font-medium transition-colors">
-              Policies & FAQ
-            </Link>
-            <Link href="/dashboard" className="text-gray-600 hover:text-navy-700 font-medium transition-colors">
-              Dashboard
-            </Link>
+            {/* Auth-aware primary navigation */}
+            {isAuthenticated ? (
+              <>
+                <Link href="/dashboard" className="text-gray-600 hover:text-navy-700 font-medium transition-colors">
+                  Dashboard
+                </Link>
+                <Link href="/schedule" className="text-gray-600 hover:text-navy-700 font-medium transition-colors">
+                  Reserve Nights
+                </Link>
+                <Link href="/policies" className="text-gray-600 hover:text-navy-700 font-medium transition-colors">
+                  Policies &amp; FAQ
+                </Link>
+                <Link href="/dashboard/payments" className="text-gray-600 hover:text-navy-700 font-medium transition-colors">
+                  Billing
+                </Link>
+              </>
+            ) : !authLoading ? (
+              <>
+                <Link href="/pricing" className="text-gray-600 hover:text-navy-700 font-medium transition-colors">
+                  Pricing
+                </Link>
+                <Link href="/schedule" className="text-gray-600 hover:text-navy-700 font-medium transition-colors">
+                  Reserve Nights
+                </Link>
+                <Link href="/policies" className="text-gray-600 hover:text-navy-700 font-medium transition-colors">
+                  Policies &amp; FAQ
+                </Link>
+              </>
+            ) : null}
 
-            {user && profile ? (
+            {/* Auth-aware right section */}
+            {authLoading ? (
+              authSkeleton
+            ) : isAuthenticated ? (
               <div className="relative" ref={menuRef}>
                 <button
                   onClick={() => setMenuOpen(!menuOpen)}
@@ -113,44 +162,44 @@ export function Navbar() {
                       <p className="text-xs text-gray-500 truncate">{profile.email}</p>
                     </div>
                     <Link
-                      href="/dashboard"
-                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                      onClick={() => setMenuOpen(false)}
-                    >
-                      <User className="h-4 w-4 text-gray-400" />
-                      Profile
-                    </Link>
-                    <Link
                       href="/dashboard/children"
                       className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                       onClick={() => setMenuOpen(false)}
                     >
                       <Users className="h-4 w-4 text-gray-400" />
-                      Children
+                      My Children
                     </Link>
                     <Link
-                      href="/dashboard/payments"
+                      href="/dashboard/reservations"
                       className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                       onClick={() => setMenuOpen(false)}
                     >
-                      <CreditCard className="h-4 w-4 text-gray-400" />
-                      Billing
+                      <CalendarCheck className="h-4 w-4 text-gray-400" />
+                      Reservations
                     </Link>
                     <Link
-                      href="/dashboard#notifications"
+                      href="/dashboard/emergency-contacts"
                       className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                       onClick={() => setMenuOpen(false)}
                     >
-                      <Bell className="h-4 w-4 text-gray-400" />
-                      Notifications
+                      <Phone className="h-4 w-4 text-gray-400" />
+                      Emergency Contacts
                     </Link>
                     <Link
-                      href="/policies"
+                      href="/dashboard/authorized-pickups"
                       className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                       onClick={() => setMenuOpen(false)}
                     >
-                      <HelpCircle className="h-4 w-4 text-gray-400" />
-                      Support
+                      <Shield className="h-4 w-4 text-gray-400" />
+                      Authorized Pickups
+                    </Link>
+                    <Link
+                      href="/dashboard/settings"
+                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      <Settings className="h-4 w-4 text-gray-400" />
+                      Profile / Settings
                     </Link>
                     <div className="border-t border-[#E2E8F0] mt-1">
                       <button
@@ -165,65 +214,108 @@ export function Navbar() {
                 )}
               </div>
             ) : (
-              <Link href="/login" className="btn-primary text-sm">
-                Login
-              </Link>
+              <div className="flex items-center gap-3">
+                <Link href="/login" className="text-gray-600 hover:text-navy-700 font-medium transition-colors text-sm">
+                  Login
+                </Link>
+                <Link href="/signup" className="btn-primary text-sm">
+                  Get Started
+                </Link>
+              </div>
             )}
           </div>
 
           {/* Mobile toggle */}
-          <button className="md:hidden" onClick={() => setOpen(!open)}>
-            {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          <button className="md:hidden" onClick={() => setMobileOpen(!mobileOpen)}>
+            {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
         </div>
       </div>
 
       {/* Mobile menu */}
-      {open && (
+      {mobileOpen && (
         <div className="md:hidden border-t border-[#E2E8F0] bg-white">
           <div className="px-4 py-3 space-y-2">
-            <Link href="/pricing" className="block py-2 text-gray-700 font-medium" onClick={() => setOpen(false)}>
-              Pricing
-            </Link>
-            <Link href="/schedule" className="block py-2 text-gray-700 font-medium" onClick={() => setOpen(false)}>
-              Reserve Nights
-            </Link>
-            <Link href="/policies" className="block py-2 text-gray-700 font-medium" onClick={() => setOpen(false)}>
-              Policies & FAQ
-            </Link>
-            <Link href="/dashboard" className="block py-2 text-gray-700 font-medium" onClick={() => setOpen(false)}>
-              Dashboard
-            </Link>
-            {user && profile ? (
+            {authLoading ? (
+              <div className="flex items-center gap-3 py-2 animate-pulse">
+                <div className="h-8 w-8 rounded-full bg-gray-200" />
+                <div className="h-4 w-24 rounded bg-gray-200" />
+              </div>
+            ) : isAuthenticated ? (
               <>
-                <div className="border-t border-[#E2E8F0] pt-2 mt-2">
-                  <div className="flex items-center gap-3 py-2">
-                    <div className="h-8 w-8 rounded-full bg-accent-600 text-white flex items-center justify-center text-sm font-semibold">
-                      {initials}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{profile.first_name} {profile.last_name}</p>
-                      <p className="text-xs text-gray-500">{profile.email}</p>
-                    </div>
+                {/* Profile header */}
+                <div className="flex items-center gap-3 py-2 border-b border-[#E2E8F0] pb-3 mb-1">
+                  <div className="h-8 w-8 rounded-full bg-accent-600 text-white flex items-center justify-center text-sm font-semibold">
+                    {initials}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{profile.first_name} {profile.last_name}</p>
+                    <p className="text-xs text-gray-500">{profile.email}</p>
                   </div>
                 </div>
-                <Link href="/dashboard/children" className="block py-2 text-gray-700 font-medium" onClick={() => setOpen(false)}>
-                  Children
+
+                {/* Primary nav */}
+                <Link href="/dashboard" className="block py-2 text-gray-700 font-medium" onClick={() => setMobileOpen(false)}>
+                  Dashboard
                 </Link>
-                <Link href="/dashboard/payments" className="block py-2 text-gray-700 font-medium" onClick={() => setOpen(false)}>
+                <Link href="/schedule" className="block py-2 text-gray-700 font-medium" onClick={() => setMobileOpen(false)}>
+                  Reserve Nights
+                </Link>
+                <Link href="/policies" className="block py-2 text-gray-700 font-medium" onClick={() => setMobileOpen(false)}>
+                  Policies &amp; FAQ
+                </Link>
+                <Link href="/dashboard/payments" className="block py-2 text-gray-700 font-medium" onClick={() => setMobileOpen(false)}>
                   Billing
                 </Link>
-                <button
-                  onClick={() => { setOpen(false); handleLogout(); }}
-                  className="block py-2 text-red-600 font-semibold w-full text-left"
-                >
-                  Logout
-                </button>
+
+                {/* Account links */}
+                <div className="border-t border-[#E2E8F0] pt-2 mt-2 space-y-2">
+                  <Link href="/dashboard/children" className="block py-2 text-gray-700 font-medium" onClick={() => setMobileOpen(false)}>
+                    My Children
+                  </Link>
+                  <Link href="/dashboard/reservations" className="block py-2 text-gray-700 font-medium" onClick={() => setMobileOpen(false)}>
+                    Reservations
+                  </Link>
+                  <Link href="/dashboard/emergency-contacts" className="block py-2 text-gray-700 font-medium" onClick={() => setMobileOpen(false)}>
+                    Emergency Contacts
+                  </Link>
+                  <Link href="/dashboard/authorized-pickups" className="block py-2 text-gray-700 font-medium" onClick={() => setMobileOpen(false)}>
+                    Authorized Pickups
+                  </Link>
+                  <Link href="/dashboard/settings" className="block py-2 text-gray-700 font-medium" onClick={() => setMobileOpen(false)}>
+                    Profile / Settings
+                  </Link>
+                </div>
+
+                <div className="border-t border-[#E2E8F0] pt-2 mt-2">
+                  <button
+                    onClick={() => { setMobileOpen(false); handleLogout(); }}
+                    className="block py-2 text-red-600 font-semibold w-full text-left"
+                  >
+                    Logout
+                  </button>
+                </div>
               </>
             ) : (
-              <Link href="/login" className="block py-2 text-accent-600 font-semibold" onClick={() => setOpen(false)}>
-                Login
-              </Link>
+              <>
+                <Link href="/pricing" className="block py-2 text-gray-700 font-medium" onClick={() => setMobileOpen(false)}>
+                  Pricing
+                </Link>
+                <Link href="/schedule" className="block py-2 text-gray-700 font-medium" onClick={() => setMobileOpen(false)}>
+                  Reserve Nights
+                </Link>
+                <Link href="/policies" className="block py-2 text-gray-700 font-medium" onClick={() => setMobileOpen(false)}>
+                  Policies &amp; FAQ
+                </Link>
+                <div className="border-t border-[#E2E8F0] pt-2 mt-2 space-y-2">
+                  <Link href="/login" className="block py-2 text-accent-600 font-semibold" onClick={() => setMobileOpen(false)}>
+                    Login
+                  </Link>
+                  <Link href="/signup" className="block py-2 text-accent-600 font-semibold" onClick={() => setMobileOpen(false)}>
+                    Get Started
+                  </Link>
+                </div>
+              </>
             )}
           </div>
         </div>
