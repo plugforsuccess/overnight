@@ -168,6 +168,17 @@ export async function POST(req: NextRequest) {
       })
       .eq('id', pickupId);
 
+    // Log pickup event for legal protection and parent notification
+    await supabaseAdmin.from('pickup_events').insert({
+      child_id: pickup.child_id,
+      pickup_person_id: pickupId,
+      verified_by_staff_id: adminId,
+      verification_method: 'pin',
+    }).then(() => {}, () => {
+      // pickup_events table may not exist yet — fail silently
+      console.warn('[pickup-verification] pickup_events insert skipped (table may not exist)');
+    });
+
     return NextResponse.json({
       verified: true,
       message: `VERIFIED - ${pickup.first_name} ${pickup.last_name} is authorized for pickup.`,

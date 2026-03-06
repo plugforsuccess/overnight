@@ -9,11 +9,13 @@ import type { ChildRow, ChildEmergencyContactRow, ChildAuthorizedPickupRow } fro
 
 import { ChildFormBasics } from '@/components/children/ChildFormBasics';
 import { EmergencyContactsEditor } from '@/components/children/EmergencyContactsEditor';
-import { AuthorizedPickupsEditor } from '@/components/children/AuthorizedPickupsEditor';
 
-type Step = 'account' | 'child' | 'emergency' | 'pickup' | 'done';
-const STEPS: Step[] = ['account', 'child', 'emergency', 'pickup', 'done'];
-const STEP_LABELS = ['Account', 'Child', 'Emergency', 'Pickup', 'Done'];
+// Simplified onboarding: Account → Child → Emergency Contact → Done
+// Authorized pickups and additional profile details are handled in the dashboard.
+// This reduces friction and keeps signup completion high (~3 steps after account).
+type Step = 'account' | 'child' | 'emergency' | 'done';
+const STEPS: Step[] = ['account', 'child', 'emergency', 'done'];
+const STEP_LABELS = ['Account', 'Child', 'Emergency', 'Done'];
 
 interface FieldErrors {
   [key: string]: string;
@@ -65,9 +67,9 @@ export default function SignupPage() {
   // Created child record (from step 2)
   const [createdChild, setCreatedChild] = useState<ChildRow | null>(null);
 
-  // Emergency contacts and authorized pickups (from steps 3 & 4)
+  // Emergency contacts and auto-created pickups (from step 3)
   const [emergencyContacts, setEmergencyContacts] = useState<ChildEmergencyContactRow[]>([]);
-  const [authorizedPickups, setAuthorizedPickups] = useState<PickupDisplay[]>([]);
+  const [autoCreatedPickups, setAutoCreatedPickups] = useState<PickupDisplay[]>([]);
   const [saving, setSaving] = useState(false);
 
   // Step 1 — Parent Account
@@ -236,6 +238,8 @@ export default function SignupPage() {
   }
 
   // ── Emergency contact handlers (reuse same API as dashboard) ──────
+  // When authorized_for_pickup is toggled with a PIN, the API auto-creates
+  // an authorized pickup record — no separate pickup step needed.
 
   async function handleAddContact(contact: any) {
     if (!createdChild) return;
@@ -248,6 +252,10 @@ export default function SignupPage() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to add contact');
     setEmergencyContacts(prev => [...prev, data.contact]);
+    // Track auto-created pickups from the emergency contact promotion
+    if (data.pickup) {
+      setAutoCreatedPickups(prev => [...prev, data.pickup]);
+    }
   }
 
   async function handleUpdateContact(id: string, contact: any) {
@@ -275,52 +283,11 @@ export default function SignupPage() {
     setEmergencyContacts(prev => prev.filter(c => c.id !== id));
   }
 
-  // ── Authorized pickup handlers (reuse same API as dashboard) ──────
-
-  async function handleAddPickup(pickup: any) {
-    if (!createdChild) return;
-    const headers = await getAuthHeaders();
-    const res = await fetch(`/api/children/${createdChild.id}/authorized-pickups`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(pickup),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to add pickup');
-    setAuthorizedPickups(prev => [...prev, data.pickup]);
-  }
-
-  async function handleUpdatePickup(id: string, pickup: any) {
-    const headers = await getAuthHeaders();
-    const res = await fetch(`/api/authorized-pickups/${id}`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify(pickup),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to update pickup');
-    setAuthorizedPickups(prev => prev.map(p => p.id === id ? data.pickup : p));
-  }
-
-  async function handleDeletePickup(id: string) {
-    const headers = await getAuthHeaders();
-    const res = await fetch(`/api/authorized-pickups/${id}`, {
-      method: 'DELETE',
-      headers,
-    });
-    if (!res.ok) {
-      const data = await res.json();
-      throw new Error(data.error || 'Failed to delete pickup');
-    }
-    setAuthorizedPickups(prev => prev.filter(p => p.id !== id));
-  }
-
   function handleBack() {
     setError('');
     setFieldErrors({});
     if (step === 'child') setStep('account');
     if (step === 'emergency') setStep('child');
-    if (step === 'pickup') setStep('emergency');
   }
 
   // ── Derived values ──────────────────────────────────────────────────
@@ -331,7 +298,6 @@ export default function SignupPage() {
     account: 'Create Your Account',
     child: 'Add Your Child',
     emergency: 'Emergency Contact',
-    pickup: 'Authorized Pickup',
     done: '',
   };
 
@@ -339,7 +305,6 @@ export default function SignupPage() {
     account: 'Join DreamWatch Overnight',
     child: 'Tell us about your little one',
     emergency: 'Who should we call in an emergency?',
-    pickup: 'Who is authorized to pick up your child?',
     done: '',
   };
 
@@ -660,6 +625,8 @@ export default function SignupPage() {
           )}
 
           {/* Step 3: Emergency Contact — uses shared EmergencyContactsEditor */}
+          {/* When "authorized for pickup" is toggled, inline PIN fields appear */}
+          {/* and the API auto-creates an authorized pickup record */}
           {step === 'emergency' && createdChild && (
             <div>
               <EmergencyContactsEditor
@@ -675,29 +642,16 @@ export default function SignupPage() {
                   At least 1 emergency contact is required before you can book overnight care.
                 </p>
               )}
-            </div>
-          )}
-
-          {/* Step 4: Authorized Pickup — uses shared AuthorizedPickupsEditor */}
-          {step === 'pickup' && createdChild && (
-            <div>
-              <AuthorizedPickupsEditor
-                childId={createdChild.id}
-                pickups={authorizedPickups}
-                onAdd={handleAddPickup}
-                onUpdate={handleUpdatePickup}
-                onDelete={handleDeletePickup}
-                saving={saving}
-              />
-              {authorizedPickups.length === 0 && (
-                <p className="text-sm text-yellow-700 bg-yellow-50 px-4 py-3 rounded-lg mt-4">
-                  At least 1 authorized pickup is required before you can book overnight care.
+              {autoCreatedPickups.length > 0 && (
+                <p className="text-sm text-green-700 bg-green-50 px-4 py-3 rounded-lg mt-4">
+                  <Check className="w-4 h-4 inline mr-1" />
+                  {autoCreatedPickups.length} authorized pickup{autoCreatedPickups.length > 1 ? 's' : ''} created from emergency contacts.
                 </p>
               )}
             </div>
           )}
 
-          {/* Step 5: Done */}
+          {/* Step 4: Done */}
           {step === 'done' && (
             <div className="text-center py-6">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
@@ -719,10 +673,14 @@ export default function SignupPage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-500">Authorized Pickups</span>
-                    <span className="font-medium">{authorizedPickups.length}</span>
+                    <span className="font-medium">{autoCreatedPickups.length}</span>
                   </div>
                 </div>
               )}
+
+              <p className="text-xs text-gray-500 mb-6">
+                You can add more children, emergency contacts, and authorized pickups from the dashboard.
+              </p>
 
               <button
                 onClick={() => router.push('/schedule')}
@@ -775,21 +733,11 @@ export default function SignupPage() {
               {step === 'emergency' && (
                 <button
                   type="button"
-                  onClick={() => setStep('pickup')}
+                  onClick={() => setStep('done')}
                   className="btn-primary flex-1 py-3 text-base font-semibold"
                   disabled={emergencyContacts.length === 0}
                 >
-                  {emergencyContacts.length === 0 ? 'Add a Contact First' : 'Continue'}
-                </button>
-              )}
-              {step === 'pickup' && (
-                <button
-                  type="button"
-                  onClick={() => setStep('done')}
-                  className="btn-primary flex-1 py-3 text-base font-semibold"
-                  disabled={authorizedPickups.length === 0}
-                >
-                  {authorizedPickups.length === 0 ? 'Add a Pickup First' : 'Complete Signup'}
+                  {emergencyContacts.length === 0 ? 'Add a Contact First' : 'Complete Signup'}
                 </button>
               )}
             </div>
