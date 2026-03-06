@@ -35,10 +35,18 @@ export default function SchedulePage() {
         router.push('/login');
         return;
       }
-      setUserId(user.id);
+      // Resolve the parents.id (PK) from auth user ID
+      const { data: parentRow } = await supabase
+        .from('parents')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      const parentId = parentRow?.id ?? user.id;
+      setUserId(parentId);
 
       const [childrenRes, settingsRes] = await Promise.all([
-        supabase.from('children').select('*').eq('parent_id', user.id),
+        supabase.from('children').select('*').eq('parent_id', parentId),
         supabase.from('admin_settings').select('*').limit(1).single(),
       ]);
 

@@ -28,12 +28,21 @@ export default function DashboardPage() {
         return;
       }
 
+      // Resolve the parents.id (PK) from auth user ID
+      const { data: parentRow } = await supabase
+        .from('parents')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      const parentId = parentRow?.id ?? user.id;
+
       const [profileRes, plansRes, reservationsRes, waitlistRes, paymentsRes] = await Promise.all([
         supabase.from('profiles').select('*').eq('id', user.id).single(),
-        supabase.from('plans').select('*, child:children(*)').eq('parent_id', user.id).order('created_at', { ascending: false }),
-        supabase.from('reservations').select('*, child:children(*)').eq('parent_id', user.id).eq('status', 'confirmed').order('night_date', { ascending: true }),
-        supabase.from('waitlist').select('*, child:children(*)').eq('parent_id', user.id).in('status', ['waiting', 'offered']),
-        supabase.from('payments').select('*').eq('parent_id', user.id).order('created_at', { ascending: false }).limit(3),
+        supabase.from('plans').select('*, child:children(*)').eq('parent_id', parentId).order('created_at', { ascending: false }),
+        supabase.from('reservations').select('*, child:children(*)').eq('parent_id', parentId).eq('status', 'confirmed').order('night_date', { ascending: true }),
+        supabase.from('waitlist').select('*, child:children(*)').eq('parent_id', parentId).in('status', ['waiting', 'offered']),
+        supabase.from('payments').select('*').eq('parent_id', parentId).order('created_at', { ascending: false }).limit(3),
       ]);
 
       if (profileRes.data) setProfile(profileRes.data);

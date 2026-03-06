@@ -21,7 +21,7 @@ export async function PATCH(
     .eq('id', contactId)
     .single();
 
-  if (!existing || (existing as any).children?.parent_id !== auth.userId) {
+  if (!existing || (existing as any).children?.parent_id !== auth.parentId) {
     return notFound('Emergency contact not found');
   }
 
@@ -72,7 +72,7 @@ export async function DELETE(
     .eq('id', contactId)
     .single();
 
-  if (!existing || (existing as any).children?.parent_id !== auth.userId) {
+  if (!existing || (existing as any).children?.parent_id !== auth.parentId) {
     return notFound('Emergency contact not found');
   }
 

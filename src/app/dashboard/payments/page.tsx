@@ -19,10 +19,19 @@ export default function PaymentsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
+      // Resolve the parents.id (PK) from auth user ID
+      const { data: parentRow } = await supabase
+        .from('parents')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      const parentId = parentRow?.id ?? user.id;
+
       const { data } = await supabase
         .from('payments')
         .select('*')
-        .eq('parent_id', user.id)
+        .eq('parent_id', parentId)
         .order('created_at', { ascending: false });
 
       if (data) setPayments(data);

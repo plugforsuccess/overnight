@@ -12,15 +12,27 @@ function getUserClient(req: NextRequest) {
   );
 }
 
+async function resolveParentId(authUserId: string): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from('parents')
+    .select('id')
+    .eq('auth_user_id', authUserId)
+    .single();
+  return data?.id ?? null;
+}
+
 export async function GET(req: NextRequest) {
   const supabase = getUserClient(req);
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const parentId = await resolveParentId(user.id);
+  if (!parentId) return NextResponse.json({ error: 'Parent profile not found' }, { status: 400 });
+
   const { data: plans, error: plansError } = await supabase
     .from('plans')
     .select('*, child:children(*)')
-    .eq('parent_id', user.id)
+    .eq('parent_id', parentId)
     .order('created_at', { ascending: false });
 
   if (plansError) return NextResponse.json({ error: plansError.message }, { status: 400 });
@@ -28,7 +40,7 @@ export async function GET(req: NextRequest) {
   const { data: reservations, error: resError } = await supabase
     .from('reservations')
     .select('*, child:children(*)')
-    .eq('parent_id', user.id)
+    .eq('parent_id', parentId)
     .order('night_date', { ascending: true });
 
   if (resError) return NextResponse.json({ error: resError.message }, { status: 400 });
@@ -36,7 +48,7 @@ export async function GET(req: NextRequest) {
   const { data: waitlist } = await supabase
     .from('waitlist')
     .select('*, child:children(*)')
-    .eq('parent_id', user.id)
+    .eq('parent_id', parentId)
     .in('status', ['waiting', 'offered']);
 
   return NextResponse.json({ plans, reservations, waitlist: waitlist || [] });
@@ -46,6 +58,9 @@ export async function POST(req: NextRequest) {
   const supabase = getUserClient(req);
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const parentId = await resolveParentId(user.id);
+  if (!parentId) return NextResponse.json({ error: 'Parent profile not found' }, { status: 400 });
 
   const { childId, nightsPerWeek, priceCents, selectedNights, weekStart } = await req.json();
 
@@ -84,7 +99,7 @@ export async function POST(req: NextRequest) {
   const { data: plan, error: planError } = await supabaseAdmin
     .from('plans')
     .insert({
-      parent_id: user.id,
+      parent_id: parentId,
       child_id: childId,
       nights_per_week: nightsPerWeek,
       price_cents: priceCents,
@@ -105,7 +120,7 @@ export async function POST(req: NextRequest) {
         availableNights.map((nightDate: string) => ({
           plan_id: plan.id,
           child_id: childId,
-          parent_id: user.id,
+          parent_id: parentId,
           night_date: nightDate,
           status: 'confirmed',
         }))
@@ -122,7 +137,7 @@ export async function POST(req: NextRequest) {
       .eq('status', 'waiting');
 
     await supabaseAdmin.from('waitlist').insert({
-      parent_id: user.id,
+      parent_id: parentId,
       child_id: childId,
       night_date: nightDate,
       position: (waitlistCount ?? 0) + 1,
@@ -142,6 +157,9 @@ export async function DELETE(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+  const parentId = await resolveParentId(user.id);
+  if (!parentId) return NextResponse.json({ error: 'Parent profile not found' }, { status: 400 });
+
   const { searchParams } = new URL(req.url);
   const reservationId = searchParams.get('id');
 
@@ -149,7 +167,7 @@ export async function DELETE(req: NextRequest) {
     .from('reservations')
     .update({ status: 'cancelled', updated_at: new Date().toISOString() })
     .eq('id', reservationId)
-    .eq('parent_id', user.id);
+    .eq('parent_id', parentId);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ success: true });

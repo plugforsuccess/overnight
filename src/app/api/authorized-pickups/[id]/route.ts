@@ -22,7 +22,7 @@ export async function PATCH(
     .eq('id', pickupId)
     .single();
 
-  if (!existing || (existing as any).children?.parent_id !== auth.userId) {
+  if (!existing || (existing as any).children?.parent_id !== auth.parentId) {
     return notFound('Authorized pickup not found');
   }
 
@@ -80,7 +80,7 @@ export async function DELETE(
     .eq('id', pickupId)
     .single();
 
-  if (!existing || (existing as any).children?.parent_id !== auth.userId) {
+  if (!existing || (existing as any).children?.parent_id !== auth.parentId) {
     return notFound('Authorized pickup not found');
   }
 

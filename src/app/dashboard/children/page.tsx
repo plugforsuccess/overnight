@@ -56,10 +56,19 @@ export default function ChildrenPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
+      // Resolve the parents.id (PK) from auth user ID (parents.auth_user_id)
+      const { data: parentRow } = await supabase
+        .from('parents')
+        .select('id')
+        .eq('auth_user_id', user.id)
+        .single();
+
+      if (!parentRow) { setLoading(false); return; }
+
       const { data } = await supabase
         .from('children')
         .select('*')
-        .eq('parent_id', user.id)
+        .eq('parent_id', parentRow.id)
         .order('created_at');
 
       if (data) setChildren(data);

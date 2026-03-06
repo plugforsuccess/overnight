@@ -19,7 +19,7 @@ export async function GET(
     .from('children')
     .select('id')
     .eq('id', childId)
-    .eq('parent_id', auth.userId)
+    .eq('parent_id', auth.parentId)
     .single();
 
   if (!child) return notFound('Child not found');
@@ -52,7 +52,7 @@ export async function POST(
     .from('children')
     .select('id')
     .eq('id', childId)
-    .eq('parent_id', auth.userId)
+    .eq('parent_id', auth.parentId)
     .single();
 
   if (!child) return notFound('Child not found');

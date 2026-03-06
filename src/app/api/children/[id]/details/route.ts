@@ -19,7 +19,7 @@ export async function GET(
     .from('children')
     .select('*')
     .eq('id', childId)
-    .eq('parent_id', auth.userId)
+    .eq('parent_id', auth.parentId)
     .single();
 
   if (childError || !child) return notFound('Child not found');

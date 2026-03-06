@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase-server';
 
 export interface AuthResult {
   supabase: SupabaseClient;
+  /** Supabase auth user UUID (auth.uid()) */
   userId: string;
+  /** parents.id (PK) — the FK used in children.parent_id, etc. */
+  parentId: string;
 }
 
 /**
- * Authenticate a request and return the Supabase client + user ID.
- * Returns null and sends a 401 response if not authenticated.
+ * Authenticate a request and return the Supabase client + user ID + parent ID.
+ * Returns null if not authenticated or parent profile not found.
  */
 export async function authenticateRequest(req: NextRequest): Promise<AuthResult | null> {
   const authHeader = req.headers.get('Authorization');
@@ -22,7 +26,16 @@ export async function authenticateRequest(req: NextRequest): Promise<AuthResult 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  return { supabase, userId: user.id };
+  // Resolve parents.id from auth_user_id — parent_id FK throughout the app
+  const { data: parentRow } = await supabaseAdmin
+    .from('parents')
+    .select('id')
+    .eq('auth_user_id', user.id)
+    .single();
+
+  if (!parentRow) return null;
+
+  return { supabase, userId: user.id, parentId: parentRow.id };
 }
 
 export function unauthorized() {

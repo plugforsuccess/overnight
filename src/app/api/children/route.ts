@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await auth.supabase
     .from('children')
     .select('*')
-    .eq('parent_id', auth.userId)
+    .eq('parent_id', auth.parentId)
     .order('created_at', { ascending: true });
 
   if (error) return badRequest(error.message);
@@ -29,7 +29,8 @@ export async function POST(req: NextRequest) {
   const { data, error } = await auth.supabase
     .from('children')
     .insert({
-      parent_id: auth.userId,
+      parent_id: auth.parentId,
+      name: `${parsed.data.first_name} ${parsed.data.last_name}`,
       first_name: parsed.data.first_name,
       last_name: parsed.data.last_name,
       date_of_birth: parsed.data.date_of_birth,
@@ -58,13 +59,14 @@ export async function PUT(req: NextRequest) {
   const { data, error } = await auth.supabase
     .from('children')
     .update({
+      name: `${parsed.data.first_name} ${parsed.data.last_name}`,
       first_name: parsed.data.first_name,
       last_name: parsed.data.last_name,
       date_of_birth: parsed.data.date_of_birth,
       medical_notes: parsed.data.medical_notes || null,
     })
     .eq('id', id)
-    .eq('parent_id', auth.userId)
+    .eq('parent_id', auth.parentId)
     .select()
     .single();
 
@@ -84,7 +86,7 @@ export async function DELETE(req: NextRequest) {
     .from('children')
     .delete()
     .eq('id', id)
-    .eq('parent_id', auth.userId);
+    .eq('parent_id', auth.parentId);
 
   if (error) return badRequest(error.message);
   return NextResponse.json({ success: true });

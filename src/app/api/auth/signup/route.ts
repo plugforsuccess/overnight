@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
   if (data.user) {
     const { error: parentError } = await supabaseAdmin.from('parents').insert({
       auth_user_id: data.user.id,
+      name: `${derivedFirst} ${derivedLast}`.trim() || email,
       first_name: derivedFirst,
       last_name: derivedLast,
       email,
