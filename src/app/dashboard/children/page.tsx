@@ -53,22 +53,17 @@ export default function ChildrenPage() {
   // ── Load children list ─────────────────────────────────────────────
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/login'); return; }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { router.push('/login'); return; }
+      const user = session.user;
 
       // parents.id = auth user ID
-      const { data: parentRow } = await supabase
-        .from('parents')
-        .select('id')
-        .eq('id', user.id)
-        .single();
-
-      if (!parentRow) { setLoading(false); return; }
+      const parentId = user.id;
 
       const { data } = await supabase
         .from('children')
         .select('*')
-        .eq('parent_id', parentRow.id)
+        .eq('parent_id', parentId)
         .order('created_at');
 
       if (data) setChildren(data);
