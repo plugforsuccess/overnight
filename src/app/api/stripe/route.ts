@@ -20,23 +20,36 @@ export async function POST(req: NextRequest) {
 
   const supabase = getUserClient(req);
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  let body;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }); }
-  const { planId } = body;
-  if (!planId || typeof planId !== 'string') {
-    return NextResponse.json({ error: 'planId is required' }, { status: 400 });
+  if (!user) {
+    console.error('[stripe] auth failed: no user');
+    return NextResponse.json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' }, { status: 401 });
   }
 
-  // Look up the plan to get the canonical price — never trust client-provided prices
-  const { data: plan } = await supabaseAdmin
-    .from('plans')
-    .select('id, price_cents, parent_id')
+  let body;
+  try { body = await req.json(); } catch {
+    return NextResponse.json({ error: 'Invalid request body', code: 'INVALID_PLAN_SELECTION' }, { status: 400 });
+  }
+
+  const { planId } = body;
+  if (!planId || typeof planId !== 'string') {
+    return NextResponse.json({ error: 'planId is required', code: 'INVALID_PLAN_SELECTION' }, { status: 400 });
+  }
+
+  console.log(`[stripe] checkout request: userId=${user.id} planId=${planId}`);
+
+  // Look up the overnight_block (per-user booking) to get the canonical price
+  const { data: block, error: blockError } = await supabaseAdmin
+    .from('overnight_blocks')
+    .select('id, weekly_price_cents, parent_id, nights_per_week, status')
     .eq('id', planId)
     .single();
 
-  if (!plan) return NextResponse.json({ error: 'Plan not found' }, { status: 404 });
+  if (!block || blockError) {
+    console.error(`[stripe] overnight_block not found: planId=${planId}`, blockError);
+    return NextResponse.json({ error: 'Booking not found', code: 'INVALID_PLAN_SELECTION' }, { status: 404 });
+  }
+
+  console.log(`[stripe] block found: id=${block.id} price=${block.weekly_price_cents} parentId=${block.parent_id}`);
 
   // Resolve parent to verify ownership
   const { data: parentRow } = await supabaseAdmin
@@ -45,15 +58,29 @@ export async function POST(req: NextRequest) {
     .eq('id', user.id)
     .single();
 
-  if (!parentRow) return NextResponse.json({ error: 'Parent profile not found' }, { status: 404 });
-  if (plan.parent_id !== parentRow.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  if (!parentRow) {
+    console.error(`[stripe] parent not found: userId=${user.id}`);
+    return NextResponse.json({ error: 'Parent profile not found', code: 'AUTH_REQUIRED' }, { status: 404 });
+  }
+
+  if (block.parent_id !== parentRow.id) {
+    console.error(`[stripe] ownership mismatch: block.parent_id=${block.parent_id} parentRow.id=${parentRow.id}`);
+    return NextResponse.json({ error: 'Unauthorized', code: 'CHILD_NOT_OWNED' }, { status: 403 });
+  }
 
   // Get or create Stripe customer
-  const customerId = await getOrCreateCustomer(
-    parentRow.email,
-    `${parentRow.first_name} ${parentRow.last_name}`.trim(),
-    parentRow.stripe_customer_id
-  );
+  let customerId: string;
+  try {
+    customerId = await getOrCreateCustomer(
+      parentRow.email,
+      `${parentRow.first_name} ${parentRow.last_name}`.trim(),
+      parentRow.stripe_customer_id
+    );
+    console.log(`[stripe] customer: id=${customerId} existing=${!!parentRow.stripe_customer_id}`);
+  } catch (err) {
+    console.error('[stripe] customer create failed:', err);
+    return NextResponse.json({ error: 'Failed to set up payment', code: 'STRIPE_CUSTOMER_CREATE_FAILED' }, { status: 500 });
+  }
 
   // Update parent with Stripe customer ID
   if (!parentRow.stripe_customer_id) {
@@ -66,31 +93,37 @@ export async function POST(req: NextRequest) {
   // Create a Checkout Session using server-verified price
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-  const session = await stripe.checkout.sessions.create({
-    customer: customerId,
-    mode: 'subscription',
-    payment_method_types: ['card'],
-    line_items: [
-      {
-        price_data: {
-          currency: 'usd',
-          unit_amount: plan.price_cents,
-          recurring: { interval: 'week', interval_count: 1 },
-          product_data: {
-            name: 'DreamWatch Overnight - Weekly Plan',
-            description: 'Weekly overnight childcare subscription',
+  try {
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            unit_amount: block.weekly_price_cents,
+            recurring: { interval: 'week', interval_count: 1 },
+            product_data: {
+              name: `DreamWatch Overnight - ${block.nights_per_week} Nights/Week`,
+              description: 'Weekly overnight childcare subscription',
+            },
           },
+          quantity: 1,
         },
-        quantity: 1,
+      ],
+      metadata: {
+        overnight_block_id: planId,
+        parent_id: parentRow.id,
       },
-    ],
-    metadata: {
-      plan_id: planId,
-      parent_id: parentRow.id,
-    },
-    success_url: `${appUrl}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${appUrl}/schedule`,
-  });
+      success_url: `${appUrl}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appUrl}/schedule`,
+    });
 
-  return NextResponse.json({ url: session.url });
+    console.log(`[stripe] checkout session created: id=${session.id} url=${session.url}`);
+    return NextResponse.json({ url: session.url });
+  } catch (err) {
+    console.error('[stripe] checkout session create failed:', err);
+    return NextResponse.json({ error: 'Failed to create checkout session', code: 'STRIPE_SESSION_CREATE_FAILED' }, { status: 500 });
+  }
 }

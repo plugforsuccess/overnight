@@ -6,6 +6,28 @@ import { DEFAULT_PRICING_TIERS } from '@/lib/constants';
 import { rateLimit } from '@/lib/rate-limit';
 import { cancelSubscription } from '@/lib/stripe';
 
+// ─── Error codes ──────────────────────────────────────────────────────────────
+type ErrorCode =
+  | 'AUTH_REQUIRED'
+  | 'PROFILE_INCOMPLETE'
+  | 'CHILD_NOT_OWNED'
+  | 'INVALID_PLAN_SELECTION'
+  | 'STRIPE_CONFIG_ERROR'
+  | 'DB_INSERT_FAILED'
+  | 'RLS_BLOCKED'
+  | 'CAPACITY_CONFLICT'
+  | 'UNKNOWN_ERROR';
+
+function errorResponse(
+  code: ErrorCode,
+  userMessage: string,
+  status: number,
+  details?: string,
+) {
+  console.error(`[bookings] error code=${code} message="${userMessage}" details="${details ?? 'none'}"`);
+  return NextResponse.json({ error: userMessage, code, details }, { status });
+}
+
 function getUserClient(req: NextRequest) {
   const authHeader = req.headers.get('Authorization');
   const token = authHeader?.replace('Bearer ', '') || '';
@@ -36,34 +58,57 @@ const bookingSchema = z.object({
 export async function GET(req: NextRequest) {
   const supabase = getUserClient(req);
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!user) return errorResponse('AUTH_REQUIRED', 'Unauthorized', 401);
 
   const parentId = await resolveParentId(user.id);
-  if (!parentId) return NextResponse.json({ error: 'Parent profile not found' }, { status: 400 });
+  if (!parentId) return errorResponse('AUTH_REQUIRED', 'Parent profile not found', 400);
 
-  const { data: plans, error: plansError } = await supabase
-    .from('plans')
+  // Fetch overnight_blocks (the per-user booking records) instead of plans catalog
+  const { data: blocks, error: blocksError } = await supabaseAdmin
+    .from('overnight_blocks')
     .select('*, child:children(*)')
     .eq('parent_id', parentId)
     .order('created_at', { ascending: false });
 
-  if (plansError) return NextResponse.json({ error: 'Failed to load plans' }, { status: 400 });
+  if (blocksError) {
+    console.error('[bookings GET] blocks error:', blocksError);
+    return errorResponse('DB_INSERT_FAILED', 'Failed to load bookings', 400, blocksError.message);
+  }
 
-  const { data: reservations, error: resError } = await supabase
-    .from('reservations')
-    .select('*, child:children(*)')
-    .eq('parent_id', parentId)
-    .order('night_date', { ascending: true });
+  // Fetch reservations through child IDs belonging to this parent
+  const { data: children } = await supabaseAdmin
+    .from('children')
+    .select('id')
+    .eq('parent_id', parentId);
 
-  if (resError) return NextResponse.json({ error: 'Failed to load reservations' }, { status: 400 });
+  const childIds = (children || []).map((c: { id: string }) => c.id);
 
-  const { data: waitlist } = await supabase
+  let reservations: unknown[] = [];
+  if (childIds.length > 0) {
+    const { data: resData, error: resError } = await supabaseAdmin
+      .from('reservations')
+      .select('*, child:children(*)')
+      .in('child_id', childIds)
+      .order('date', { ascending: true });
+
+    if (resError) {
+      console.error('[bookings GET] reservations error:', resError);
+      return errorResponse('DB_INSERT_FAILED', 'Failed to load reservations', 400, resError.message);
+    }
+    reservations = resData || [];
+  }
+
+  const { data: waitlist } = await supabaseAdmin
     .from('waitlist')
     .select('*, child:children(*)')
     .eq('parent_id', parentId)
     .in('status', ['waiting', 'offered']);
 
-  return NextResponse.json({ plans, reservations, waitlist: waitlist || [] });
+  return NextResponse.json({
+    plans: blocks,
+    reservations,
+    waitlist: waitlist || [],
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -72,17 +117,26 @@ export async function POST(req: NextRequest) {
 
   const supabase = getUserClient(req);
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!user) return errorResponse('AUTH_REQUIRED', 'Unauthorized', 401);
+
+  console.log(`[bookings POST] authenticated user: ${user.id}`);
 
   const parentId = await resolveParentId(user.id);
-  if (!parentId) return NextResponse.json({ error: 'Parent profile not found' }, { status: 400 });
+  if (!parentId) return errorResponse('AUTH_REQUIRED', 'Parent profile not found', 400);
+  console.log(`[bookings POST] parent row found: true, parentId=${parentId}`);
 
   let body;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }); }
+  try { body = await req.json(); } catch { return errorResponse('INVALID_PLAN_SELECTION', 'Invalid request body', 400); }
+
+  console.log(`[bookings POST] request payload:`, JSON.stringify(body));
 
   const parsed = bookingSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.errors.map(e => e.message).join(', ') }, { status: 400 });
+    return errorResponse(
+      'INVALID_PLAN_SELECTION',
+      parsed.error.errors.map((e: { message: string }) => e.message).join(', '),
+      400,
+    );
   }
 
   const { childId, nightsPerWeek, selectedNights, weekStart } = parsed.data;
@@ -90,80 +144,156 @@ export async function POST(req: NextRequest) {
   // Verify child belongs to this parent
   const { data: child } = await supabaseAdmin
     .from('children')
-    .select('id')
+    .select('id, first_name, last_name')
     .eq('id', childId)
     .eq('parent_id', parentId)
     .single();
 
-  if (!child) return NextResponse.json({ error: 'Child not found or does not belong to you' }, { status: 403 });
+  if (!child) {
+    console.error(`[bookings POST] child ownership failed: childId=${childId} parentId=${parentId}`);
+    return errorResponse('CHILD_NOT_OWNED', 'Child not found or does not belong to you', 403);
+  }
+  console.log(`[bookings POST] child ownership valid: childId=${childId} name=${child.first_name} ${child.last_name}`);
 
-  // Look up the canonical price from pricing tiers — never trust client-provided prices
-  const tier = DEFAULT_PRICING_TIERS.find(t => t.nights === nightsPerWeek);
-  if (!tier) return NextResponse.json({ error: 'Invalid plan tier' }, { status: 400 });
-  const priceCents = tier.price_cents;
+  // Check profile completeness: emergency contacts + authorized pickups
+  const [ecRes, apRes] = await Promise.all([
+    supabaseAdmin
+      .from('child_emergency_contacts')
+      .select('id', { count: 'exact', head: true })
+      .eq('child_id', childId),
+    supabaseAdmin
+      .from('child_authorized_pickups')
+      .select('id', { count: 'exact', head: true })
+      .eq('child_id', childId),
+  ]);
 
-  // Validate night count matches plan
-  if (selectedNights.length !== nightsPerWeek) {
-    return NextResponse.json(
-      { error: `You must select exactly ${nightsPerWeek} nights for this plan` },
-      { status: 400 }
+  const ecCount = ecRes.count ?? 0;
+  const apCount = apRes.count ?? 0;
+  console.log(`[bookings POST] profile check: emergencyContacts=${ecCount} authorizedPickups=${apCount}`);
+
+  if (ecCount < 1 || apCount < 1) {
+    const missing: string[] = [];
+    if (ecCount < 1) missing.push('at least 1 emergency contact');
+    if (apCount < 1) missing.push('at least 1 authorized pickup');
+    return errorResponse(
+      'PROFILE_INCOMPLETE',
+      `Complete ${child.first_name} ${child.last_name}'s profile before booking: add ${missing.join(' and ')}.`,
+      400,
     );
   }
 
-  // Get admin settings for capacity
-  const { data: settings } = await supabaseAdmin
-    .from('admin_settings')
-    .select('max_capacity')
-    .limit(1)
+  // Look up the plan tier from the plans catalog table
+  const { data: planTier, error: planLookupError } = await supabaseAdmin
+    .from('plans')
+    .select('id, plan_key, nights_per_week, weekly_price_cents')
+    .eq('nights_per_week', nightsPerWeek)
+    .eq('active', true)
     .single();
 
-  const maxCapacity = settings?.max_capacity ?? 6;
+  if (!planTier || planLookupError) {
+    console.error(`[bookings POST] plan tier lookup failed: nightsPerWeek=${nightsPerWeek}`, planLookupError);
+    // Fall back to DEFAULT_PRICING_TIERS if catalog doesn't have a match
+    const fallbackTier = DEFAULT_PRICING_TIERS.find(t => t.nights === nightsPerWeek);
+    if (!fallbackTier) {
+      return errorResponse('INVALID_PLAN_SELECTION', `No plan available for ${nightsPerWeek} nights/week`, 400);
+    }
+  }
+
+  const priceCents = planTier?.weekly_price_cents
+    ?? DEFAULT_PRICING_TIERS.find(t => t.nights === nightsPerWeek)!.price_cents;
+  const planId = planTier?.id;
+  const planKey = planTier?.plan_key ?? `plan_${nightsPerWeek}n`;
+
+  console.log(`[bookings POST] plan tier: planId=${planId} planKey=${planKey} priceCents=${priceCents}`);
+
+  // Validate night count matches plan
+  if (selectedNights.length !== nightsPerWeek) {
+    return errorResponse(
+      'INVALID_PLAN_SELECTION',
+      `You must select exactly ${nightsPerWeek} nights for this plan`,
+      400,
+    );
+  }
 
   // Check capacity for each night (server-side)
+  const maxCapacity = 6; // default
+  const { data: capacityData } = await supabaseAdmin
+    .from('nightly_capacity')
+    .select('date, capacity')
+    .in('date', selectedNights);
+
   const fullNights: string[] = [];
   for (const nightDate of selectedNights) {
+    // Use nightly_capacity table if available, otherwise count reservations
+    const capRow = capacityData?.find((c: { date: string; capacity: number }) => c.date === nightDate);
+    const nightCapacity = capRow?.capacity ?? maxCapacity;
+
     const { count } = await supabaseAdmin
       .from('reservations')
       .select('*', { count: 'exact', head: true })
-      .eq('night_date', nightDate)
+      .eq('date', nightDate)
       .eq('status', 'confirmed');
 
-    if ((count ?? 0) >= maxCapacity) {
+    if ((count ?? 0) >= nightCapacity) {
       fullNights.push(nightDate);
     }
   }
 
-  // Create plan with server-verified price
-  const { data: plan, error: planError } = await supabaseAdmin
-    .from('plans')
-    .insert({
-      parent_id: parentId,
-      child_id: childId,
-      nights_per_week: nightsPerWeek,
-      price_cents: priceCents,
-      status: 'active',
-      week_start: weekStart,
-    })
+  console.log(`[bookings POST] capacity check: fullNights=${JSON.stringify(fullNights)}`);
+
+  // Create an overnight_block (the per-user booking record)
+  const blockInsert: Record<string, unknown> = {
+    parent_id: parentId,
+    child_id: childId,
+    nights_per_week: nightsPerWeek,
+    weekly_price_cents: priceCents,
+    status: 'active',
+    payment_status: 'pending',
+    week_start: weekStart,
+    multi_child_discount_pct: 0,
+  };
+  if (planId) {
+    blockInsert.plan_id = planId;
+  }
+
+  console.log(`[bookings POST] inserting overnight_block:`, JSON.stringify(blockInsert));
+
+  const { data: block, error: blockError } = await supabaseAdmin
+    .from('overnight_blocks')
+    .insert(blockInsert)
     .select()
     .single();
 
-  if (planError) return NextResponse.json({ error: 'Failed to create plan' }, { status: 400 });
+  if (blockError) {
+    console.error(`[bookings POST] overnight_block insert failed:`, blockError);
+    if (blockError.message?.includes('permission denied') || blockError.code === '42501') {
+      return errorResponse('RLS_BLOCKED', 'Permission denied creating booking', 403, blockError.message);
+    }
+    return errorResponse('DB_INSERT_FAILED', 'Failed to create booking', 400, blockError.message);
+  }
 
-  // Create confirmed reservations for available nights
+  console.log(`[bookings POST] overnight_block created: id=${block.id}`);
+
+  // Create reservations for available nights
   const availableNights = selectedNights.filter((n: string) => !fullNights.includes(n));
   if (availableNights.length > 0) {
+    const reservationRows = availableNights.map((nightDate: string) => ({
+      overnight_block_id: block.id,
+      child_id: childId,
+      date: nightDate,
+      status: 'pending_payment',
+    }));
+
+    console.log(`[bookings POST] inserting ${reservationRows.length} reservations`);
+
     const { error: resError } = await supabaseAdmin
       .from('reservations')
-      .insert(
-        availableNights.map((nightDate: string) => ({
-          plan_id: plan.id,
-          child_id: childId,
-          parent_id: parentId,
-          night_date: nightDate,
-          status: 'confirmed',
-        }))
-      );
-    if (resError) return NextResponse.json({ error: 'Failed to create reservations' }, { status: 400 });
+      .insert(reservationRows);
+
+    if (resError) {
+      console.error(`[bookings POST] reservations insert failed:`, resError);
+      return errorResponse('DB_INSERT_FAILED', 'Failed to create reservations', 400, resError.message);
+    }
   }
 
   // Add to waitlist for full nights
@@ -171,20 +301,23 @@ export async function POST(req: NextRequest) {
     const { count: waitlistCount } = await supabaseAdmin
       .from('waitlist')
       .select('*', { count: 'exact', head: true })
-      .eq('night_date', nightDate)
+      .eq('date', nightDate)
       .eq('status', 'waiting');
 
     await supabaseAdmin.from('waitlist').insert({
       parent_id: parentId,
       child_id: childId,
-      night_date: nightDate,
-      position: (waitlistCount ?? 0) + 1,
+      date: nightDate,
       status: 'waiting',
     });
+
+    console.log(`[bookings POST] waitlisted: date=${nightDate} position=${(waitlistCount ?? 0) + 1}`);
   }
 
+  console.log(`[bookings POST] booking complete: blockId=${block.id} confirmed=${availableNights.length} waitlisted=${fullNights.length}`);
+
   return NextResponse.json({
-    plan,
+    plan: block,
     confirmedNights: availableNights,
     waitlistedNights: fullNights,
   });
@@ -193,71 +326,89 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const supabase = getUserClient(req);
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!user) return errorResponse('AUTH_REQUIRED', 'Unauthorized', 401);
 
   const parentId = await resolveParentId(user.id);
-  if (!parentId) return NextResponse.json({ error: 'Parent profile not found' }, { status: 400 });
+  if (!parentId) return errorResponse('AUTH_REQUIRED', 'Parent profile not found', 400);
 
   const { searchParams } = new URL(req.url);
   const reservationId = searchParams.get('id');
-  if (!reservationId) return NextResponse.json({ error: 'Reservation ID is required' }, { status: 400 });
+  if (!reservationId) return errorResponse('INVALID_PLAN_SELECTION', 'Reservation ID is required', 400);
 
-  const { error } = await supabase
+  // Verify the reservation belongs to a child of this parent via overnight_block
+  const { data: reservation } = await supabaseAdmin
+    .from('reservations')
+    .select('id, overnight_block_id')
+    .eq('id', reservationId)
+    .single();
+
+  if (!reservation) return errorResponse('INVALID_PLAN_SELECTION', 'Reservation not found', 404);
+
+  const { data: ownerBlock } = await supabaseAdmin
+    .from('overnight_blocks')
+    .select('id')
+    .eq('id', reservation.overnight_block_id)
+    .eq('parent_id', parentId)
+    .single();
+
+  if (!ownerBlock) return errorResponse('CHILD_NOT_OWNED', 'Reservation does not belong to you', 403);
+
+  const { error } = await supabaseAdmin
     .from('reservations')
     .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-    .eq('id', reservationId)
-    .eq('parent_id', parentId);
+    .eq('id', reservationId);
 
-  if (error) return NextResponse.json({ error: 'Failed to cancel reservation' }, { status: 400 });
+  if (error) return errorResponse('DB_INSERT_FAILED', 'Failed to cancel reservation', 400, error.message);
   return NextResponse.json({ success: true });
 }
 
 export async function PATCH(req: NextRequest) {
   const supabase = getUserClient(req);
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!user) return errorResponse('AUTH_REQUIRED', 'Unauthorized', 401);
 
   const parentId = await resolveParentId(user.id);
-  if (!parentId) return NextResponse.json({ error: 'Parent profile not found' }, { status: 400 });
+  if (!parentId) return errorResponse('AUTH_REQUIRED', 'Parent profile not found', 400);
 
   let body;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }); }
+  try { body = await req.json(); } catch { return errorResponse('INVALID_PLAN_SELECTION', 'Invalid request body', 400); }
 
   const { planId, action } = body;
   if (!planId || typeof planId !== 'string') {
-    return NextResponse.json({ error: 'planId is required' }, { status: 400 });
+    return errorResponse('INVALID_PLAN_SELECTION', 'planId is required', 400);
   }
 
   if (action !== 'cancel') {
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    return errorResponse('INVALID_PLAN_SELECTION', 'Invalid action', 400);
   }
 
-  // Verify plan belongs to this parent
-  const { data: plan } = await supabaseAdmin
-    .from('plans')
+  // Verify overnight_block belongs to this parent
+  const { data: block } = await supabaseAdmin
+    .from('overnight_blocks')
     .select('id, parent_id, stripe_subscription_id, status')
     .eq('id', planId)
     .eq('parent_id', parentId)
     .single();
 
-  if (!plan) return NextResponse.json({ error: 'Plan not found' }, { status: 404 });
-  if (plan.status === 'cancelled') return NextResponse.json({ error: 'Plan is already cancelled' }, { status: 400 });
+  if (!block) return errorResponse('INVALID_PLAN_SELECTION', 'Booking not found', 404);
+  if (block.status === 'cancelled') return errorResponse('INVALID_PLAN_SELECTION', 'Booking is already cancelled', 400);
 
   // Cancel Stripe subscription if exists
-  if (plan.stripe_subscription_id) {
+  if (block.stripe_subscription_id) {
     try {
-      await cancelSubscription(plan.stripe_subscription_id);
+      await cancelSubscription(block.stripe_subscription_id);
     } catch {
-      // Log but don't block — plan may have been cancelled on Stripe already
+      // Log but don't block — subscription may have been cancelled on Stripe already
+      console.warn(`[bookings PATCH] Stripe cancel failed for subscription: ${block.stripe_subscription_id}`);
     }
   }
 
-  // Cancel the plan in the database
+  // Cancel the overnight_block
   const { error } = await supabaseAdmin
-    .from('plans')
+    .from('overnight_blocks')
     .update({ status: 'cancelled', updated_at: new Date().toISOString() })
     .eq('id', planId);
 
-  if (error) return NextResponse.json({ error: 'Failed to cancel plan' }, { status: 400 });
+  if (error) return errorResponse('DB_INSERT_FAILED', 'Failed to cancel booking', 400, error.message);
   return NextResponse.json({ success: true });
 }
