@@ -22,20 +22,17 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (!user || userError) {
+        console.log('[dashboard] no authenticated user, redirecting to login', { error: userError?.message });
         router.push('/login');
         return;
       }
 
-      // parents.id = auth user ID
-      const { data: parentRow } = await supabase
-        .from('parents')
-        .select('id')
-        .eq('id', user.id)
-        .single();
+      console.log('[dashboard] auth user loaded', { userId: user.id, email: user.email });
 
-      const parentId = parentRow?.id ?? user.id;
+      // parents.id = auth user ID — single canonical identity
+      const parentId = user.id;
 
       const [profileRes, plansRes, reservationsRes, waitlistRes, paymentsRes] = await Promise.all([
         supabase.from('parents').select('*').eq('id', user.id).single(),
@@ -44,6 +41,12 @@ export default function DashboardPage() {
         supabase.from('waitlist').select('*, child:children(*)').eq('parent_id', parentId).in('status', ['waiting', 'offered']),
         supabase.from('payments').select('*').eq('parent_id', parentId).order('created_at', { ascending: false }).limit(3),
       ]);
+
+      console.log('[dashboard] profile lookup', {
+        userId: user.id,
+        profileFound: !!profileRes.data,
+        profileError: profileRes.error?.message ?? null,
+      });
 
       if (profileRes.data) setProfile(profileRes.data);
       if (plansRes.data) setPlans(plansRes.data);

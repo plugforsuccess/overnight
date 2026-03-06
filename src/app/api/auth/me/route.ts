@@ -14,6 +14,7 @@ export async function POST(req: NextRequest) {
   const authHeader = req.headers.get('Authorization');
   const token = authHeader?.replace('Bearer ', '') || '';
   if (!token) {
+    console.log('[/api/auth/me] missing token');
     return NextResponse.json({ error: 'Missing token' }, { status: 401 });
   }
 
@@ -23,20 +24,34 @@ export async function POST(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { global: { headers: { Authorization: `Bearer ${token}` } } },
   );
-  const { data: { user } } = await supabase.auth.getUser();
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (!user) {
+    console.log('[/api/auth/me] invalid token', { error: userError?.message });
     return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
   }
 
+  console.log('[/api/auth/me] user verified', { userId: user.id, email: user.email });
+
   // parents.id = auth.users.id — look up directly by id
-  const { data: parent } = await supabaseAdmin
+  const { data: parent, error: parentError } = await supabaseAdmin
     .from('parents')
     .select('id, role')
     .eq('id', user.id)
     .single();
 
+  console.log('[/api/auth/me] parent lookup', {
+    userId: user.id,
+    email: user.email,
+    parentFound: !!parent,
+    parentError: parentError?.message ?? null,
+    role: parent?.role ?? null,
+  });
+
   if (!parent) {
-    return NextResponse.json({ error: 'No parent profile found for this account' }, { status: 404 });
+    return NextResponse.json(
+      { error: 'No parent profile found for this account', code: 'PROFILE_MISSING' },
+      { status: 404 },
+    );
   }
 
   return NextResponse.json({ role: parent.role ?? 'parent' });

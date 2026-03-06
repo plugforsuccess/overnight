@@ -25,27 +25,59 @@ export default function LoginPage() {
       });
 
       if (authError) {
+        console.log('[login] signInWithPassword failed', { email, error: authError.message });
         setError(authError.message);
         setLoading(false);
         return;
       }
 
+      console.log('[login] signInWithPassword succeeded', { email });
+
       // Resolve parent profile server-side (bypasses RLS)
       const { data: { session } } = await supabase.auth.getSession();
-      const meRes = await fetch('/api/auth/me', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${session!.access_token}` },
-      });
 
-      if (meRes.ok) {
-        const { role } = await meRes.json();
-        router.push(role === 'admin' ? '/admin' : '/dashboard');
-      } else {
-        setError('Your account exists but no parent profile was found. Please contact support.');
+      if (!session) {
+        console.log('[login] no session after sign-in', { email });
+        setError('Sign-in succeeded but no session was established. Please try again.');
         setLoading(false);
         return;
       }
-    } catch {
+
+      let meRes: Response;
+      try {
+        meRes = await fetch('/api/auth/me', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+      } catch (fetchError) {
+        console.log('[login] /api/auth/me fetch failed', { email, error: String(fetchError) });
+        setError('Could not verify your account. Please check your connection and try again.');
+        setLoading(false);
+        return;
+      }
+
+      if (meRes.ok) {
+        const { role } = await meRes.json();
+        console.log('[login] /api/auth/me success', { email, role });
+        router.push(role === 'admin' ? '/admin' : '/dashboard');
+      } else {
+        const body = await meRes.json().catch(() => ({}));
+        console.log('[login] /api/auth/me failed', { email, status: meRes.status, body });
+
+        if (body.code === 'PROFILE_MISSING') {
+          setError(
+            'Your account exists but your parent profile is missing. ' +
+            'This can happen if signup did not complete. Please contact support or try signing up again with a different email.'
+          );
+        } else if (meRes.status === 401) {
+          setError('Your session has expired. Please try signing in again.');
+        } else {
+          setError('Unable to load your profile. Please try again or contact support.');
+        }
+        setLoading(false);
+      }
+    } catch (err) {
+      console.log('[login] unexpected error', { email, error: String(err) });
       setError('Something went wrong. Please try again.');
       setLoading(false);
     }
