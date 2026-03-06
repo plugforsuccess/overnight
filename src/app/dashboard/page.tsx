@@ -38,7 +38,7 @@ export default function DashboardPage() {
       const parentId = parentRow?.id ?? user.id;
 
       const [profileRes, plansRes, reservationsRes, waitlistRes, paymentsRes] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', user.id).single(),
+        supabase.from('parents').select('*').eq('auth_user_id', user.id).single(),
         supabase.from('plans').select('*, child:children(*)').eq('parent_id', parentId).order('created_at', { ascending: false }),
         supabase.from('reservations').select('*, child:children(*)').eq('parent_id', parentId).eq('status', 'confirmed').order('night_date', { ascending: true }),
         supabase.from('waitlist').select('*, child:children(*)').eq('parent_id', parentId).in('status', ['waiting', 'offered']),
