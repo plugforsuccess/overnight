@@ -43,7 +43,16 @@ END $$;
 -- FUNCTIONS
 -- ============================================================
 
--- Auto-set updated_at on row updates
+-- Auto-set updated_at on row updates (canonical name)
+CREATE OR REPLACE FUNCTION public.update_timestamp()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+-- Legacy alias — kept for backward compatibility
 CREATE OR REPLACE FUNCTION public.set_updated_at()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -76,26 +85,48 @@ $$;
 -- TRIGGERS
 -- ============================================================
 
--- set_updated_at triggers (idempotent: DROP IF EXISTS then CREATE)
+-- update_timestamp triggers (idempotent: DROP IF EXISTS then CREATE)
+-- Applied to ALL tables with updated_at columns.
+
+DROP TRIGGER IF EXISTS parents_update_timestamp ON public.parents;
+CREATE TRIGGER parents_update_timestamp
+  BEFORE UPDATE ON public.parents
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
+
+DROP TRIGGER IF EXISTS children_update_timestamp ON public.children;
+CREATE TRIGGER children_update_timestamp
+  BEFORE UPDATE ON public.children
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
+
 DROP TRIGGER IF EXISTS child_allergies_set_updated_at ON public.child_allergies;
 CREATE TRIGGER child_allergies_set_updated_at
   BEFORE UPDATE ON public.child_allergies
-  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
 
 DROP TRIGGER IF EXISTS child_allergy_action_plans_set_updated_at ON public.child_allergy_action_plans;
 CREATE TRIGGER child_allergy_action_plans_set_updated_at
   BEFORE UPDATE ON public.child_allergy_action_plans
-  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
 
 DROP TRIGGER IF EXISTS child_emergency_contacts_set_updated_at ON public.child_emergency_contacts;
 CREATE TRIGGER child_emergency_contacts_set_updated_at
   BEFORE UPDATE ON public.child_emergency_contacts
-  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
 
 DROP TRIGGER IF EXISTS child_authorized_pickups_set_updated_at ON public.child_authorized_pickups;
 CREATE TRIGGER child_authorized_pickups_set_updated_at
   BEFORE UPDATE ON public.child_authorized_pickups
-  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
+
+DROP TRIGGER IF EXISTS child_medical_profiles_update_timestamp ON public.child_medical_profiles;
+CREATE TRIGGER child_medical_profiles_update_timestamp
+  BEFORE UPDATE ON public.child_medical_profiles
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
+
+DROP TRIGGER IF EXISTS child_attendance_sessions_update_timestamp ON public.child_attendance_sessions;
+CREATE TRIGGER child_attendance_sessions_update_timestamp
+  BEFORE UPDATE ON public.child_attendance_sessions
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
 
 DROP TRIGGER IF EXISTS trg_max_two_emergency_contacts ON public.child_emergency_contacts;
 CREATE TRIGGER trg_max_two_emergency_contacts
@@ -214,6 +245,10 @@ ALTER TABLE public.child_allergy_action_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.child_emergency_contacts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.child_authorized_pickups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.child_medical_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.child_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.child_attendance_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pickup_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 
@@ -482,6 +517,65 @@ CREATE POLICY admins_manage_medical_profiles ON public.child_medical_profiles
     EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
   );
 
+-- ── child_events (append-only ledger) ────────────────────────
+DROP POLICY IF EXISTS parents_select_child_events ON public.child_events;
+CREATE POLICY parents_select_child_events ON public.child_events
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS parents_insert_child_events ON public.child_events;
+CREATE POLICY parents_insert_child_events ON public.child_events
+  FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+-- NO update/delete for parents — events are append-only
+
+DROP POLICY IF EXISTS admins_manage_child_events ON public.child_events;
+CREATE POLICY admins_manage_child_events ON public.child_events
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── child_attendance_sessions ────────────────────────────────
+DROP POLICY IF EXISTS parents_select_attendance ON public.child_attendance_sessions;
+CREATE POLICY parents_select_attendance ON public.child_attendance_sessions
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+-- Only admins/staff can manage attendance sessions
+DROP POLICY IF EXISTS admins_manage_attendance ON public.child_attendance_sessions;
+CREATE POLICY admins_manage_attendance ON public.child_attendance_sessions
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── audit_log ────────────────────────────────────────────────
+DROP POLICY IF EXISTS parents_select_own_audit ON public.audit_log;
+CREATE POLICY parents_select_own_audit ON public.audit_log
+  FOR SELECT USING (actor_id = auth.uid());
+
+DROP POLICY IF EXISTS admins_manage_audit ON public.audit_log;
+CREATE POLICY admins_manage_audit ON public.audit_log
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── pickup_events ────────────────────────────────────────────
+DROP POLICY IF EXISTS parents_select_pickup_events ON public.pickup_events;
+CREATE POLICY parents_select_pickup_events ON public.pickup_events
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS admins_manage_pickup_events ON public.pickup_events;
+CREATE POLICY admins_manage_pickup_events ON public.pickup_events
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
 -- ── onboarding_status check ──────────────────────────────────
 ALTER TABLE public.parents DROP CONSTRAINT IF EXISTS chk_parents_onboarding_status;
 ALTER TABLE public.parents ADD CONSTRAINT chk_parents_onboarding_status
@@ -493,3 +587,26 @@ ALTER TABLE public.parents ADD CONSTRAINT chk_parents_onboarding_status
     'emergency_contact_added',
     'complete'
   ));
+
+-- ── attendance session status check ──────────────────────────
+ALTER TABLE public.child_attendance_sessions DROP CONSTRAINT IF EXISTS chk_attendance_status;
+ALTER TABLE public.child_attendance_sessions ADD CONSTRAINT chk_attendance_status
+  CHECK (status IN (
+    'scheduled',
+    'checked_in',
+    'in_care',
+    'ready_for_pickup',
+    'checked_out',
+    'cancelled'
+  ));
+
+-- ── emergency contact deduplication ──────────────────────────
+-- Prevent same phone number being added twice for same child
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes WHERE indexname = 'child_emergency_contacts_child_id_phone_unique'
+  ) THEN
+    CREATE UNIQUE INDEX child_emergency_contacts_child_id_phone_unique
+      ON public.child_emergency_contacts (child_id, phone);
+  END IF;
+END $$;

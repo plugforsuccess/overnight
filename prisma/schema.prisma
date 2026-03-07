@@ -9,8 +9,9 @@
 //
 // NOT managed by Prisma (remain in SQL):
 //   - RLS policies (supabase/rls-policies.sql)
-//   - Triggers: set_updated_at, enforce_max_two_emergency_contacts
+//   - Triggers: update_timestamp (global updated_at), enforce_max_two_emergency_contacts
 //   - Functions: handle_new_user (auth.users → parents auto-create)
+//   - Functions: update_timestamp (global updated_at automation)
 //   - Postgres enums: allergy_type, allergy_severity, treatment_type
 //   - CHECK constraints (enforced at DB level, documented inline)
 //   - Partial unique indexes (documented inline)
@@ -94,8 +95,10 @@ model Child {
   child_allergies    ChildAllergy[]
   emergency_contacts ChildEmergencyContact[]
   authorized_pickups ChildAuthorizedPickup[]
-  pickup_events      PickupEvent[]
-  medical_profile    ChildMedicalProfile?
+  pickup_events         PickupEvent[]
+  medical_profile       ChildMedicalProfile?
+  events                ChildEvent[]
+  attendance_sessions   ChildAttendanceSession[]
 
   @@index([parent_id], map: "idx_children_parent_id")
   @@map("children")
@@ -199,6 +202,7 @@ model ChildEmergencyContact {
   child Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
 
   @@unique([child_id, priority], map: "child_emergency_contacts_child_id_priority_unique")
+  @@unique([child_id, phone], map: "child_emergency_contacts_child_id_phone_unique")
   @@map("child_emergency_contacts")
 }
 
@@ -230,6 +234,60 @@ model ChildAuthorizedPickup {
   pickup_events PickupEvent[]
 
   @@map("child_authorized_pickups")
+}
+
+// ─── child_events ──────────────────────────────────────────────────────────
+// Append-only child safety event ledger. Never update or delete.
+// Acts as an operational audit log for childcare operations.
+model ChildEvent {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id   String  @db.Uuid
+  center_id  String? @db.Uuid
+  event_type String  // e.g. child_checked_in, child_checked_out, medical_alert_triggered, etc.
+  event_data Json    @default("{}") @db.JsonB
+  created_by String? @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  child Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
+
+  @@index([child_id, created_at], map: "idx_child_events_child_created")
+  @@index([event_type], map: "idx_child_events_type")
+  @@map("child_events")
+}
+
+// ─── child_attendance_sessions ─────────────────────────────────────────────
+// Structured attendance tracking for overnight care sessions.
+// Powers staff dashboards, billing calculations, incident reporting, pickup verification.
+// CHECK: status IN (scheduled, checked_in, in_care, ready_for_pickup, checked_out, cancelled)
+model ChildAttendanceSession {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id        String    @db.Uuid
+  center_id       String?   @db.Uuid
+  reservation_id  String?   @db.Uuid
+
+  check_in_at     DateTime? @db.Timestamptz(6)
+  check_out_at    DateTime? @db.Timestamptz(6)
+  checked_in_by   String?   @db.Uuid
+  checked_out_by  String?   @db.Uuid
+
+  pickup_person_name   String?
+  pickup_relationship  String?
+  pickup_verified      Boolean @default(false)
+
+  status String @default("scheduled") // CHECK: scheduled | checked_in | in_care | ready_for_pickup | checked_out | cancelled
+  notes  String?
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  child       Child        @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  reservation Reservation? @relation(fields: [reservation_id], references: [id], onDelete: SetNull)
+
+  @@index([child_id, created_at], map: "idx_attendance_child_created")
+  @@index([status], map: "idx_attendance_status")
+  @@map("child_attendance_sessions")
 }
 
 // ─── plans ────────────────────────────────────────────────────────────────────
@@ -304,8 +362,9 @@ model Reservation {
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  child           Child          @relation(fields: [child_id], references: [id], onDelete: Cascade)
-  overnight_block OvernightBlock @relation(fields: [overnight_block_id], references: [id], onDelete: Cascade)
+  child               Child                    @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  overnight_block     OvernightBlock           @relation(fields: [overnight_block_id], references: [id], onDelete: Cascade)
+  attendance_sessions ChildAttendanceSession[]
 
   @@index([date], map: "idx_reservations_date")
   @@index([overnight_block_id], map: "idx_reservations_block")

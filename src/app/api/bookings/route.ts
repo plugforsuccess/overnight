@@ -11,6 +11,7 @@ type ErrorCode =
   | 'AUTH_REQUIRED'
   | 'PROFILE_INCOMPLETE'
   | 'CHILD_NOT_OWNED'
+  | 'CHILD_INACTIVE'
   | 'INVALID_PLAN_SELECTION'
   | 'STRIPE_CONFIG_ERROR'
   | 'DB_INSERT_FAILED'
@@ -141,10 +142,10 @@ export async function POST(req: NextRequest) {
 
   const { childId, nightsPerWeek, selectedNights, weekStart } = parsed.data;
 
-  // Verify child belongs to this parent
+  // Verify child belongs to this parent and is active
   const { data: child } = await supabaseAdmin
     .from('children')
-    .select('id, first_name, last_name')
+    .select('id, first_name, last_name, active')
     .eq('id', childId)
     .eq('parent_id', parentId)
     .single();
@@ -152,6 +153,14 @@ export async function POST(req: NextRequest) {
   if (!child) {
     console.error(`[bookings POST] child ownership failed: childId=${childId} parentId=${parentId}`);
     return errorResponse('CHILD_NOT_OWNED', 'Child not found or does not belong to you', 403);
+  }
+
+  if (!child.active) {
+    return errorResponse(
+      'CHILD_INACTIVE',
+      `${child.first_name} ${child.last_name}'s profile is currently inactive. Please reactivate to book.`,
+      400,
+    );
   }
   console.log(`[bookings POST] child ownership valid: childId=${childId} name=${child.first_name} ${child.last_name}`);
 

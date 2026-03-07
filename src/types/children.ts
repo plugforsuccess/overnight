@@ -162,6 +162,58 @@ export const ONBOARDING_STATUSES = [
 ] as const;
 export type OnboardingStatus = typeof ONBOARDING_STATUSES[number];
 
+// ─── Child Event (append-only safety ledger) ─────────────────────────────────
+
+export const CHILD_EVENT_TYPES = [
+  'child_checked_in',
+  'child_checked_out',
+  'authorized_pickup_verified',
+  'medical_alert_triggered',
+  'incident_reported',
+  'emergency_contact_called',
+] as const;
+export type ChildEventType = typeof CHILD_EVENT_TYPES[number];
+
+export interface ChildEventRow {
+  id: string;
+  child_id: string;
+  center_id: string | null;
+  event_type: string;
+  event_data: Record<string, unknown>;
+  created_by: string | null;
+  created_at: string;
+}
+
+// ─── Attendance Session ──────────────────────────────────────────────────────
+
+export const ATTENDANCE_STATUSES = [
+  'scheduled',
+  'checked_in',
+  'in_care',
+  'ready_for_pickup',
+  'checked_out',
+  'cancelled',
+] as const;
+export type AttendanceStatus = typeof ATTENDANCE_STATUSES[number];
+
+export interface ChildAttendanceSessionRow {
+  id: string;
+  child_id: string;
+  center_id: string | null;
+  reservation_id: string | null;
+  check_in_at: string | null;
+  check_out_at: string | null;
+  checked_in_by: string | null;
+  checked_out_by: string | null;
+  pickup_person_name: string | null;
+  pickup_relationship: string | null;
+  pickup_verified: boolean;
+  status: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // ─── Full child with nested data (for UI) ────────────────────────────────────
 
 export interface ChildWithDetails extends ChildRow {
