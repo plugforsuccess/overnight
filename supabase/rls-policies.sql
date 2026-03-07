@@ -449,3 +449,61 @@ CREATE POLICY admins_manage_authorized_pickups ON public.child_authorized_pickup
   FOR ALL USING (
     EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
   );
+
+
+-- ============================================================
+-- EVENT OUTBOX, DOCUMENT CONSENT – RLS & CONSTRAINTS
+-- ============================================================
+
+-- ── event_outbox ──────────────────────────────────────────────
+-- Service-only: no user can read/write outbox rows via RLS.
+-- All access goes through supabaseAdmin (service role).
+ALTER TABLE public.event_outbox ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS event_outbox_service_only ON public.event_outbox;
+CREATE POLICY event_outbox_service_only ON public.event_outbox
+  FOR ALL USING (false);
+
+-- ── parent_documents ──────────────────────────────────────────
+ALTER TABLE public.parent_documents ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS parent_documents_read_active ON public.parent_documents;
+CREATE POLICY parent_documents_read_active ON public.parent_documents
+  FOR SELECT USING (active = true);
+
+DROP POLICY IF EXISTS admins_manage_parent_documents ON public.parent_documents;
+CREATE POLICY admins_manage_parent_documents ON public.parent_documents
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── document_versions ─────────────────────────────────────────
+ALTER TABLE public.document_versions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS document_versions_read_published ON public.document_versions;
+CREATE POLICY document_versions_read_published ON public.document_versions
+  FOR SELECT USING (published = true);
+
+DROP POLICY IF EXISTS admins_manage_document_versions ON public.document_versions;
+CREATE POLICY admins_manage_document_versions ON public.document_versions
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── document_signatures ───────────────────────────────────────
+-- Immutable: parents can SELECT and INSERT their own, never UPDATE or DELETE.
+ALTER TABLE public.document_signatures ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS document_signatures_own_read ON public.document_signatures;
+CREATE POLICY document_signatures_own_read ON public.document_signatures
+  FOR SELECT USING (parent_id = auth.uid());
+
+DROP POLICY IF EXISTS document_signatures_own_insert ON public.document_signatures;
+CREATE POLICY document_signatures_own_insert ON public.document_signatures
+  FOR INSERT WITH CHECK (parent_id = auth.uid());
+
+DROP POLICY IF EXISTS admins_read_document_signatures ON public.document_signatures;
+CREATE POLICY admins_read_document_signatures ON public.document_signatures
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );

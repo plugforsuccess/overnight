@@ -59,6 +59,7 @@ model Parent {
   audit_logs       AuditLog[]
   pickup_verifications PickupEvent[] @relation("pickup_verifier")
   settings        ParentSettings?
+  document_signatures DocumentSignature[]
 
   @@map("parents")
 }
@@ -524,4 +525,97 @@ model BillingEvent {
   subscription Subscription? @relation(fields: [subscription_id], references: [id])
 
   @@map("billing_events")
+}
+
+// ─── event_outbox ────────────────────────────────────────────────────────────
+// Transactional outbox pattern for guaranteed async event delivery.
+// API routes INSERT an outbox row in the same DB transaction as the domain write.
+// A worker polls for pending rows, dispatches notifications (email/SMS/push),
+// and marks them as delivered. Failed deliveries are retried with backoff.
+// CHECK: status IN (pending, processing, delivered, failed, dead_letter)
+model EventOutbox {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_type      String    // e.g. booking.created, reservation.confirmed, pickup.verified
+  aggregate_type  String    // e.g. reservation, attendance, incident
+  aggregate_id    String    @db.Uuid
+  payload         Json      @db.JsonB
+  status          String    @default("pending") // pending, processing, delivered, failed, dead_letter
+  correlation_id  String?   // links to the originating API request
+  actor_id        String?   @db.Uuid
+  retry_count     Int       @default(0)
+  max_retries     Int       @default(5)
+  last_error      String?
+  next_retry_at   DateTime? @db.Timestamptz(6)
+  processed_at    DateTime? @db.Timestamptz(6)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([status, next_retry_at], map: "idx_event_outbox_pending")
+  @@index([aggregate_type, aggregate_id], map: "idx_event_outbox_aggregate")
+  @@index([event_type], map: "idx_event_outbox_event_type")
+  @@map("event_outbox")
+}
+
+// ─── parent_documents ───────────────────────────────────────────────────────
+// Catalog of policy documents that parents must acknowledge.
+// Examples: terms of service, medical consent, photo release, allergy policy.
+model ParentDocument {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slug        String  @unique // e.g. 'terms-of-service', 'medical-consent'
+  title       String
+  description String?
+  required    Boolean @default(true) // must be signed before booking
+  active      Boolean @default(true)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  versions DocumentVersion[]
+
+  @@map("parent_documents")
+}
+
+// ─── document_versions ──────────────────────────────────────────────────────
+// Versioned content for each document. When policy text changes, a new version
+// is created. Existing signatures remain linked to the version they signed.
+model DocumentVersion {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  document_id String  @db.Uuid
+  version     Int     // monotonically increasing per document
+  content     String  // full text / markdown of the policy
+  changelog   String? // what changed from previous version
+  published   Boolean @default(false)
+
+  published_at DateTime? @db.Timestamptz(6)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  document   ParentDocument     @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  signatures DocumentSignature[]
+
+  @@unique([document_id, version], map: "uniq_document_version")
+  @@index([document_id, published], map: "idx_document_version_published")
+  @@map("document_versions")
+}
+
+// ─── document_signatures ────────────────────────────────────────────────────
+// Immutable record of a parent signing/acknowledging a specific document version.
+// Once created, these rows must never be updated or deleted (legal requirement).
+model DocumentSignature {
+  id         String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parent_id  String @db.Uuid
+  version_id String @db.Uuid
+  ip_address String? // IP at time of signing
+  user_agent String? // browser/device at time of signing
+
+  signed_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  parent  Parent          @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+  version DocumentVersion @relation(fields: [version_id], references: [id])
+
+  @@unique([parent_id, version_id], map: "uniq_parent_document_signature")
+  @@index([parent_id], map: "idx_document_signatures_parent")
+  @@map("document_signatures")
 }
