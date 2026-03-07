@@ -62,6 +62,7 @@ model Parent {
   audit_logs       AuditLog[]
   pickup_verifications PickupEvent[] @relation("pickup_verifier")
   settings        ParentSettings?
+  staff_memberships CenterStaffMembership[]
 
   @@map("parents")
 }
@@ -99,6 +100,7 @@ model Child {
   medical_profile       ChildMedicalProfile?
   events                ChildEvent[]
   attendance_sessions   ChildAttendanceSession[]
+  incident_reports      IncidentReport[]
 
   @@index([parent_id], map: "idx_children_parent_id")
   @@map("children")
@@ -282,12 +284,113 @@ model ChildAttendanceSession {
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  child       Child        @relation(fields: [child_id], references: [id], onDelete: Cascade)
-  reservation Reservation? @relation(fields: [reservation_id], references: [id], onDelete: SetNull)
+  child            Child            @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  reservation      Reservation?     @relation(fields: [reservation_id], references: [id], onDelete: SetNull)
+  incident_reports IncidentReport[]
+  pickup_verification PickupVerification?
 
   @@index([child_id, created_at], map: "idx_attendance_child_created")
   @@index([status], map: "idx_attendance_status")
   @@map("child_attendance_sessions")
+}
+
+// ─── reservation_events ────────────────────────────────────────────────────
+// Append-only ledger tracking reservation lifecycle history.
+// Never update or delete — preserves booking history for billing disputes and audits.
+model ReservationEvent {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_id String  @db.Uuid
+  event_type     String  // reservation_created, reservation_confirmed, reservation_cancelled, etc.
+  event_data     Json    @default("{}") @db.JsonB
+  created_by     String? @db.Uuid
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  reservation Reservation @relation(fields: [reservation_id], references: [id], onDelete: Cascade)
+
+  @@index([reservation_id, created_at], map: "idx_reservation_events_res_created")
+  @@index([event_type], map: "idx_reservation_events_type")
+  @@map("reservation_events")
+}
+
+// ─── incident_reports ──────────────────────────────────────────────────────
+// First-class structured incident records linked to attendance sessions.
+// Supports legal defensibility, parent notification tracking, and compliance.
+// CHECK: severity IN (low, medium, high, critical)
+// CHECK: status IN (open, investigating, resolved, closed)
+model IncidentReport {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id              String    @db.Uuid
+  attendance_session_id String?   @db.Uuid
+  center_id             String?   @db.Uuid
+
+  severity String  // CHECK: low | medium | high | critical
+  category String  // injury, illness, behavioral, medication_error, safety, other
+  summary  String
+  details  String?
+
+  reported_by        String?   @db.Uuid
+  parent_notified_at DateTime? @db.Timestamptz(6)
+  resolved_at        DateTime? @db.Timestamptz(6)
+  closed_at          DateTime? @db.Timestamptz(6)
+  status             String    @default("open") // CHECK: open | investigating | resolved | closed
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  child              Child                   @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  attendance_session ChildAttendanceSession? @relation(fields: [attendance_session_id], references: [id], onDelete: SetNull)
+
+  @@index([child_id, created_at], map: "idx_incident_reports_child_created")
+  @@index([status], map: "idx_incident_reports_status")
+  @@index([severity], map: "idx_incident_reports_severity")
+  @@map("incident_reports")
+}
+
+// ─── center_staff_memberships ──────────────────────────────────────────────
+// Normalized staff/center role assignment for multi-center RLS.
+// Replaces ad hoc role flags with explicit membership records.
+// CHECK: role IN (staff, admin, center_admin, super_admin)
+model CenterStaffMembership {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id   String  @db.Uuid
+  center_id String  @db.Uuid
+  role      String  // CHECK: staff | admin | center_admin | super_admin
+  active    Boolean @default(true)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  user Parent @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, center_id], map: "center_staff_memberships_user_center_unique")
+  @@index([center_id, active], map: "idx_staff_memberships_center_active")
+  @@map("center_staff_memberships")
+}
+
+// ─── pickup_verifications ──────────────────────────────────────────────────
+// Dedicated immutable record of each pickup verification event.
+// High-risk enough to warrant first-class storage separate from attendance.
+// One-to-one with attendance session (one verification per session).
+model PickupVerification {
+  id                     String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  attendance_session_id  String  @unique @db.Uuid
+  authorized_pickup_id   String? @db.Uuid
+  verified_name          String
+  verified_relationship  String
+  verification_method    String  // pin, photo_id, parent_self
+  verified_by            String? @db.Uuid
+  verified_at            DateTime @default(now()) @db.Timestamptz(6)
+  notes                  String?
+  created_at             DateTime @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  attendance_session ChildAttendanceSession @relation(fields: [attendance_session_id], references: [id], onDelete: Cascade)
+
+  @@index([verified_at], map: "idx_pickup_verifications_verified_at")
+  @@map("pickup_verifications")
 }
 
 // ─── plans ────────────────────────────────────────────────────────────────────
@@ -365,6 +468,7 @@ model Reservation {
   child               Child                    @relation(fields: [child_id], references: [id], onDelete: Cascade)
   overnight_block     OvernightBlock           @relation(fields: [overnight_block_id], references: [id], onDelete: Cascade)
   attendance_sessions ChildAttendanceSession[]
+  reservation_events  ReservationEvent[]
 
   @@index([date], map: "idx_reservations_date")
   @@index([overnight_block_id], map: "idx_reservations_block")

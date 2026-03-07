@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, unauthorized, badRequest } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { z } from 'zod';
+import { VALID_ATTENDANCE_TRANSITIONS } from '@/types/children';
 
 const VALID_STATUSES = ['scheduled', 'checked_in', 'in_care', 'ready_for_pickup', 'checked_out', 'cancelled'] as const;
 
@@ -156,6 +157,23 @@ export async function PATCH(
   const parsed = updateSessionSchema.safeParse(body);
   if (!parsed.success) {
     return badRequest(parsed.error.issues.map(e => e.message).join(', '));
+  }
+
+  // Server-side attendance state transition validation (complements DB trigger)
+  if (parsed.data.status !== undefined) {
+    const { data: currentSession } = await supabaseAdmin
+      .from('child_attendance_sessions')
+      .select('status')
+      .eq('id', sessionId)
+      .eq('child_id', childId)
+      .single();
+
+    if (!currentSession) return badRequest('Attendance session not found');
+
+    const allowedNext = VALID_ATTENDANCE_TRANSITIONS[currentSession.status] || [];
+    if (parsed.data.status !== currentSession.status && !allowedNext.includes(parsed.data.status)) {
+      return badRequest(`Invalid status transition: ${currentSession.status} → ${parsed.data.status}`);
+    }
   }
 
   const updateData: Record<string, unknown> = {};

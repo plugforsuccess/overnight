@@ -306,6 +306,23 @@ export async function POST(req: NextRequest) {
       console.error(`[bookings POST] reservations insert failed:`, resError);
       return errorResponse('DB_INSERT_FAILED', 'Failed to create reservations', 400, resError.message);
     }
+
+    // Emit reservation_events for each created reservation
+    const { data: createdRes } = await supabaseAdmin
+      .from('reservations')
+      .select('id')
+      .eq('overnight_block_id', block.id)
+      .in('date', availableNights);
+
+    if (createdRes && createdRes.length > 0) {
+      const eventRows = createdRes.map((r: { id: string }) => ({
+        reservation_id: r.id,
+        event_type: 'reservation_created',
+        event_data: { block_id: block.id, child_id: childId },
+        created_by: user.id,
+      }));
+      await supabaseAdmin.from('reservation_events').insert(eventRows);
+    }
   }
 
   // Add to waitlist for full nights
@@ -371,6 +388,15 @@ export async function DELETE(req: NextRequest) {
     .eq('id', reservationId);
 
   if (error) return errorResponse('DB_INSERT_FAILED', 'Failed to cancel reservation', 400, error.message);
+
+  // Emit reservation_cancelled event
+  await supabaseAdmin.from('reservation_events').insert({
+    reservation_id: reservationId,
+    event_type: 'reservation_cancelled',
+    event_data: { cancelled_by: user.id },
+    created_by: user.id,
+  });
+
   return NextResponse.json({ success: true });
 }
 

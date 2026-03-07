@@ -249,6 +249,10 @@ ALTER TABLE public.child_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.child_attendance_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pickup_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reservation_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.incident_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.center_staff_memberships ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pickup_verifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 
@@ -610,3 +614,114 @@ DO $$ BEGIN
       ON public.child_emergency_contacts (child_id, phone);
   END IF;
 END $$;
+
+-- ── reservation_events (append-only) ─────────────────────────
+DROP POLICY IF EXISTS parents_select_reservation_events ON public.reservation_events;
+CREATE POLICY parents_select_reservation_events ON public.reservation_events
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.reservations r
+      JOIN public.overnight_blocks ob ON ob.id = r.overnight_block_id
+      WHERE r.id = reservation_id AND ob.parent_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS admins_manage_reservation_events ON public.reservation_events;
+CREATE POLICY admins_manage_reservation_events ON public.reservation_events
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── incident_reports ─────────────────────────────────────────
+DROP POLICY IF EXISTS parents_select_incident_reports ON public.incident_reports;
+CREATE POLICY parents_select_incident_reports ON public.incident_reports
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS admins_manage_incident_reports ON public.incident_reports;
+CREATE POLICY admins_manage_incident_reports ON public.incident_reports
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── center_staff_memberships ─────────────────────────────────
+DROP POLICY IF EXISTS users_select_own_memberships ON public.center_staff_memberships;
+CREATE POLICY users_select_own_memberships ON public.center_staff_memberships
+  FOR SELECT USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS admins_manage_memberships ON public.center_staff_memberships;
+CREATE POLICY admins_manage_memberships ON public.center_staff_memberships
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── pickup_verifications ─────────────────────────────────────
+DROP POLICY IF EXISTS parents_select_pickup_verifications ON public.pickup_verifications;
+CREATE POLICY parents_select_pickup_verifications ON public.pickup_verifications
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.child_attendance_sessions cas
+      JOIN public.children c ON c.id = cas.child_id
+      WHERE cas.id = attendance_session_id AND c.parent_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS admins_manage_pickup_verifications ON public.pickup_verifications;
+CREATE POLICY admins_manage_pickup_verifications ON public.pickup_verifications
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── incident report constraints ──────────────────────────────
+ALTER TABLE public.incident_reports DROP CONSTRAINT IF EXISTS chk_incident_severity;
+ALTER TABLE public.incident_reports ADD CONSTRAINT chk_incident_severity
+  CHECK (severity IN ('low', 'medium', 'high', 'critical'));
+
+ALTER TABLE public.incident_reports DROP CONSTRAINT IF EXISTS chk_incident_status;
+ALTER TABLE public.incident_reports ADD CONSTRAINT chk_incident_status
+  CHECK (status IN ('open', 'investigating', 'resolved', 'closed'));
+
+-- ── staff membership role constraint ─────────────────────────
+ALTER TABLE public.center_staff_memberships DROP CONSTRAINT IF EXISTS chk_staff_role;
+ALTER TABLE public.center_staff_memberships ADD CONSTRAINT chk_staff_role
+  CHECK (role IN ('staff', 'admin', 'center_admin', 'super_admin'));
+
+-- ── attendance state machine trigger ─────────────────────────
+CREATE OR REPLACE FUNCTION public.enforce_attendance_transition()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  valid boolean := false;
+BEGIN
+  IF TG_OP = 'INSERT' THEN RETURN NEW; END IF;
+  IF OLD.status = NEW.status THEN RETURN NEW; END IF;
+
+  CASE OLD.status
+    WHEN 'scheduled' THEN
+      valid := NEW.status IN ('checked_in', 'cancelled');
+    WHEN 'checked_in' THEN
+      valid := NEW.status IN ('in_care', 'cancelled');
+    WHEN 'in_care' THEN
+      valid := NEW.status IN ('ready_for_pickup', 'cancelled');
+    WHEN 'ready_for_pickup' THEN
+      valid := NEW.status IN ('checked_out', 'cancelled');
+    WHEN 'checked_out' THEN
+      valid := false;
+    WHEN 'cancelled' THEN
+      valid := false;
+    ELSE
+      valid := false;
+  END CASE;
+
+  IF NOT valid THEN
+    RAISE EXCEPTION 'Invalid attendance transition: % -> %', OLD.status, NEW.status;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_enforce_attendance_transition ON public.child_attendance_sessions;
+CREATE TRIGGER trg_enforce_attendance_transition
+  BEFORE UPDATE ON public.child_attendance_sessions
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_attendance_transition();

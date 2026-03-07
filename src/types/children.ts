@@ -214,6 +214,98 @@ export interface ChildAttendanceSessionRow {
   updated_at: string;
 }
 
+// ─── Reservation Event (append-only ledger) ──────────────────────────────────
+
+export const RESERVATION_EVENT_TYPES = [
+  'reservation_created',
+  'reservation_confirmed',
+  'reservation_cancelled',
+  'reservation_modified',
+  'waitlist_promoted',
+  'payment_received',
+  'no_show',
+] as const;
+export type ReservationEventType = typeof RESERVATION_EVENT_TYPES[number];
+
+export interface ReservationEventRow {
+  id: string;
+  reservation_id: string;
+  event_type: string;
+  event_data: Record<string, unknown>;
+  created_by: string | null;
+  created_at: string;
+}
+
+// ─── Incident Report ─────────────────────────────────────────────────────────
+
+export const INCIDENT_SEVERITIES = ['low', 'medium', 'high', 'critical'] as const;
+export type IncidentSeverity = typeof INCIDENT_SEVERITIES[number];
+
+export const INCIDENT_STATUSES = ['open', 'investigating', 'resolved', 'closed'] as const;
+export type IncidentStatus = typeof INCIDENT_STATUSES[number];
+
+export interface IncidentReportRow {
+  id: string;
+  child_id: string;
+  attendance_session_id: string | null;
+  center_id: string | null;
+  severity: string;
+  category: string;
+  summary: string;
+  details: string | null;
+  reported_by: string | null;
+  parent_notified_at: string | null;
+  resolved_at: string | null;
+  closed_at: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Center Staff Membership ─────────────────────────────────────────────────
+
+export const STAFF_ROLES = ['staff', 'admin', 'center_admin', 'super_admin'] as const;
+export type StaffRole = typeof STAFF_ROLES[number];
+
+export interface CenterStaffMembershipRow {
+  id: string;
+  user_id: string;
+  center_id: string;
+  role: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Pickup Verification ─────────────────────────────────────────────────────
+
+export const VERIFICATION_METHODS = ['photo_id', 'pin', 'facial_recognition', 'known_person'] as const;
+export type VerificationMethod = typeof VERIFICATION_METHODS[number];
+
+export interface PickupVerificationRow {
+  id: string;
+  attendance_session_id: string;
+  authorized_pickup_id: string | null;
+  verified_name: string;
+  verified_relationship: string;
+  verification_method: string;
+  verified_by: string | null;
+  verified_at: string;
+  notes: string | null;
+  created_at: string;
+}
+
+// ─── Attendance Transition Map ───────────────────────────────────────────────
+
+export const VALID_ATTENDANCE_TRANSITIONS: Record<string, string[]> = {
+  scheduled: ['checked_in', 'cancelled'],
+  checked_in: ['in_care', 'cancelled'],
+  in_care: ['ready_for_pickup', 'cancelled'],
+  ready_for_pickup: ['checked_out', 'cancelled'],
+  checked_out: [],
+  cancelled: [],
+};
+
 // ─── Full child with nested data (for UI) ────────────────────────────────────
 
 export interface ChildWithDetails extends ChildRow {
