@@ -1,3 +1,6 @@
+-- Ensure uuid-ossp extension (pre-enabled on Supabase, may not be on local PG)
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- CreateTable
 CREATE TABLE "parent_settings" (
     "id" UUID NOT NULL DEFAULT uuid_generate_v4(),

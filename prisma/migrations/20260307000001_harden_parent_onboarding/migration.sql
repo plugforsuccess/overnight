@@ -1,6 +1,16 @@
 -- Harden Parent Onboarding: schema updates for child medical profiles,
 -- onboarding state tracking, and multi-center preparation.
 
+-- Ensure set_updated_at() exists (created by legacy Supabase/Knex setup;
+-- needed for the trigger below). CREATE OR REPLACE is safe if it already exists.
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
 -- ============================================================
 -- 1. Parents: add onboarding_status and center_id
 -- ============================================================
