@@ -67,7 +67,12 @@ npx prisma migrate dev --name <descriptive_name>
 
 | Directory | Description |
 |-----------|-------------|
+| `0_baseline/` | Baseline snapshot of all core tables from legacy Knex migrations. |
 | `20260306000002_create_parent_settings/` | Parent notification, safety, and household preference settings with RLS policies. |
+| `20260307000001_harden_parent_onboarding/` | Onboarding status tracking, child medical profiles, extended emergency contacts and authorized pickups. |
+| `20260307000002_enterprise_hardening/` | Event ledger, attendance sessions, timestamp automation, emergency contact deduplication, pickup_events table, RLS on audit_log. |
+| `20260307000003_operational_hardening/` | Reservation events, incident reports, staff memberships, attendance state machine, pickup verifications. |
+| `20260307000004_sprint_hardening/` | Idempotency keys, booking deduplication, archive semantics (soft-delete), incident state machine, hard-delete prevention. |
 
 ### Legacy Knex Migrations (`src/db/migrations/`)
 
@@ -135,6 +140,25 @@ Supabase compatibility.
   concurrency-safe capacity enforcement
 - **RLS policies** on all parent-facing tables — see table above
 
+## Migration Recovery
+
+If a migration fails during deployment, see
+[`docs/prisma-migration-recovery.md`](./prisma-migration-recovery.md) for the
+full recovery runbook.
+
+Quick commands:
+
+```bash
+# Diagnose migration health
+npm run migrate:check
+
+# Mark a failed migration as applied (schema already in DB)
+npx prisma migrate resolve --applied <migration_name>
+
+# Mark a failed migration as rolled back (will re-run on next deploy)
+npx prisma migrate resolve --rolled-back <migration_name>
+```
+
 ## Best Practices
 
 1. **Never modify an existing migration** that has been applied in production.
@@ -142,6 +166,9 @@ Supabase compatibility.
 2. **Use Prisma for all new schema changes.** Do not create new Knex migrations.
 3. **Include RLS policies** in the migration SQL for any new table that stores
    parent or child data.
-4. **Test migrations** against a fresh database before deploying.
-5. **Seed data** belongs in migrations (for config/plans) or separate seed
+4. **Write idempotent DDL** — use `CREATE TABLE IF NOT EXISTS`,
+   `DROP TRIGGER IF EXISTS`, `CREATE OR REPLACE FUNCTION`, and
+   `ADD COLUMN IF NOT EXISTS` so migrations survive partial application.
+5. **Test migrations** against a fresh database before deploying.
+6. **Seed data** belongs in migrations (for config/plans) or separate seed
    files — never in application bootstrap code.
