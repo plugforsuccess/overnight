@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { DEFAULT_PRICING_TIERS } from '@/lib/constants';
 import { rateLimit } from '@/lib/rate-limit';
 import { cancelSubscription } from '@/lib/stripe';
+import { checkIdempotencyKey, saveIdempotencyResult } from '@/lib/idempotency';
 
 // ─── Error codes ──────────────────────────────────────────────────────────────
 type ErrorCode =
@@ -115,6 +116,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const rateLimited = rateLimit(req, { windowMs: 60_000, max: 10 });
   if (rateLimited) return rateLimited;
+
+  // Idempotency: return cached response if this key was already processed
+  const cached = await checkIdempotencyKey(req);
+  if (cached) return cached;
 
   const supabase = getUserClient(req);
   const { data: { user } } = await supabase.auth.getUser();
@@ -345,11 +350,16 @@ export async function POST(req: NextRequest) {
 
   console.log(`[bookings POST] booking complete: blockId=${block.id} confirmed=${availableNights.length} waitlisted=${fullNights.length}`);
 
-  return NextResponse.json({
+  const responseBody = {
     plan: block,
     confirmedNights: availableNights,
     waitlistedNights: fullNights,
-  });
+  };
+
+  // Cache response for idempotency replay
+  await saveIdempotencyResult(req, user.id, 200, responseBody);
+
+  return NextResponse.json(responseBody);
 }
 
 export async function DELETE(req: NextRequest) {

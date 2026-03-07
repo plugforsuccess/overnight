@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, unauthorized, badRequest } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { z } from 'zod';
+import { checkIdempotencyKey, saveIdempotencyResult } from '@/lib/idempotency';
 
 const createIncidentSchema = z.object({
   attendance_session_id: z.string().uuid().optional().nullable(),
@@ -66,6 +67,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const cached = await checkIdempotencyKey(req);
+  if (cached) return cached;
+
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
 
@@ -114,5 +118,7 @@ export async function POST(
     created_by: auth.userId,
   });
 
-  return NextResponse.json({ incident }, { status: 201 });
+  const responseBody = { incident };
+  await saveIdempotencyResult(req, auth.userId, 201, responseBody);
+  return NextResponse.json(responseBody, { status: 201 });
 }

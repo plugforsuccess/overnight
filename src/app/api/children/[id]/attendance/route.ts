@@ -3,6 +3,7 @@ import { authenticateRequest, unauthorized, badRequest } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { z } from 'zod';
 import { VALID_ATTENDANCE_TRANSITIONS } from '@/types/children';
+import { checkIdempotencyKey, saveIdempotencyResult } from '@/lib/idempotency';
 
 const VALID_STATUSES = ['scheduled', 'checked_in', 'in_care', 'ready_for_pickup', 'checked_out', 'cancelled'] as const;
 
@@ -76,6 +77,9 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const cached = await checkIdempotencyKey(req);
+  if (cached) return cached;
+
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
 
@@ -120,7 +124,9 @@ export async function POST(
     created_by: auth.userId,
   });
 
-  return NextResponse.json({ session }, { status: 201 });
+  const responseBody = { session };
+  await saveIdempotencyResult(req, auth.userId, 201, responseBody);
+  return NextResponse.json(responseBody, { status: 201 });
 }
 
 /**

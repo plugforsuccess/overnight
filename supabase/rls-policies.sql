@@ -725,3 +725,107 @@ DROP TRIGGER IF EXISTS trg_enforce_attendance_transition ON public.child_attenda
 CREATE TRIGGER trg_enforce_attendance_transition
   BEFORE UPDATE ON public.child_attendance_sessions
   FOR EACH ROW EXECUTE FUNCTION public.enforce_attendance_transition();
+
+-- ============================================================
+-- SPRINT HARDENING: Idempotency, Archive, Incident Transitions
+-- ============================================================
+
+-- ── idempotency_keys ────────────────────────────────────────
+ALTER TABLE public.idempotency_keys ENABLE ROW LEVEL SECURITY;
+-- No user-facing policies — managed by service role only.
+
+-- ── booking deduplication (one active block per child per week) ──
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes WHERE indexname = 'idx_overnight_blocks_child_week_active'
+  ) THEN
+    CREATE UNIQUE INDEX idx_overnight_blocks_child_week_active
+      ON public.overnight_blocks (child_id, week_start)
+      WHERE status = 'active';
+  END IF;
+END $$;
+
+-- ── incident status transition trigger ──────────────────────
+CREATE OR REPLACE FUNCTION public.enforce_incident_transition()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN RETURN NEW; END IF;
+  IF OLD.status = NEW.status THEN RETURN NEW; END IF;
+
+  CASE OLD.status
+    WHEN 'open' THEN
+      IF NEW.status NOT IN ('investigating', 'resolved', 'closed') THEN
+        RAISE EXCEPTION 'Invalid incident transition: % -> %', OLD.status, NEW.status;
+      END IF;
+    WHEN 'investigating' THEN
+      IF NEW.status NOT IN ('resolved', 'closed') THEN
+        RAISE EXCEPTION 'Invalid incident transition: % -> %', OLD.status, NEW.status;
+      END IF;
+    WHEN 'resolved' THEN
+      IF NEW.status NOT IN ('closed') THEN
+        RAISE EXCEPTION 'Invalid incident transition: % -> %', OLD.status, NEW.status;
+      END IF;
+    WHEN 'closed' THEN
+      RAISE EXCEPTION 'Invalid incident transition: % -> % (closed is terminal)', OLD.status, NEW.status;
+    ELSE
+      RAISE EXCEPTION 'Unknown incident status: %', OLD.status;
+  END CASE;
+
+  -- Auto-set timestamps on status changes
+  IF NEW.status = 'resolved' AND NEW.resolved_at IS NULL THEN
+    NEW.resolved_at = now();
+  END IF;
+  IF NEW.status = 'closed' AND NEW.closed_at IS NULL THEN
+    NEW.closed_at = now();
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS enforce_incident_transition ON public.incident_reports;
+CREATE TRIGGER enforce_incident_transition
+  BEFORE UPDATE ON public.incident_reports
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_incident_transition();
+
+-- ── hard delete prevention on safety-critical tables ────────
+CREATE OR REPLACE FUNCTION public.prevent_hard_delete()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'Hard deletes are not allowed on %. Use soft-delete (set active=false or archived_at) instead.', TG_TABLE_NAME;
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS prevent_children_hard_delete ON public.children;
+CREATE TRIGGER prevent_children_hard_delete
+  BEFORE DELETE ON public.children
+  FOR EACH ROW
+  WHEN (current_setting('app.allow_cascade_delete', true) IS DISTINCT FROM 'true')
+  EXECUTE FUNCTION public.prevent_hard_delete();
+
+DROP TRIGGER IF EXISTS prevent_incident_hard_delete ON public.incident_reports;
+CREATE TRIGGER prevent_incident_hard_delete
+  BEFORE DELETE ON public.incident_reports
+  FOR EACH ROW
+  WHEN (current_setting('app.allow_cascade_delete', true) IS DISTINCT FROM 'true')
+  EXECUTE FUNCTION public.prevent_hard_delete();
+
+DROP TRIGGER IF EXISTS prevent_pickup_verification_hard_delete ON public.pickup_verifications;
+CREATE TRIGGER prevent_pickup_verification_hard_delete
+  BEFORE DELETE ON public.pickup_verifications
+  FOR EACH ROW
+  WHEN (current_setting('app.allow_cascade_delete', true) IS DISTINCT FROM 'true')
+  EXECUTE FUNCTION public.prevent_hard_delete();
+
+-- ── idempotency key cleanup function ────────────────────────
+CREATE OR REPLACE FUNCTION public.cleanup_expired_idempotency_keys()
+RETURNS integer LANGUAGE plpgsql AS $$
+DECLARE
+  deleted_count integer;
+BEGIN
+  DELETE FROM public.idempotency_keys WHERE expires_at < now();
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  RETURN deleted_count;
+END;
+$$;

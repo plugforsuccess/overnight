@@ -63,6 +63,7 @@ export interface ChildRow {
   medical_notes: string | null;
   notes: string | null;
   active: boolean;
+  archived_at: string | null;
   center_id: string | null;
   created_at: string;
   updated_at: string;
@@ -108,6 +109,7 @@ export interface ChildEmergencyContactRow {
   is_primary: boolean;
   priority: number;
   authorized_for_pickup: boolean;
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -126,6 +128,7 @@ export interface ChildAuthorizedPickupRow {
   photo_id_url: string | null;
   is_emergency_contact: boolean;
   is_active: boolean;
+  archived_at: string | null;
   id_verified: boolean;
   id_verified_at: string | null;
   id_verified_by: string | null;
@@ -273,6 +276,7 @@ export interface CenterStaffMembershipRow {
   center_id: string;
   role: string;
   active: boolean;
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -294,6 +298,15 @@ export interface PickupVerificationRow {
   notes: string | null;
   created_at: string;
 }
+
+// ─── Incident Status Transition Map ──────────────────────────────────────────
+
+export const VALID_INCIDENT_TRANSITIONS: Record<string, string[]> = {
+  open: ['investigating', 'resolved', 'closed'],
+  investigating: ['resolved', 'closed'],
+  resolved: ['closed'],
+  closed: [],
+};
 
 // ─── Attendance Transition Map ───────────────────────────────────────────────
 
