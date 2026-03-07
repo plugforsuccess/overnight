@@ -29,7 +29,7 @@ export async function PATCH(
   try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
   const parsed = emergencyContactSchema.safeParse(body);
   if (!parsed.success) {
-    return badRequest(parsed.error.errors.map(e => e.message).join(', '));
+    return badRequest(parsed.error.issues.map(e => e.message).join(', '));
   }
 
   const { data, error } = await auth.supabase

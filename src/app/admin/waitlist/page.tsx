@@ -25,8 +25,8 @@ export default function AdminWaitlistPage() {
         .from('waitlist')
         .select('*, child:children(*), parent:parents(*)')
         .in('status', ['waiting', 'offered'])
-        .order('night_date')
-        .order('position');
+        .order('date')
+        .order('created_at');
 
       if (data) setEntries(data);
       setLoading(false);
@@ -35,26 +35,31 @@ export default function AdminWaitlistPage() {
   }, [router]);
 
   async function promoteEntry(entry: WaitlistEntry) {
-    // Find an active plan for this child
-    const { data: plan } = await supabase
-      .from('plans')
+    // Find the active overnight_block for this child and parent
+    const { data: block } = await supabase
+      .from('overnight_blocks')
       .select('id')
       .eq('child_id', entry.child_id)
+      .eq('parent_id', entry.parent_id)
       .eq('status', 'active')
       .limit(1)
       .single();
 
-    // Create reservation
+    if (!block) {
+      alert('No active booking found for this child. Cannot promote.');
+      return;
+    }
+
+    // Create reservation linked to overnight_block
     await supabase.from('reservations').insert({
       child_id: entry.child_id,
-      parent_id: entry.parent_id,
-      plan_id: plan?.id || entry.id,
-      night_date: entry.night_date,
+      overnight_block_id: block.id,
+      date: entry.date,
       status: 'confirmed',
     });
 
     // Update waitlist
-    await supabase.from('waitlist').update({ status: 'confirmed' }).eq('id', entry.id);
+    await supabase.from('waitlist').update({ status: 'accepted' }).eq('id', entry.id);
     setEntries(prev => prev.filter(e => e.id !== entry.id));
   }
 
@@ -74,7 +79,7 @@ export default function AdminWaitlistPage() {
   }
 
   async function cancelEntry(id: string) {
-    await supabase.from('waitlist').update({ status: 'cancelled' }).eq('id', id);
+    await supabase.from('waitlist').update({ status: 'removed' }).eq('id', id);
     setEntries(prev => prev.filter(e => e.id !== id));
   }
 
@@ -103,8 +108,7 @@ export default function AdminWaitlistPage() {
                   <div>
                     <h3 className="font-semibold text-gray-900">{entry.child?.first_name} {entry.child?.last_name}</h3>
                     <p className="text-sm text-gray-500">Parent: {entry.parent?.first_name} {entry.parent?.last_name}</p>
-                    <p className="text-sm text-gray-500">Night: {formatDate(entry.night_date)}</p>
-                    <p className="text-sm text-gray-500">Position: #{entry.position}</p>
+                    <p className="text-sm text-gray-500">Night: {formatDate(entry.date)}</p>
                     {entry.status === 'offered' && (
                       <p className="text-sm text-yellow-600 font-medium mt-1">
                         Offer sent — expires {entry.expires_at ? formatDate(entry.expires_at) : 'N/A'}

@@ -19,6 +19,7 @@ export interface Child {
   first_name: string;
   last_name: string;
   date_of_birth: string;
+  allergies: string | null;
   photo_url: string | null;
   medical_notes: string | null;
   created_at: string;
@@ -44,28 +45,44 @@ export interface Plan {
 
 export interface Reservation {
   id: string;
-  plan_id: string;
+  overnight_block_id: string;
   child_id: string;
+  date: string;
+  status: 'pending_payment' | 'confirmed' | 'locked' | 'cancelled' | 'canceled_low_enrollment';
+  admin_override: boolean;
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  child?: Child;
+  overnight_block?: OvernightBlock;
+}
+
+export interface OvernightBlock {
+  id: string;
+  week_start: string;
   parent_id: string;
-  night_date: string;
-  status: 'confirmed' | 'cancelled' | 'completed';
-  checked_in: boolean;
-  checked_out: boolean;
+  child_id: string;
+  plan_id: string | null;
+  nights_per_week: number;
+  weekly_price_cents: number;
+  multi_child_discount_pct: number;
+  status: 'active' | 'cancelled' | 'canceled_low_enrollment';
+  payment_status: 'pending' | 'paid' | 'failed' | 'confirmed' | 'locked';
+  stripe_subscription_id: string | null;
+  stripe_invoice_id: string | null;
   created_at: string;
   updated_at: string;
   // Joined fields
   child?: Child;
   parent?: Profile;
-  plan?: Plan;
 }
 
 export interface WaitlistEntry {
   id: string;
   parent_id: string;
   child_id: string;
-  night_date: string;
-  position: number;
-  status: 'waiting' | 'offered' | 'confirmed' | 'expired' | 'cancelled';
+  date: string;
+  status: 'waiting' | 'offered' | 'accepted' | 'expired' | 'removed';
   offered_at: string | null;
   expires_at: string | null;
   created_at: string;

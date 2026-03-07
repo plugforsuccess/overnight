@@ -73,7 +73,7 @@ export async function POST(
   try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
   const parsed = authorizedPickupSchema.safeParse(body);
   if (!parsed.success) {
-    return badRequest(parsed.error.errors.map(e => e.message).join(', '));
+    return badRequest(parsed.error.issues.map(e => e.message).join(', '));
   }
 
   const pinHash = await hashPin(parsed.data.pickup_pin);

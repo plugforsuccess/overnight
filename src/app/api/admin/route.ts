@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     const { data: reservations } = await supabaseAdmin
       .from('reservations')
       .select('*, child:children(id, first_name, last_name, date_of_birth), parent:parents(id, first_name, last_name, email, phone)')
-      .eq('night_date', nightDate)
+      .eq('date', nightDate)
       .eq('status', 'confirmed');
 
     return NextResponse.json({ reservations: reservations || [] });
@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
       .from('waitlist')
       .select('*, child:children(id, first_name, last_name), parent:parents(id, first_name, last_name, email)')
       .in('status', ['waiting', 'offered'])
-      .order('night_date', { ascending: true })
+      .order('date', { ascending: true })
       .order('position', { ascending: true });
 
     return NextResponse.json({ waitlist: waitlist || [] });
@@ -121,7 +121,7 @@ export async function PUT(req: NextRequest) {
     const { settings } = body;
     const parsed = settingsUpdateSchema.safeParse(settings);
     if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.errors.map(e => e.message).join(', ') }, { status: 400 });
+      return NextResponse.json({ error: parsed.error.issues.map((e: { message: string }) => e.message).join(', ') }, { status: 400 });
     }
 
     // Only allow known fields to be updated
@@ -167,7 +167,7 @@ export async function PUT(req: NextRequest) {
         child_id: childId,
         parent_id: parentId,
         plan_id: planId,
-        night_date: nightDate,
+        date: nightDate,
         status: 'confirmed',
       })
       .select()
@@ -185,7 +185,7 @@ export async function PUT(req: NextRequest) {
 
     const { data: entry } = await supabaseAdmin
       .from('waitlist')
-      .select('id, child_id, parent_id, night_date, position, status')
+      .select('id, child_id, parent_id, date, position, status')
       .eq('id', waitlistId)
       .single();
 
@@ -210,7 +210,7 @@ export async function PUT(req: NextRequest) {
         child_id: entry.child_id,
         parent_id: entry.parent_id,
         plan_id: plan?.id || entry.id,
-        night_date: entry.night_date,
+        date: entry.date,
         status: 'confirmed',
       })
       .select()

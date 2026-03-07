@@ -67,7 +67,7 @@ export async function POST(
   const pickupPin: string | undefined = body.pickup_pin;
   const parsed = emergencyContactSchema.safeParse(body);
   if (!parsed.success) {
-    return badRequest(parsed.error.errors.map(e => e.message).join(', '));
+    return badRequest(parsed.error.issues.map(e => e.message).join(', '));
   }
 
   // If authorized_for_pickup, require a valid pickup_pin

@@ -1,7 +1,8 @@
 // src/db/index.js
 //
-// Singleton Knex instance backed by Postgres.
-// Every service that does `require('../db')` gets the same connection pool.
+// @deprecated — Legacy Knex singleton. Not used by the active Next.js application.
+// Retained only for Express billing services (src/billing/, src/routes/).
+// See ARCHITECTURE.md > Legacy Code Boundary.
 
 const knex = require("knex");
 const { knexConfig } = require("./connection");

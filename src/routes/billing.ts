@@ -9,6 +9,15 @@ import {
 } from "../billing/subscription-service";
 import { authenticate, requireAdmin } from "../middleware/auth";
 
+/**
+ * @deprecated Legacy Express billing routes.
+ * The canonical parent checkout flow uses the Next.js API routes:
+ *   - POST /api/bookings  (create overnight_block + reservations)
+ *   - POST /api/stripe    (create Stripe checkout session)
+ *   - POST /api/stripe/webhook (handle Stripe webhooks)
+ *
+ * These Express routes are retained for admin/internal use only.
+ */
 export const billingRouter = Router();
 
 // All billing actions require auth (webhook is handled separately in index.ts)

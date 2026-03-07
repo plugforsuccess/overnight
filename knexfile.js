@@ -1,12 +1,17 @@
 /**
- * Knex CLI configuration.
+ * @deprecated — Knex is no longer the schema authority.
  *
- * All environments now target Postgres. Local dev should point DATABASE_URL
- * at a local Postgres instance (e.g. via Docker or Supabase CLI).
+ * Schema source of truth: prisma/schema.prisma
+ * Migration commands:
+ *   npm run migrate        — deploy to production
+ *   npm run migrate:dev    — create new migration
  *
- * Usage:
- *   npx knex migrate:latest
- *   npx knex migrate:rollback
+ * This file is retained only for the legacy Express billing services
+ * (src/billing/, src/routes/, src/services/) which still use Knex at runtime.
+ * It will be removed when those services are ported to Supabase client.
+ *
+ * Legacy usage (DO NOT use for new schema changes):
+ *   npm run migrate:knex:legacy
  */
 module.exports = {
   development: {

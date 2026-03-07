@@ -1,3 +1,8 @@
+/**
+ * @deprecated — Legacy Express webhook handler. Not used by the active Next.js application.
+ * The active webhook handler is: src/app/api/stripe/webhook/route.ts
+ * See ARCHITECTURE.md > Legacy Code Boundary.
+ */
 import Stripe from "stripe";
 import type { Request, Response } from "express";
 import db from "../db"; // knex instance (singleton)
@@ -56,7 +61,7 @@ export async function handleWebhook(req: Request, res: Response): Promise<void> 
         .ignore();
 
       // If insert did nothing -> duplicate
-      if (Array.isArray(insertRes) ? insertRes.length === 0 : insertRes?.rowCount === 0) {
+      if (Array.isArray(insertRes) ? insertRes.length === 0 : (insertRes as unknown as { rowCount?: number })?.rowCount === 0) {
         return { duplicate: true };
       }
 

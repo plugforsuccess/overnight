@@ -1,3 +1,8 @@
+/**
+ * @deprecated — Legacy Knex-based subscription service. Not used by the active Next.js application.
+ * The active checkout flow is: /api/bookings → /api/stripe → /api/stripe/webhook
+ * See ARCHITECTURE.md > Legacy Code Boundary.
+ */
 import db from "../db";
 import { getStripe } from "./stripe-client";
 import { getPriceId } from "./plans";
