@@ -5,12 +5,14 @@ import { z } from 'zod';
 import { DEFAULT_PRICING_TIERS } from '@/lib/constants';
 import { rateLimit } from '@/lib/rate-limit';
 import { cancelSubscription } from '@/lib/stripe';
+import { checkIdempotencyKey, saveIdempotencyResult } from '@/lib/idempotency';
 
 // ─── Error codes ──────────────────────────────────────────────────────────────
 type ErrorCode =
   | 'AUTH_REQUIRED'
   | 'PROFILE_INCOMPLETE'
   | 'CHILD_NOT_OWNED'
+  | 'CHILD_INACTIVE'
   | 'INVALID_PLAN_SELECTION'
   | 'STRIPE_CONFIG_ERROR'
   | 'DB_INSERT_FAILED'
@@ -115,6 +117,10 @@ export async function POST(req: NextRequest) {
   const rateLimited = rateLimit(req, { windowMs: 60_000, max: 10 });
   if (rateLimited) return rateLimited;
 
+  // Idempotency: return cached response if this key was already processed
+  const cached = await checkIdempotencyKey(req);
+  if (cached) return cached;
+
   const supabase = getUserClient(req);
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return errorResponse('AUTH_REQUIRED', 'Unauthorized', 401);
@@ -141,10 +147,10 @@ export async function POST(req: NextRequest) {
 
   const { childId, nightsPerWeek, selectedNights, weekStart } = parsed.data;
 
-  // Verify child belongs to this parent
+  // Verify child belongs to this parent and is active
   const { data: child } = await supabaseAdmin
     .from('children')
-    .select('id, first_name, last_name')
+    .select('id, first_name, last_name, active')
     .eq('id', childId)
     .eq('parent_id', parentId)
     .single();
@@ -153,21 +159,42 @@ export async function POST(req: NextRequest) {
     console.error(`[bookings POST] child ownership failed: childId=${childId} parentId=${parentId}`);
     return errorResponse('CHILD_NOT_OWNED', 'Child not found or does not belong to you', 403);
   }
+
+  if (!child.active) {
+    return errorResponse(
+      'CHILD_INACTIVE',
+      `${child.first_name} ${child.last_name}'s profile is currently inactive. Please reactivate to book.`,
+      400,
+    );
+  }
   console.log(`[bookings POST] child ownership valid: childId=${childId} name=${child.first_name} ${child.last_name}`);
 
-  // Check profile completeness: at least 1 emergency contact required.
+  // Check profile completeness: emergency contact + medical acknowledgement required.
   // Authorized pickups are optional — the parent is implicitly authorized.
-  const { count: ecCount } = await supabaseAdmin
-    .from('child_emergency_contacts')
-    .select('id', { count: 'exact', head: true })
-    .eq('child_id', childId);
+  const [ecRes, medRes] = await Promise.all([
+    supabaseAdmin
+      .from('child_emergency_contacts')
+      .select('id', { count: 'exact', head: true })
+      .eq('child_id', childId),
+    supabaseAdmin
+      .from('child_medical_profiles')
+      .select('id', { count: 'exact', head: true })
+      .eq('child_id', childId),
+  ]);
 
-  console.log(`[bookings POST] profile check: emergencyContacts=${ecCount ?? 0}`);
+  const ecCount = ecRes.count ?? 0;
+  const medCount = medRes.count ?? 0;
 
-  if ((ecCount ?? 0) < 1) {
+  console.log(`[bookings POST] profile check: emergencyContacts=${ecCount} medicalProfiles=${medCount}`);
+
+  const missing: string[] = [];
+  if (ecCount < 1) missing.push('at least 1 emergency contact');
+  if (medCount < 1) missing.push('medical safety acknowledgement');
+
+  if (missing.length > 0) {
     return errorResponse(
       'PROFILE_INCOMPLETE',
-      `Complete ${child.first_name} ${child.last_name}'s profile before booking: add at least 1 emergency contact.`,
+      `Complete ${child.first_name} ${child.last_name}'s profile before booking: ${missing.join(' and ')}.`,
       400,
     );
   }
@@ -284,6 +311,23 @@ export async function POST(req: NextRequest) {
       console.error(`[bookings POST] reservations insert failed:`, resError);
       return errorResponse('DB_INSERT_FAILED', 'Failed to create reservations', 400, resError.message);
     }
+
+    // Emit reservation_events for each created reservation
+    const { data: createdRes } = await supabaseAdmin
+      .from('reservations')
+      .select('id')
+      .eq('overnight_block_id', block.id)
+      .in('date', availableNights);
+
+    if (createdRes && createdRes.length > 0) {
+      const eventRows = createdRes.map((r: { id: string }) => ({
+        reservation_id: r.id,
+        event_type: 'reservation_created',
+        event_data: { block_id: block.id, child_id: childId },
+        created_by: user.id,
+      }));
+      await supabaseAdmin.from('reservation_events').insert(eventRows);
+    }
   }
 
   // Add to waitlist for full nights
@@ -306,11 +350,16 @@ export async function POST(req: NextRequest) {
 
   console.log(`[bookings POST] booking complete: blockId=${block.id} confirmed=${availableNights.length} waitlisted=${fullNights.length}`);
 
-  return NextResponse.json({
+  const responseBody = {
     plan: block,
     confirmedNights: availableNights,
     waitlistedNights: fullNights,
-  });
+  };
+
+  // Cache response for idempotency replay
+  await saveIdempotencyResult(req, user.id, 200, responseBody);
+
+  return NextResponse.json(responseBody);
 }
 
 export async function DELETE(req: NextRequest) {
@@ -349,6 +398,15 @@ export async function DELETE(req: NextRequest) {
     .eq('id', reservationId);
 
   if (error) return errorResponse('DB_INSERT_FAILED', 'Failed to cancel reservation', 400, error.message);
+
+  // Emit reservation_cancelled event
+  await supabaseAdmin.from('reservation_events').insert({
+    reservation_id: reservationId,
+    event_type: 'reservation_cancelled',
+    event_data: { cancelled_by: user.id },
+    created_by: user.id,
+  });
+
   return NextResponse.json({ success: true });
 }
 

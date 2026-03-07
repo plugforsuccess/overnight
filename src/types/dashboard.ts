@@ -13,6 +13,7 @@ export interface DashboardChild {
   last_name: string;
   date_of_birth: string;
   has_medical_notes: boolean;
+  has_medical_profile: boolean;
   allergies: DashboardAllergyInfo[];
   emergency_contacts_count: number;
   authorized_pickups_count: number;
@@ -40,6 +41,7 @@ export interface DashboardData {
     email: string;
     phone: string | null;
     stripe_customer_id: string | null;
+    onboarding_status: string;
     last_login?: string;
   };
   children: DashboardChild[];
@@ -48,4 +50,5 @@ export interface DashboardData {
   weeklyTotalCents: number;
   upcomingReservationsCount: number;
   waitlistCount: number;
+  profileCompleteness: number;
 }

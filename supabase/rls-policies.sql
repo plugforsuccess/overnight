@@ -43,7 +43,16 @@ END $$;
 -- FUNCTIONS
 -- ============================================================
 
--- Auto-set updated_at on row updates
+-- Auto-set updated_at on row updates (canonical name)
+CREATE OR REPLACE FUNCTION public.update_timestamp()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+-- Legacy alias — kept for backward compatibility
 CREATE OR REPLACE FUNCTION public.set_updated_at()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -76,26 +85,48 @@ $$;
 -- TRIGGERS
 -- ============================================================
 
--- set_updated_at triggers (idempotent: DROP IF EXISTS then CREATE)
+-- update_timestamp triggers (idempotent: DROP IF EXISTS then CREATE)
+-- Applied to ALL tables with updated_at columns.
+
+DROP TRIGGER IF EXISTS parents_update_timestamp ON public.parents;
+CREATE TRIGGER parents_update_timestamp
+  BEFORE UPDATE ON public.parents
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
+
+DROP TRIGGER IF EXISTS children_update_timestamp ON public.children;
+CREATE TRIGGER children_update_timestamp
+  BEFORE UPDATE ON public.children
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
+
 DROP TRIGGER IF EXISTS child_allergies_set_updated_at ON public.child_allergies;
 CREATE TRIGGER child_allergies_set_updated_at
   BEFORE UPDATE ON public.child_allergies
-  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
 
 DROP TRIGGER IF EXISTS child_allergy_action_plans_set_updated_at ON public.child_allergy_action_plans;
 CREATE TRIGGER child_allergy_action_plans_set_updated_at
   BEFORE UPDATE ON public.child_allergy_action_plans
-  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
 
 DROP TRIGGER IF EXISTS child_emergency_contacts_set_updated_at ON public.child_emergency_contacts;
 CREATE TRIGGER child_emergency_contacts_set_updated_at
   BEFORE UPDATE ON public.child_emergency_contacts
-  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
 
 DROP TRIGGER IF EXISTS child_authorized_pickups_set_updated_at ON public.child_authorized_pickups;
 CREATE TRIGGER child_authorized_pickups_set_updated_at
   BEFORE UPDATE ON public.child_authorized_pickups
-  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
+
+DROP TRIGGER IF EXISTS child_medical_profiles_update_timestamp ON public.child_medical_profiles;
+CREATE TRIGGER child_medical_profiles_update_timestamp
+  BEFORE UPDATE ON public.child_medical_profiles
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
+
+DROP TRIGGER IF EXISTS child_attendance_sessions_update_timestamp ON public.child_attendance_sessions;
+CREATE TRIGGER child_attendance_sessions_update_timestamp
+  BEFORE UPDATE ON public.child_attendance_sessions
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
 
 DROP TRIGGER IF EXISTS trg_max_two_emergency_contacts ON public.child_emergency_contacts;
 CREATE TRIGGER trg_max_two_emergency_contacts
@@ -213,6 +244,15 @@ ALTER TABLE public.child_allergies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.child_allergy_action_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.child_emergency_contacts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.child_authorized_pickups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.child_medical_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.child_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.child_attendance_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pickup_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reservation_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.incident_reports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.center_staff_memberships ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pickup_verifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 
@@ -449,3 +489,343 @@ CREATE POLICY admins_manage_authorized_pickups ON public.child_authorized_pickup
   FOR ALL USING (
     EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
   );
+
+-- ── child_medical_profiles ───────────────────────────────────
+DROP POLICY IF EXISTS parents_select_medical_profiles ON public.child_medical_profiles;
+CREATE POLICY parents_select_medical_profiles ON public.child_medical_profiles
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS parents_insert_medical_profiles ON public.child_medical_profiles;
+CREATE POLICY parents_insert_medical_profiles ON public.child_medical_profiles
+  FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS parents_update_medical_profiles ON public.child_medical_profiles;
+CREATE POLICY parents_update_medical_profiles ON public.child_medical_profiles
+  FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS parents_delete_medical_profiles ON public.child_medical_profiles;
+CREATE POLICY parents_delete_medical_profiles ON public.child_medical_profiles
+  FOR DELETE USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS admins_manage_medical_profiles ON public.child_medical_profiles;
+CREATE POLICY admins_manage_medical_profiles ON public.child_medical_profiles
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── child_events (append-only ledger) ────────────────────────
+DROP POLICY IF EXISTS parents_select_child_events ON public.child_events;
+CREATE POLICY parents_select_child_events ON public.child_events
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS parents_insert_child_events ON public.child_events;
+CREATE POLICY parents_insert_child_events ON public.child_events
+  FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+-- NO update/delete for parents — events are append-only
+
+DROP POLICY IF EXISTS admins_manage_child_events ON public.child_events;
+CREATE POLICY admins_manage_child_events ON public.child_events
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── child_attendance_sessions ────────────────────────────────
+DROP POLICY IF EXISTS parents_select_attendance ON public.child_attendance_sessions;
+CREATE POLICY parents_select_attendance ON public.child_attendance_sessions
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+-- Only admins/staff can manage attendance sessions
+DROP POLICY IF EXISTS admins_manage_attendance ON public.child_attendance_sessions;
+CREATE POLICY admins_manage_attendance ON public.child_attendance_sessions
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── audit_log ────────────────────────────────────────────────
+DROP POLICY IF EXISTS parents_select_own_audit ON public.audit_log;
+CREATE POLICY parents_select_own_audit ON public.audit_log
+  FOR SELECT USING (actor_id = auth.uid());
+
+DROP POLICY IF EXISTS admins_manage_audit ON public.audit_log;
+CREATE POLICY admins_manage_audit ON public.audit_log
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── pickup_events ────────────────────────────────────────────
+DROP POLICY IF EXISTS parents_select_pickup_events ON public.pickup_events;
+CREATE POLICY parents_select_pickup_events ON public.pickup_events
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS admins_manage_pickup_events ON public.pickup_events;
+CREATE POLICY admins_manage_pickup_events ON public.pickup_events
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── onboarding_status check ──────────────────────────────────
+ALTER TABLE public.parents DROP CONSTRAINT IF EXISTS chk_parents_onboarding_status;
+ALTER TABLE public.parents ADD CONSTRAINT chk_parents_onboarding_status
+  CHECK (onboarding_status IN (
+    'started',
+    'parent_profile_complete',
+    'child_created',
+    'medical_ack_complete',
+    'emergency_contact_added',
+    'complete'
+  ));
+
+-- ── attendance session status check ──────────────────────────
+ALTER TABLE public.child_attendance_sessions DROP CONSTRAINT IF EXISTS chk_attendance_status;
+ALTER TABLE public.child_attendance_sessions ADD CONSTRAINT chk_attendance_status
+  CHECK (status IN (
+    'scheduled',
+    'checked_in',
+    'in_care',
+    'ready_for_pickup',
+    'checked_out',
+    'cancelled'
+  ));
+
+-- ── emergency contact deduplication ──────────────────────────
+-- Prevent same phone number being added twice for same child
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes WHERE indexname = 'child_emergency_contacts_child_id_phone_unique'
+  ) THEN
+    CREATE UNIQUE INDEX child_emergency_contacts_child_id_phone_unique
+      ON public.child_emergency_contacts (child_id, phone);
+  END IF;
+END $$;
+
+-- ── reservation_events (append-only) ─────────────────────────
+DROP POLICY IF EXISTS parents_select_reservation_events ON public.reservation_events;
+CREATE POLICY parents_select_reservation_events ON public.reservation_events
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.reservations r
+      JOIN public.overnight_blocks ob ON ob.id = r.overnight_block_id
+      WHERE r.id = reservation_id AND ob.parent_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS admins_manage_reservation_events ON public.reservation_events;
+CREATE POLICY admins_manage_reservation_events ON public.reservation_events
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── incident_reports ─────────────────────────────────────────
+DROP POLICY IF EXISTS parents_select_incident_reports ON public.incident_reports;
+CREATE POLICY parents_select_incident_reports ON public.incident_reports
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS admins_manage_incident_reports ON public.incident_reports;
+CREATE POLICY admins_manage_incident_reports ON public.incident_reports
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── center_staff_memberships ─────────────────────────────────
+DROP POLICY IF EXISTS users_select_own_memberships ON public.center_staff_memberships;
+CREATE POLICY users_select_own_memberships ON public.center_staff_memberships
+  FOR SELECT USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS admins_manage_memberships ON public.center_staff_memberships;
+CREATE POLICY admins_manage_memberships ON public.center_staff_memberships
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── pickup_verifications ─────────────────────────────────────
+DROP POLICY IF EXISTS parents_select_pickup_verifications ON public.pickup_verifications;
+CREATE POLICY parents_select_pickup_verifications ON public.pickup_verifications
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.child_attendance_sessions cas
+      JOIN public.children c ON c.id = cas.child_id
+      WHERE cas.id = attendance_session_id AND c.parent_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS admins_manage_pickup_verifications ON public.pickup_verifications;
+CREATE POLICY admins_manage_pickup_verifications ON public.pickup_verifications
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── incident report constraints ──────────────────────────────
+ALTER TABLE public.incident_reports DROP CONSTRAINT IF EXISTS chk_incident_severity;
+ALTER TABLE public.incident_reports ADD CONSTRAINT chk_incident_severity
+  CHECK (severity IN ('low', 'medium', 'high', 'critical'));
+
+ALTER TABLE public.incident_reports DROP CONSTRAINT IF EXISTS chk_incident_status;
+ALTER TABLE public.incident_reports ADD CONSTRAINT chk_incident_status
+  CHECK (status IN ('open', 'investigating', 'resolved', 'closed'));
+
+-- ── staff membership role constraint ─────────────────────────
+ALTER TABLE public.center_staff_memberships DROP CONSTRAINT IF EXISTS chk_staff_role;
+ALTER TABLE public.center_staff_memberships ADD CONSTRAINT chk_staff_role
+  CHECK (role IN ('staff', 'admin', 'center_admin', 'super_admin'));
+
+-- ── attendance state machine trigger ─────────────────────────
+CREATE OR REPLACE FUNCTION public.enforce_attendance_transition()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  valid boolean := false;
+BEGIN
+  IF TG_OP = 'INSERT' THEN RETURN NEW; END IF;
+  IF OLD.status = NEW.status THEN RETURN NEW; END IF;
+
+  CASE OLD.status
+    WHEN 'scheduled' THEN
+      valid := NEW.status IN ('checked_in', 'cancelled');
+    WHEN 'checked_in' THEN
+      valid := NEW.status IN ('in_care', 'cancelled');
+    WHEN 'in_care' THEN
+      valid := NEW.status IN ('ready_for_pickup', 'cancelled');
+    WHEN 'ready_for_pickup' THEN
+      valid := NEW.status IN ('checked_out', 'cancelled');
+    WHEN 'checked_out' THEN
+      valid := false;
+    WHEN 'cancelled' THEN
+      valid := false;
+    ELSE
+      valid := false;
+  END CASE;
+
+  IF NOT valid THEN
+    RAISE EXCEPTION 'Invalid attendance transition: % -> %', OLD.status, NEW.status;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_enforce_attendance_transition ON public.child_attendance_sessions;
+CREATE TRIGGER trg_enforce_attendance_transition
+  BEFORE UPDATE ON public.child_attendance_sessions
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_attendance_transition();
+
+-- ============================================================
+-- SPRINT HARDENING: Idempotency, Archive, Incident Transitions
+-- ============================================================
+
+-- ── idempotency_keys ────────────────────────────────────────
+ALTER TABLE public.idempotency_keys ENABLE ROW LEVEL SECURITY;
+-- No user-facing policies — managed by service role only.
+
+-- ── booking deduplication (one active block per child per week) ──
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_indexes WHERE indexname = 'idx_overnight_blocks_child_week_active'
+  ) THEN
+    CREATE UNIQUE INDEX idx_overnight_blocks_child_week_active
+      ON public.overnight_blocks (child_id, week_start)
+      WHERE status = 'active';
+  END IF;
+END $$;
+
+-- ── incident status transition trigger ──────────────────────
+CREATE OR REPLACE FUNCTION public.enforce_incident_transition()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN RETURN NEW; END IF;
+  IF OLD.status = NEW.status THEN RETURN NEW; END IF;
+
+  CASE OLD.status
+    WHEN 'open' THEN
+      IF NEW.status NOT IN ('investigating', 'resolved', 'closed') THEN
+        RAISE EXCEPTION 'Invalid incident transition: % -> %', OLD.status, NEW.status;
+      END IF;
+    WHEN 'investigating' THEN
+      IF NEW.status NOT IN ('resolved', 'closed') THEN
+        RAISE EXCEPTION 'Invalid incident transition: % -> %', OLD.status, NEW.status;
+      END IF;
+    WHEN 'resolved' THEN
+      IF NEW.status NOT IN ('closed') THEN
+        RAISE EXCEPTION 'Invalid incident transition: % -> %', OLD.status, NEW.status;
+      END IF;
+    WHEN 'closed' THEN
+      RAISE EXCEPTION 'Invalid incident transition: % -> % (closed is terminal)', OLD.status, NEW.status;
+    ELSE
+      RAISE EXCEPTION 'Unknown incident status: %', OLD.status;
+  END CASE;
+
+  -- Auto-set timestamps on status changes
+  IF NEW.status = 'resolved' AND NEW.resolved_at IS NULL THEN
+    NEW.resolved_at = now();
+  END IF;
+  IF NEW.status = 'closed' AND NEW.closed_at IS NULL THEN
+    NEW.closed_at = now();
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS enforce_incident_transition ON public.incident_reports;
+CREATE TRIGGER enforce_incident_transition
+  BEFORE UPDATE ON public.incident_reports
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_incident_transition();
+
+-- ── hard delete prevention on safety-critical tables ────────
+CREATE OR REPLACE FUNCTION public.prevent_hard_delete()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION 'Hard deletes are not allowed on %. Use soft-delete (set active=false or archived_at) instead.', TG_TABLE_NAME;
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS prevent_children_hard_delete ON public.children;
+CREATE TRIGGER prevent_children_hard_delete
+  BEFORE DELETE ON public.children
+  FOR EACH ROW
+  WHEN (current_setting('app.allow_cascade_delete', true) IS DISTINCT FROM 'true')
+  EXECUTE FUNCTION public.prevent_hard_delete();
+
+DROP TRIGGER IF EXISTS prevent_incident_hard_delete ON public.incident_reports;
+CREATE TRIGGER prevent_incident_hard_delete
+  BEFORE DELETE ON public.incident_reports
+  FOR EACH ROW
+  WHEN (current_setting('app.allow_cascade_delete', true) IS DISTINCT FROM 'true')
+  EXECUTE FUNCTION public.prevent_hard_delete();
+
+DROP TRIGGER IF EXISTS prevent_pickup_verification_hard_delete ON public.pickup_verifications;
+CREATE TRIGGER prevent_pickup_verification_hard_delete
+  BEFORE DELETE ON public.pickup_verifications
+  FOR EACH ROW
+  WHEN (current_setting('app.allow_cascade_delete', true) IS DISTINCT FROM 'true')
+  EXECUTE FUNCTION public.prevent_hard_delete();
+
+-- ── idempotency key cleanup function ────────────────────────
+CREATE OR REPLACE FUNCTION public.cleanup_expired_idempotency_keys()
+RETURNS integer LANGUAGE plpgsql AS $$
+DECLARE
+  deleted_count integer;
+BEGIN
+  DELETE FROM public.idempotency_keys WHERE expires_at < now();
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  RETURN deleted_count;
+END;
+$$;

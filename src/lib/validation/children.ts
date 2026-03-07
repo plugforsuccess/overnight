@@ -130,3 +130,50 @@ export const authorizedPickupUpdateSchema = z.object({
 });
 
 export type AuthorizedPickupUpdateInput = z.infer<typeof authorizedPickupUpdateSchema>;
+
+// ─── Medical Profile / Safety Acknowledgement ────────────────────────────────
+
+export const medicalAckSchema = z.object({
+  has_allergies: z.boolean(),
+  has_medications: z.boolean(),
+  has_medical_conditions: z.boolean(),
+  allergies_summary: z.string().max(1000).optional().nullable(),
+  medications_summary: z.string().max(1000).optional().nullable(),
+  medical_conditions_summary: z.string().max(1000).optional().nullable(),
+}).refine((data) => {
+  if (data.has_allergies && (!data.allergies_summary || data.allergies_summary.trim().length === 0)) return false;
+  return true;
+}, { message: 'Please describe your child\'s allergies', path: ['allergies_summary'] })
+.refine((data) => {
+  if (data.has_medications && (!data.medications_summary || data.medications_summary.trim().length === 0)) return false;
+  return true;
+}, { message: 'Please describe your child\'s medications', path: ['medications_summary'] })
+.refine((data) => {
+  if (data.has_medical_conditions && (!data.medical_conditions_summary || data.medical_conditions_summary.trim().length === 0)) return false;
+  return true;
+}, { message: 'Please describe your child\'s medical conditions', path: ['medical_conditions_summary'] });
+
+export type MedicalAckInput = z.infer<typeof medicalAckSchema>;
+
+// Full medical profile (for dashboard completion)
+export const medicalProfileSchema = medicalAckSchema.and(z.object({
+  physician_name: z.string().max(100).optional().nullable(),
+  physician_phone: z.string().max(20).optional().nullable(),
+  hospital_preference: z.string().max(200).optional().nullable(),
+  special_instructions: z.string().max(1000).optional().nullable(),
+}));
+
+export type MedicalProfileInput = z.infer<typeof medicalProfileSchema>;
+
+// ─── Onboarding Status ───────────────────────────────────────────────────────
+
+export const onboardingStatusSchema = z.enum([
+  'started',
+  'parent_profile_complete',
+  'child_created',
+  'medical_ack_complete',
+  'emergency_contact_added',
+  'complete',
+]);
+
+export type OnboardingStatusInput = z.infer<typeof onboardingStatusSchema>;

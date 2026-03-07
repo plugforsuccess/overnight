@@ -55,9 +55,16 @@ export interface ChildRow {
   parent_id: string;
   first_name: string;
   last_name: string;
+  middle_name: string | null;
+  preferred_name: string | null;
   date_of_birth: string;
+  gender: string | null;
   photo_url: string | null;
   medical_notes: string | null;
+  notes: string | null;
+  active: boolean;
+  archived_at: string | null;
+  center_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -92,13 +99,17 @@ export interface ChildAllergyActionPlanRow {
 export interface ChildEmergencyContactRow {
   id: string;
   child_id: string;
+  center_id: string | null;
   first_name: string;
   last_name: string;
   relationship: string;
   phone: string;
   phone_alt: string | null;
+  email: string | null;
+  is_primary: boolean;
   priority: number;
   authorized_for_pickup: boolean;
+  archived_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -106,11 +117,18 @@ export interface ChildEmergencyContactRow {
 export interface ChildAuthorizedPickupRow {
   id: string;
   child_id: string;
+  center_id: string | null;
   first_name: string;
   last_name: string;
   relationship: string;
   phone: string;
-  pickup_pin_hash: string;
+  email: string | null;
+  dob: string | null;
+  pickup_pin_hash: string | null;
+  photo_id_url: string | null;
+  is_emergency_contact: boolean;
+  is_active: boolean;
+  archived_at: string | null;
   id_verified: boolean;
   id_verified_at: string | null;
   id_verified_by: string | null;
@@ -119,10 +137,193 @@ export interface ChildAuthorizedPickupRow {
   updated_at: string;
 }
 
+export interface ChildMedicalProfileRow {
+  id: string;
+  child_id: string;
+  center_id: string | null;
+  has_allergies: boolean;
+  has_medications: boolean;
+  has_medical_conditions: boolean;
+  allergies_summary: string | null;
+  medications_summary: string | null;
+  medical_conditions_summary: string | null;
+  physician_name: string | null;
+  physician_phone: string | null;
+  hospital_preference: string | null;
+  special_instructions: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const ONBOARDING_STATUSES = [
+  'started',
+  'parent_profile_complete',
+  'child_created',
+  'medical_ack_complete',
+  'emergency_contact_added',
+  'complete',
+] as const;
+export type OnboardingStatus = typeof ONBOARDING_STATUSES[number];
+
+// ─── Child Event (append-only safety ledger) ─────────────────────────────────
+
+export const CHILD_EVENT_TYPES = [
+  'child_checked_in',
+  'child_checked_out',
+  'authorized_pickup_verified',
+  'medical_alert_triggered',
+  'incident_reported',
+  'emergency_contact_called',
+] as const;
+export type ChildEventType = typeof CHILD_EVENT_TYPES[number];
+
+export interface ChildEventRow {
+  id: string;
+  child_id: string;
+  center_id: string | null;
+  event_type: string;
+  event_data: Record<string, unknown>;
+  created_by: string | null;
+  created_at: string;
+}
+
+// ─── Attendance Session ──────────────────────────────────────────────────────
+
+export const ATTENDANCE_STATUSES = [
+  'scheduled',
+  'checked_in',
+  'in_care',
+  'ready_for_pickup',
+  'checked_out',
+  'cancelled',
+] as const;
+export type AttendanceStatus = typeof ATTENDANCE_STATUSES[number];
+
+export interface ChildAttendanceSessionRow {
+  id: string;
+  child_id: string;
+  center_id: string | null;
+  reservation_id: string | null;
+  check_in_at: string | null;
+  check_out_at: string | null;
+  checked_in_by: string | null;
+  checked_out_by: string | null;
+  pickup_person_name: string | null;
+  pickup_relationship: string | null;
+  pickup_verified: boolean;
+  status: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Reservation Event (append-only ledger) ──────────────────────────────────
+
+export const RESERVATION_EVENT_TYPES = [
+  'reservation_created',
+  'reservation_confirmed',
+  'reservation_cancelled',
+  'reservation_modified',
+  'waitlist_promoted',
+  'payment_received',
+  'no_show',
+] as const;
+export type ReservationEventType = typeof RESERVATION_EVENT_TYPES[number];
+
+export interface ReservationEventRow {
+  id: string;
+  reservation_id: string;
+  event_type: string;
+  event_data: Record<string, unknown>;
+  created_by: string | null;
+  created_at: string;
+}
+
+// ─── Incident Report ─────────────────────────────────────────────────────────
+
+export const INCIDENT_SEVERITIES = ['low', 'medium', 'high', 'critical'] as const;
+export type IncidentSeverity = typeof INCIDENT_SEVERITIES[number];
+
+export const INCIDENT_STATUSES = ['open', 'investigating', 'resolved', 'closed'] as const;
+export type IncidentStatus = typeof INCIDENT_STATUSES[number];
+
+export interface IncidentReportRow {
+  id: string;
+  child_id: string;
+  attendance_session_id: string | null;
+  center_id: string | null;
+  severity: string;
+  category: string;
+  summary: string;
+  details: string | null;
+  reported_by: string | null;
+  parent_notified_at: string | null;
+  resolved_at: string | null;
+  closed_at: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Center Staff Membership ─────────────────────────────────────────────────
+
+export const STAFF_ROLES = ['staff', 'admin', 'center_admin', 'super_admin'] as const;
+export type StaffRole = typeof STAFF_ROLES[number];
+
+export interface CenterStaffMembershipRow {
+  id: string;
+  user_id: string;
+  center_id: string;
+  role: string;
+  active: boolean;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Pickup Verification ─────────────────────────────────────────────────────
+
+export const VERIFICATION_METHODS = ['photo_id', 'pin', 'facial_recognition', 'known_person'] as const;
+export type VerificationMethod = typeof VERIFICATION_METHODS[number];
+
+export interface PickupVerificationRow {
+  id: string;
+  attendance_session_id: string;
+  authorized_pickup_id: string | null;
+  verified_name: string;
+  verified_relationship: string;
+  verification_method: string;
+  verified_by: string | null;
+  verified_at: string;
+  notes: string | null;
+  created_at: string;
+}
+
+// ─── Incident Status Transition Map ──────────────────────────────────────────
+
+export const VALID_INCIDENT_TRANSITIONS: Record<string, string[]> = {
+  open: ['investigating', 'resolved', 'closed'],
+  investigating: ['resolved', 'closed'],
+  resolved: ['closed'],
+  closed: [],
+};
+
+// ─── Attendance Transition Map ───────────────────────────────────────────────
+
+export const VALID_ATTENDANCE_TRANSITIONS: Record<string, string[]> = {
+  scheduled: ['checked_in', 'cancelled'],
+  checked_in: ['in_care', 'cancelled'],
+  in_care: ['ready_for_pickup', 'cancelled'],
+  ready_for_pickup: ['checked_out', 'cancelled'],
+  checked_out: [],
+  cancelled: [],
+};
+
 // ─── Full child with nested data (for UI) ────────────────────────────────────
 
 export interface ChildWithDetails extends ChildRow {
   allergies: ChildAllergyRow[];
   emergency_contacts: ChildEmergencyContactRow[];
   authorized_pickups: Omit<ChildAuthorizedPickupRow, 'pickup_pin_hash'>[];
+  medical_profile: ChildMedicalProfileRow | null;
 }

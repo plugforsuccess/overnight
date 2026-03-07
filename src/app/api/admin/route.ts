@@ -217,6 +217,14 @@ export async function PUT(req: NextRequest) {
       .single();
 
     if (resError) return NextResponse.json({ error: 'Failed to create reservation' }, { status: 400 });
+
+    // Emit waitlist_promoted event
+    await supabaseAdmin.from('reservation_events').insert({
+      reservation_id: reservation.id,
+      event_type: 'waitlist_promoted',
+      event_data: { waitlist_id: waitlistId, child_id: entry.child_id },
+    });
+
     return NextResponse.json({ reservation });
   }
 

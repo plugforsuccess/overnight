@@ -9,8 +9,9 @@
 //
 // NOT managed by Prisma (remain in SQL):
 //   - RLS policies (supabase/rls-policies.sql)
-//   - Triggers: set_updated_at, enforce_max_two_emergency_contacts
+//   - Triggers: update_timestamp (global updated_at), enforce_max_two_emergency_contacts
 //   - Functions: handle_new_user (auth.users → parents auto-create)
+//   - Functions: update_timestamp (global updated_at automation)
 //   - Postgres enums: allergy_type, allergy_severity, treatment_type
 //   - CHECK constraints (enforced at DB level, documented inline)
 //   - Partial unique indexes (documented inline)
@@ -45,6 +46,8 @@ model Parent {
   is_admin           Boolean  @default(false)
   stripe_customer_id String?  @unique
   name               String?  // legacy column, nullable
+  center_id          String?  @db.Uuid
+  onboarding_status  String   @default("started") // CHECK: started | parent_profile_complete | child_created | medical_ack_complete | emergency_contact_added | complete
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
@@ -59,21 +62,29 @@ model Parent {
   audit_logs       AuditLog[]
   pickup_verifications PickupEvent[] @relation("pickup_verifier")
   settings        ParentSettings?
+  staff_memberships CenterStaffMembership[]
 
   @@map("parents")
 }
 
 // ─── children ─────────────────────────────────────────────────────────────────
 model Child {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  parent_id     String    @db.Uuid
-  first_name    String
-  last_name     String
-  date_of_birth DateTime? @db.Date
-  name          String?   // legacy column, nullable
-  allergies     String?   // legacy text column
-  photo_url     String?
-  medical_notes String?
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parent_id      String    @db.Uuid
+  first_name     String
+  last_name      String
+  middle_name    String?
+  preferred_name String?
+  date_of_birth  DateTime? @db.Date
+  gender         String?
+  name           String?   // legacy column, nullable
+  allergies      String?   // legacy text column
+  photo_url      String?
+  medical_notes  String?
+  notes          String?
+  active         Boolean   @default(true)
+  archived_at    DateTime? @db.Timestamptz(6)
+  center_id      String?   @db.Uuid
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
@@ -86,7 +97,11 @@ model Child {
   child_allergies    ChildAllergy[]
   emergency_contacts ChildEmergencyContact[]
   authorized_pickups ChildAuthorizedPickup[]
-  pickup_events      PickupEvent[]
+  pickup_events         PickupEvent[]
+  medical_profile       ChildMedicalProfile?
+  events                ChildEvent[]
+  attendance_sessions   ChildAttendanceSession[]
+  incident_reports      IncidentReport[]
 
   @@index([parent_id], map: "idx_children_parent_id")
   @@map("children")
@@ -136,18 +151,53 @@ model ChildAllergyActionPlan {
   @@map("child_allergy_action_plans")
 }
 
+// ─── child_medical_profiles ─────────────────────────────────────────────────
+// Stores child medical awareness without bloating the child record.
+// One-to-one with children (unique child_id).
+model ChildMedicalProfile {
+  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id  String @unique @db.Uuid
+  center_id String? @db.Uuid
+
+  has_allergies          Boolean @default(false)
+  has_medications        Boolean @default(false)
+  has_medical_conditions Boolean @default(false)
+
+  allergies_summary          String?
+  medications_summary        String?
+  medical_conditions_summary String?
+
+  physician_name      String?
+  physician_phone     String?
+  hospital_preference String?
+
+  special_instructions String?
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  child Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
+
+  @@map("child_medical_profiles")
+}
+
 // ─── child_emergency_contacts ────────────────────────────────────────────────
 // DB trigger: enforce_max_two_emergency_contacts() limits to 2 per child
 model ChildEmergencyContact {
   id                    String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   child_id              String  @db.Uuid
+  center_id             String? @db.Uuid
   first_name            String
   last_name             String
   relationship          String
   phone                 String
   phone_alt             String?
+  email                 String?
+  is_primary            Boolean @default(false)
   priority              Int
   authorized_for_pickup Boolean @default(false)
+  archived_at           DateTime? @db.Timestamptz(6)
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
@@ -156,22 +206,30 @@ model ChildEmergencyContact {
   child Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
 
   @@unique([child_id, priority], map: "child_emergency_contacts_child_id_priority_unique")
+  @@unique([child_id, phone], map: "child_emergency_contacts_child_id_phone_unique")
   @@map("child_emergency_contacts")
 }
 
 // ─── child_authorized_pickups ────────────────────────────────────────────────
 model ChildAuthorizedPickup {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  child_id        String    @db.Uuid
-  first_name      String
-  last_name       String
-  relationship    String
-  phone           String
-  pickup_pin_hash String
-  id_verified     Boolean   @default(false)
-  id_verified_at  DateTime? @db.Timestamptz(6)
-  id_verified_by  String?   @db.Uuid
-  notes           String?
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id             String    @db.Uuid
+  center_id            String?   @db.Uuid
+  first_name           String
+  last_name            String
+  relationship         String
+  phone                String
+  email                String?
+  dob                  DateTime? @db.Date
+  pickup_pin_hash      String?
+  photo_id_url         String?
+  is_emergency_contact Boolean   @default(false)
+  is_active            Boolean   @default(true)
+  archived_at          DateTime? @db.Timestamptz(6)
+  id_verified          Boolean   @default(false)
+  id_verified_at       DateTime? @db.Timestamptz(6)
+  id_verified_by       String?   @db.Uuid
+  notes                String?
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
@@ -181,6 +239,162 @@ model ChildAuthorizedPickup {
   pickup_events PickupEvent[]
 
   @@map("child_authorized_pickups")
+}
+
+// ─── child_events ──────────────────────────────────────────────────────────
+// Append-only child safety event ledger. Never update or delete.
+// Acts as an operational audit log for childcare operations.
+model ChildEvent {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id   String  @db.Uuid
+  center_id  String? @db.Uuid
+  event_type String  // e.g. child_checked_in, child_checked_out, medical_alert_triggered, etc.
+  event_data Json    @default("{}") @db.JsonB
+  created_by String? @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  child Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
+
+  @@index([child_id, created_at], map: "idx_child_events_child_created")
+  @@index([event_type], map: "idx_child_events_type")
+  @@map("child_events")
+}
+
+// ─── child_attendance_sessions ─────────────────────────────────────────────
+// Structured attendance tracking for overnight care sessions.
+// Powers staff dashboards, billing calculations, incident reporting, pickup verification.
+// CHECK: status IN (scheduled, checked_in, in_care, ready_for_pickup, checked_out, cancelled)
+model ChildAttendanceSession {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id        String    @db.Uuid
+  center_id       String?   @db.Uuid
+  reservation_id  String?   @db.Uuid
+
+  check_in_at     DateTime? @db.Timestamptz(6)
+  check_out_at    DateTime? @db.Timestamptz(6)
+  checked_in_by   String?   @db.Uuid
+  checked_out_by  String?   @db.Uuid
+
+  pickup_person_name   String?
+  pickup_relationship  String?
+  pickup_verified      Boolean @default(false)
+
+  status String @default("scheduled") // CHECK: scheduled | checked_in | in_care | ready_for_pickup | checked_out | cancelled
+  notes  String?
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  child            Child            @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  reservation      Reservation?     @relation(fields: [reservation_id], references: [id], onDelete: SetNull)
+  incident_reports IncidentReport[]
+  pickup_verification PickupVerification?
+
+  @@index([child_id, created_at], map: "idx_attendance_child_created")
+  @@index([status], map: "idx_attendance_status")
+  @@map("child_attendance_sessions")
+}
+
+// ─── reservation_events ────────────────────────────────────────────────────
+// Append-only ledger tracking reservation lifecycle history.
+// Never update or delete — preserves booking history for billing disputes and audits.
+model ReservationEvent {
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_id String  @db.Uuid
+  event_type     String  // reservation_created, reservation_confirmed, reservation_cancelled, etc.
+  event_data     Json    @default("{}") @db.JsonB
+  created_by     String? @db.Uuid
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  reservation Reservation @relation(fields: [reservation_id], references: [id], onDelete: Cascade)
+
+  @@index([reservation_id, created_at], map: "idx_reservation_events_res_created")
+  @@index([event_type], map: "idx_reservation_events_type")
+  @@map("reservation_events")
+}
+
+// ─── incident_reports ──────────────────────────────────────────────────────
+// First-class structured incident records linked to attendance sessions.
+// Supports legal defensibility, parent notification tracking, and compliance.
+// CHECK: severity IN (low, medium, high, critical)
+// CHECK: status IN (open, investigating, resolved, closed)
+model IncidentReport {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id              String    @db.Uuid
+  attendance_session_id String?   @db.Uuid
+  center_id             String?   @db.Uuid
+
+  severity String  // CHECK: low | medium | high | critical
+  category String  // injury, illness, behavioral, medication_error, safety, other
+  summary  String
+  details  String?
+
+  reported_by        String?   @db.Uuid
+  parent_notified_at DateTime? @db.Timestamptz(6)
+  resolved_at        DateTime? @db.Timestamptz(6)
+  closed_at          DateTime? @db.Timestamptz(6)
+  status             String    @default("open") // CHECK: open | investigating | resolved | closed
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  child              Child                   @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  attendance_session ChildAttendanceSession? @relation(fields: [attendance_session_id], references: [id], onDelete: SetNull)
+
+  @@index([child_id, created_at], map: "idx_incident_reports_child_created")
+  @@index([status], map: "idx_incident_reports_status")
+  @@index([severity], map: "idx_incident_reports_severity")
+  @@map("incident_reports")
+}
+
+// ─── center_staff_memberships ──────────────────────────────────────────────
+// Normalized staff/center role assignment for multi-center RLS.
+// Replaces ad hoc role flags with explicit membership records.
+// CHECK: role IN (staff, admin, center_admin, super_admin)
+model CenterStaffMembership {
+  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id   String  @db.Uuid
+  center_id String  @db.Uuid
+  role        String  // CHECK: staff | admin | center_admin | super_admin
+  active      Boolean @default(true)
+  archived_at DateTime? @db.Timestamptz(6)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  user Parent @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, center_id], map: "center_staff_memberships_user_center_unique")
+  @@index([center_id, active], map: "idx_staff_memberships_center_active")
+  @@map("center_staff_memberships")
+}
+
+// ─── pickup_verifications ──────────────────────────────────────────────────
+// Dedicated immutable record of each pickup verification event.
+// High-risk enough to warrant first-class storage separate from attendance.
+// One-to-one with attendance session (one verification per session).
+model PickupVerification {
+  id                     String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  attendance_session_id  String  @unique @db.Uuid
+  authorized_pickup_id   String? @db.Uuid
+  verified_name          String
+  verified_relationship  String
+  verification_method    String  // pin, photo_id, parent_self
+  verified_by            String? @db.Uuid
+  verified_at            DateTime @default(now()) @db.Timestamptz(6)
+  notes                  String?
+  created_at             DateTime @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  attendance_session ChildAttendanceSession @relation(fields: [attendance_session_id], references: [id], onDelete: Cascade)
+
+  @@index([verified_at], map: "idx_pickup_verifications_verified_at")
+  @@map("pickup_verifications")
 }
 
 // ─── plans ────────────────────────────────────────────────────────────────────
@@ -220,6 +434,7 @@ model OvernightBlock {
   payment_status           String  @default("pending")
   stripe_subscription_id   String?
   stripe_invoice_id        String?
+  archived_at              DateTime? @db.Timestamptz(6)
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
@@ -255,8 +470,10 @@ model Reservation {
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  child           Child          @relation(fields: [child_id], references: [id], onDelete: Cascade)
-  overnight_block OvernightBlock @relation(fields: [overnight_block_id], references: [id], onDelete: Cascade)
+  child               Child                    @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  overnight_block     OvernightBlock           @relation(fields: [overnight_block_id], references: [id], onDelete: Cascade)
+  attendance_sessions ChildAttendanceSession[]
+  reservation_events  ReservationEvent[]
 
   @@index([date], map: "idx_reservations_date")
   @@index([overnight_block_id], map: "idx_reservations_block")
@@ -524,4 +741,23 @@ model BillingEvent {
   subscription Subscription? @relation(fields: [subscription_id], references: [id])
 
   @@map("billing_events")
+}
+
+// ─── idempotency_keys ────────────────────────────────────────────────────────
+// Stores idempotency keys for critical POST/PATCH APIs.
+// Keys expire after 24 hours. Clients send Idempotency-Key header;
+// duplicate requests return the cached response.
+// Managed by service role only — no user-facing RLS policies.
+model IdempotencyKey {
+  key             String   @id
+  user_id         String?  @db.Uuid
+  request_path    String
+  response_status Int
+  response_body   Json     @default("{}") @db.JsonB
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  expires_at      DateTime @default(dbgenerated("(now() + interval '24 hours')")) @db.Timestamptz(6)
+
+  @@index([expires_at], map: "idx_idempotency_keys_expires")
+  @@index([user_id], map: "idx_idempotency_keys_user")
+  @@map("idempotency_keys")
 }

@@ -56,6 +56,38 @@ export async function POST(req: NextRequest) {
 
         if (resUpdateError) {
           console.error('[webhook] failed to confirm reservations:', resUpdateError);
+        } else {
+          // Emit reservation_confirmed events for each confirmed reservation
+          const { data: confirmedRes } = await supabaseAdmin
+            .from('reservations')
+            .select('id')
+            .eq('overnight_block_id', blockId)
+            .eq('status', 'confirmed');
+
+          if (confirmedRes && confirmedRes.length > 0) {
+            const eventRows = confirmedRes.map((r: { id: string }) => ({
+              reservation_id: r.id,
+              event_type: 'reservation_confirmed',
+              event_data: { block_id: blockId, payment_method: 'stripe' },
+            }));
+            await supabaseAdmin.from('reservation_events').insert(eventRows);
+          }
+        }
+
+        // Emit payment_received events
+        const { data: paidRes } = await supabaseAdmin
+          .from('reservations')
+          .select('id')
+          .eq('overnight_block_id', blockId)
+          .eq('status', 'confirmed');
+
+        if (paidRes && paidRes.length > 0) {
+          const paymentEvents = paidRes.map((r: { id: string }) => ({
+            reservation_id: r.id,
+            event_type: 'payment_received',
+            event_data: { amount_cents: session.amount_total ?? 0, stripe_event_id: event.id },
+          }));
+          await supabaseAdmin.from('reservation_events').insert(paymentEvents);
         }
 
         // Resolve parent_id from the block
