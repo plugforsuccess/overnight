@@ -11,6 +11,7 @@
     "migrate": "prisma migrate deploy",
     "migrate:dev": "prisma migrate dev",
     "migrate:status": "prisma migrate status",
+    "migrate:resolve": "prisma migrate resolve",
     "migrate:knex:legacy": "npx knex migrate:latest",
     "migrate:billing:legacy": "ts-node src/db/migrate.ts",
     "prisma:generate": "prisma generate",
