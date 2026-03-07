@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────
+# check-migration-state.sh — Diagnose Prisma migration health
+# ─────────────────────────────────────────────────────────────
+# Usage:
+#   ./scripts/check-migration-state.sh
+#
+# Requires:
+#   - DATABASE_URL (or DIRECT_URL) environment variable
+#   - psql CLI available on PATH
+#   - npx prisma available (project dependencies installed)
+# ─────────────────────────────────────────────────────────────
+
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+DB_URL="${DIRECT_URL:-${DATABASE_URL:-}}"
+
+if [ -z "$DB_URL" ]; then
+  echo -e "${RED}ERROR: Neither DIRECT_URL nor DATABASE_URL is set.${NC}"
+  echo "Set one of these environment variables and re-run."
+  exit 1
+fi
+
+echo -e "${CYAN}═══════════════════════════════════════════════════${NC}"
+echo -e "${CYAN}  Prisma Migration State Diagnostic${NC}"
+echo -e "${CYAN}═══════════════════════════════════════════════════${NC}"
+echo ""
+
+# ── Step 1: Prisma migrate status ────────────────────────────
+echo -e "${YELLOW}1. Prisma migrate status${NC}"
+echo "─────────────────────────────────────────────────────"
+npx prisma migrate status 2>&1 || true
+echo ""
+
+# ── Step 2: Raw _prisma_migrations table ─────────────────────
+echo -e "${YELLOW}2. Migration history (_prisma_migrations)${NC}"
+echo "─────────────────────────────────────────────────────"
+psql "$DB_URL" -c "
+  SELECT
+    migration_name,
+    started_at,
+    finished_at,
+    CASE
+      WHEN rolled_back_at IS NOT NULL THEN 'ROLLED_BACK'
+      WHEN finished_at IS NULL       THEN 'FAILED'
+      ELSE                                'APPLIED'
+    END AS state,
+    LEFT(logs, 120) AS logs_preview
+  FROM _prisma_migrations
+  ORDER BY started_at DESC;
+" 2>&1 || echo -e "${RED}Could not query _prisma_migrations (table may not exist yet).${NC}"
+echo ""
+
+# ── Step 3: Check required tables exist ──────────────────────
+echo -e "${YELLOW}3. Required tables — existence check${NC}"
+echo "─────────────────────────────────────────────────────"
+
+REQUIRED_TABLES=(
+  "parents"
+  "children"
+  "child_events"
+  "child_attendance_sessions"
+  "reservation_events"
+  "incident_reports"
+  "pickup_verifications"
+  "pickup_events"
+  "center_staff_memberships"
+  "idempotency_keys"
+  "child_medical_profiles"
+  "parent_settings"
+)
+
+for table in "${REQUIRED_TABLES[@]}"; do
+  EXISTS=$(psql "$DB_URL" -tAc "
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = '$table'
+    );
+  " 2>/dev/null || echo "error")
+
+  if [ "$EXISTS" = "t" ]; then
+    echo -e "  ${GREEN}✓${NC} $table"
+  elif [ "$EXISTS" = "f" ]; then
+    echo -e "  ${RED}✗${NC} $table  ${RED}(MISSING)${NC}"
+  else
+    echo -e "  ${YELLOW}?${NC} $table  ${YELLOW}(could not check)${NC}"
+  fi
+done
+echo ""
+
+# ── Step 4: Check required functions/triggers ────────────────
+echo -e "${YELLOW}4. Required functions — existence check${NC}"
+echo "─────────────────────────────────────────────────────"
+
+REQUIRED_FUNCTIONS=(
+  "update_timestamp"
+  "enforce_attendance_transition"
+  "enforce_incident_transition"
+  "prevent_hard_delete"
+  "cleanup_expired_idempotency_keys"
+)
+
+for func in "${REQUIRED_FUNCTIONS[@]}"; do
+  EXISTS=$(psql "$DB_URL" -tAc "
+    SELECT EXISTS (
+      SELECT 1 FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname = '$func'
+    );
+  " 2>/dev/null || echo "error")
+
+  if [ "$EXISTS" = "t" ]; then
+    echo -e "  ${GREEN}✓${NC} $func()"
+  elif [ "$EXISTS" = "f" ]; then
+    echo -e "  ${RED}✗${NC} $func()  ${RED}(MISSING)${NC}"
+  else
+    echo -e "  ${YELLOW}?${NC} $func()  ${YELLOW}(could not check)${NC}"
+  fi
+done
+echo ""
+
+# ── Step 5: RLS enabled check ───────────────────────────────
+echo -e "${YELLOW}5. Row-Level Security — enabled check${NC}"
+echo "─────────────────────────────────────────────────────"
+
+RLS_TABLES=(
+  "child_events"
+  "child_attendance_sessions"
+  "pickup_events"
+  "audit_log"
+  "reservation_events"
+  "incident_reports"
+  "center_staff_memberships"
+  "pickup_verifications"
+  "idempotency_keys"
+)
+
+for table in "${RLS_TABLES[@]}"; do
+  RLS=$(psql "$DB_URL" -tAc "
+    SELECT rowsecurity FROM pg_tables
+    WHERE schemaname = 'public' AND tablename = '$table';
+  " 2>/dev/null || echo "error")
+
+  if [ "$RLS" = "t" ]; then
+    echo -e "  ${GREEN}✓${NC} $table (RLS enabled)"
+  elif [ "$RLS" = "f" ]; then
+    echo -e "  ${RED}✗${NC} $table  ${RED}(RLS NOT enabled)${NC}"
+  elif [ -z "$RLS" ]; then
+    echo -e "  ${YELLOW}?${NC} $table  ${YELLOW}(table not found)${NC}"
+  else
+    echo -e "  ${YELLOW}?${NC} $table  ${YELLOW}(could not check)${NC}"
+  fi
+done
+echo ""
+
+# ── Summary ──────────────────────────────────────────────────
+echo -e "${CYAN}═══════════════════════════════════════════════════${NC}"
+echo -e "${CYAN}  Diagnostic complete.${NC}"
+echo -e "${CYAN}  See docs/prisma-migration-recovery.md for${NC}"
+echo -e "${CYAN}  recovery procedures if any issues were found.${NC}"
+echo -e "${CYAN}═══════════════════════════════════════════════════${NC}"
