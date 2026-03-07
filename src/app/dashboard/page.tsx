@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Calendar, Users, CreditCard, Clock, AlertCircle } from 'lucide-react';
+import { Calendar, Users, CreditCard, Clock, AlertCircle, Check, Shield } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { formatCents } from '@/lib/constants';
 import type { DashboardData } from '@/types/dashboard';
@@ -142,15 +142,25 @@ export default function DashboardPage() {
 
   if (!data) return null;
 
-  const { profile, children, nextReservation, subscriptions, weeklyTotalCents, upcomingReservationsCount, waitlistCount } = data;
+  const { profile, children, nextReservation, subscriptions, weeklyTotalCents, upcomingReservationsCount, waitlistCount, profileCompleteness } = data;
   const selectedChild = children.find(c => c.id === selectedChildId) || children[0] || null;
   const hasChildren = children.length > 0;
 
   // Check if reservation should be blocked (missing safety info)
-  // Only emergency contacts are required — parent is implicitly authorized for pickup
+  // Emergency contacts + medical acknowledgement required
   const canReserve = selectedChild
-    ? selectedChild.emergency_contacts_count >= 1
+    ? selectedChild.emergency_contacts_count >= 1 && selectedChild.has_medical_profile
     : false;
+
+  const isOnboardingComplete = profile.onboarding_status === 'complete';
+
+  // Profile completion checklist items
+  const checklistItems = hasChildren ? [
+    { label: 'Child profile added', done: true, href: '/dashboard/children' },
+    { label: 'Medical acknowledgement', done: children.some(c => c.has_medical_profile), href: '/dashboard/children' },
+    { label: 'Emergency contact added', done: children.some(c => c.emergency_contacts_count > 0), href: '/dashboard/children' },
+    { label: 'Authorized pickup added', done: children.some(c => c.authorized_pickups_count > 0), href: '/dashboard/children' },
+  ] : [];
 
   return (
     <div className="py-12">
@@ -186,6 +196,45 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+
+        {/* Profile Completion Banner */}
+        {hasChildren && profileCompleteness < 100 && (
+          <div className="card mb-8 border-l-4 border-l-accent-500">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <Shield className="h-5 w-5 text-accent-600" />
+                  <h3 className="font-semibold text-gray-900">Complete Your Profile</h3>
+                  <span className="text-sm font-medium text-accent-600">{profileCompleteness}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
+                  <div
+                    className="bg-accent-500 h-2 rounded-full transition-all"
+                    style={{ width: `${profileCompleteness}%` }}
+                  />
+                </div>
+                <ul className="space-y-1.5">
+                  {checklistItems.map(item => (
+                    <li key={item.label} className="flex items-center gap-2 text-sm">
+                      {item.done ? (
+                        <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
+                      ) : (
+                        <div className="h-4 w-4 rounded-full border-2 border-gray-300 flex-shrink-0" />
+                      )}
+                      {item.done ? (
+                        <span className="text-gray-500">{item.label}</span>
+                      ) : (
+                        <Link href={item.href} className="text-accent-600 hover:text-accent-700 font-medium">
+                          {item.label}
+                        </Link>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Quick Stats */}
         <div className="grid sm:grid-cols-4 gap-4 mb-8">
@@ -272,7 +321,11 @@ export default function DashboardPage() {
               <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800 flex items-start gap-2">
                 <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                 <span>
-                  Reservations require at least 1 emergency contact for {selectedChild.first_name}.{' '}
+                  Reservations require{' '}
+                  {selectedChild.emergency_contacts_count < 1 && 'at least 1 emergency contact'}
+                  {selectedChild.emergency_contacts_count < 1 && !selectedChild.has_medical_profile && ' and '}
+                  {!selectedChild.has_medical_profile && 'medical safety acknowledgement'}
+                  {' '}for {selectedChild.first_name}.{' '}
                   <Link href="/dashboard/children" className="font-medium underline">Complete profile</Link>
                 </span>
               </div>

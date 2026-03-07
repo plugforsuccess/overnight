@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   ] = await Promise.all([
     supabase
       .from('parents')
-      .select('first_name, last_name, email, phone, stripe_customer_id')
+      .select('first_name, last_name, email, phone, stripe_customer_id, onboarding_status')
       .eq('id', parentId)
       .single(),
     supabase
@@ -34,7 +34,8 @@ export async function GET(req: NextRequest) {
         id, first_name, last_name, date_of_birth, medical_notes,
         child_allergies(id, allergen, custom_label, severity, child_allergy_action_plans(id, treatment_first_line)),
         child_emergency_contacts(id),
-        child_authorized_pickups(id)
+        child_authorized_pickups(id),
+        child_medical_profiles(id)
       `)
       .eq('parent_id', parentId)
       .order('created_at', { ascending: true }),
@@ -86,6 +87,7 @@ export async function GET(req: NextRequest) {
       last_name: child.last_name,
       date_of_birth: child.date_of_birth,
       has_medical_notes: !!child.medical_notes,
+      has_medical_profile: (child.child_medical_profiles || []).length > 0,
       allergies,
       emergency_contacts_count: (child.child_emergency_contacts || []).length,
       authorized_pickups_count: (child.child_authorized_pickups || []).length,
@@ -138,6 +140,16 @@ export async function GET(req: NextRequest) {
     0
   );
 
+  // Calculate profile completeness percentage
+  const completenessItems = {
+    hasChildren: dashboardChildren.length > 0,
+    hasMedicalProfile: dashboardChildren.some(c => c.has_medical_profile),
+    hasEmergencyContacts: dashboardChildren.some(c => c.emergency_contacts_count > 0),
+    hasAuthorizedPickups: dashboardChildren.some(c => c.authorized_pickups_count > 0),
+  };
+  const completedCount = Object.values(completenessItems).filter(Boolean).length;
+  const profileCompleteness = Math.round((completedCount / Object.keys(completenessItems).length) * 100);
+
   const data: DashboardData = {
     profile: {
       first_name: profileRes.data.first_name,
@@ -145,6 +157,7 @@ export async function GET(req: NextRequest) {
       email: profileRes.data.email,
       phone: profileRes.data.phone,
       stripe_customer_id: profileRes.data.stripe_customer_id,
+      onboarding_status: profileRes.data.onboarding_status || 'started',
     },
     children: dashboardChildren,
     nextReservation,
@@ -157,6 +170,7 @@ export async function GET(req: NextRequest) {
     weeklyTotalCents,
     upcomingReservationsCount: upcomingCount,
     waitlistCount: (waitlistRes.data || []).length,
+    profileCompleteness,
   };
 
   return NextResponse.json(data);

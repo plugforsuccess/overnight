@@ -3,19 +3,17 @@
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Moon, Check, Shield, Heart, Building2, Users, ChevronRight, ChevronLeft, Eye, EyeOff } from 'lucide-react';
+import { Moon, Check, Shield, Heart, Building2, Users, ChevronRight, ChevronLeft, Eye, EyeOff, AlertCircle, Stethoscope, UserCheck } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
-import type { ChildRow, ChildEmergencyContactRow, ChildAuthorizedPickupRow } from '@/types/children';
+import type { ChildRow, ChildEmergencyContactRow, ChildAuthorizedPickupRow, ChildMedicalProfileRow } from '@/types/children';
 
 import { ChildFormBasics } from '@/components/children/ChildFormBasics';
 import { EmergencyContactsEditor } from '@/components/children/EmergencyContactsEditor';
 
-// Simplified onboarding: Account → Child → Emergency Contact → Done
-// Authorized pickups and additional profile details are handled in the dashboard.
-// This reduces friction and keeps signup completion high (~3 steps after account).
-type Step = 'account' | 'child' | 'emergency' | 'done';
-const STEPS: Step[] = ['account', 'child', 'emergency', 'done'];
-const STEP_LABELS = ['Account', 'Child', 'Emergency', 'Done'];
+// 6-step onboarding: Account → Child → Medical Ack → Emergency Contact → Authorized Pickups → Done
+type Step = 'account' | 'child' | 'medical' | 'emergency' | 'pickups' | 'done';
+const STEPS: Step[] = ['account', 'child', 'medical', 'emergency', 'pickups', 'done'];
+const STEP_LABELS = ['Account', 'Child', 'Medical', 'Emergency', 'Pickups', 'Done'];
 
 interface FieldErrors {
   [key: string]: string;
@@ -54,6 +52,28 @@ function formatPhoneInput(value: string): string {
 // Omit the hash from the pickup type for display
 type PickupDisplay = Omit<ChildAuthorizedPickupRow, 'pickup_pin_hash'>;
 
+// Medical ack form state
+interface MedicalAckForm {
+  has_allergies: boolean;
+  has_medications: boolean;
+  has_medical_conditions: boolean;
+  allergies_summary: string;
+  medications_summary: string;
+  medical_conditions_summary: string;
+}
+
+// Pickup form for onboarding
+interface PickupForm {
+  first_name: string;
+  last_name: string;
+  relationship: string;
+  phone: string;
+  pickup_pin: string;
+  pickup_pin_confirm: string;
+}
+
+const PICKUP_RELATIONSHIPS = ['Grandparent', 'Aunt', 'Uncle', 'Sibling', 'Nanny', 'Family Friend', 'Neighbor', 'Other'];
+
 export default function SignupPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>('account');
@@ -67,10 +87,30 @@ export default function SignupPage() {
   // Created child record (from step 2)
   const [createdChild, setCreatedChild] = useState<ChildRow | null>(null);
 
-  // Emergency contacts and auto-created pickups (from step 3)
+  // Medical ack (step 3)
+  const [medicalAck, setMedicalAck] = useState<MedicalAckForm>({
+    has_allergies: false,
+    has_medications: false,
+    has_medical_conditions: false,
+    allergies_summary: '',
+    medications_summary: '',
+    medical_conditions_summary: '',
+  });
+  const [medicalSaved, setMedicalSaved] = useState(false);
+
+  // Emergency contacts (step 4)
   const [emergencyContacts, setEmergencyContacts] = useState<ChildEmergencyContactRow[]>([]);
   const [autoCreatedPickups, setAutoCreatedPickups] = useState<PickupDisplay[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // Authorized pickups (step 5)
+  const [pickups, setPickups] = useState<PickupDisplay[]>([]);
+  const [showPickupForm, setShowPickupForm] = useState(false);
+  const [pickupForm, setPickupForm] = useState<PickupForm>({
+    first_name: '', last_name: '', relationship: '', phone: '', pickup_pin: '', pickup_pin_confirm: '',
+  });
+  const [pickupErrors, setPickupErrors] = useState<Record<string, string>>({});
+  const [skipPickups, setSkipPickups] = useState(false);
 
   // Step 1 — Parent Account
   const [account, setAccount] = useState({
@@ -107,6 +147,20 @@ export default function SignupPage() {
     };
   }
 
+  // ── Onboarding status update ────────────────────────────────────────
+  async function updateOnboardingStatus(status: string) {
+    try {
+      const headers = await getAuthHeaders();
+      await fetch('/api/onboarding-status', {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ status }),
+      });
+    } catch (err) {
+      console.error('Failed to update onboarding status:', err);
+    }
+  }
+
   // ── Inline validators ──────────────────────────────────────────────
 
   function validateAccountField(field: string, value: string) {
@@ -138,7 +192,6 @@ export default function SignupPage() {
     else if (!validateEmail(account.email.trim())) errors.email = 'Please enter a valid email address';
     if (!account.phone.trim()) errors.phone = 'Phone number is required';
     else if (!validatePhone(account.phone)) errors.phone = 'Please enter a valid 10-digit phone number';
-    if (!account.address.trim()) errors.address = 'Address or ZIP code is required';
     if (!account.password) errors.password = 'Password is required';
     else if (account.password.length < 8) errors.password = 'Password must be at least 8 characters';
     if (account.password !== account.confirmPassword) errors.confirmPassword = 'Passwords do not match';
@@ -210,7 +263,7 @@ export default function SignupPage() {
     }
   }
 
-  // ── Child form save (uses shared ChildFormBasics component) ────────
+  // ── Child form save ────────────────────────────────────────────────
 
   async function handleSaveChild(data: { first_name: string; last_name: string; date_of_birth: string; medical_notes: string }) {
     if (!userId) {
@@ -229,6 +282,57 @@ export default function SignupPage() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Failed to create child profile');
       setCreatedChild(result.child);
+      await updateOnboardingStatus('child_created');
+      setSaving(false);
+      setStep('medical');
+    } catch (err: any) {
+      setError(err.message);
+      setSaving(false);
+    }
+  }
+
+  // ── Medical ack save ───────────────────────────────────────────────
+
+  async function handleSaveMedicalAck() {
+    setError('');
+    const errors: FieldErrors = {};
+
+    if (medicalAck.has_allergies && !medicalAck.allergies_summary.trim()) {
+      errors.allergies_summary = 'Please describe your child\'s allergies';
+    }
+    if (medicalAck.has_medications && !medicalAck.medications_summary.trim()) {
+      errors.medications_summary = 'Please describe your child\'s medications';
+    }
+    if (medicalAck.has_medical_conditions && !medicalAck.medical_conditions_summary.trim()) {
+      errors.medical_conditions_summary = 'Please describe your child\'s medical conditions';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      return;
+    }
+
+    if (!createdChild) return;
+    setSaving(true);
+
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/children/${createdChild.id}/medical-profile`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          has_allergies: medicalAck.has_allergies,
+          has_medications: medicalAck.has_medications,
+          has_medical_conditions: medicalAck.has_medical_conditions,
+          allergies_summary: medicalAck.allergies_summary.trim() || null,
+          medications_summary: medicalAck.medications_summary.trim() || null,
+          medical_conditions_summary: medicalAck.medical_conditions_summary.trim() || null,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Failed to save medical information');
+      setMedicalSaved(true);
+      await updateOnboardingStatus('medical_ack_complete');
       setSaving(false);
       setStep('emergency');
     } catch (err: any) {
@@ -237,9 +341,7 @@ export default function SignupPage() {
     }
   }
 
-  // ── Emergency contact handlers (reuse same API as dashboard) ──────
-  // When authorized_for_pickup is toggled with a PIN, the API auto-creates
-  // an authorized pickup record — no separate pickup step needed.
+  // ── Emergency contact handlers ─────────────────────────────────────
 
   async function handleAddContact(contact: any) {
     if (!createdChild) return;
@@ -252,7 +354,6 @@ export default function SignupPage() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to add contact');
     setEmergencyContacts(prev => [...prev, data.contact]);
-    // Track auto-created pickups from the emergency contact promotion
     if (data.pickup) {
       setAutoCreatedPickups(prev => [...prev, data.pickup]);
     }
@@ -283,11 +384,71 @@ export default function SignupPage() {
     setEmergencyContacts(prev => prev.filter(c => c.id !== id));
   }
 
+  // ── Authorized pickup handlers ─────────────────────────────────────
+
+  function validatePickupForm(): boolean {
+    const errs: Record<string, string> = {};
+    if (!pickupForm.first_name.trim()) errs.first_name = 'Required';
+    if (!pickupForm.last_name.trim()) errs.last_name = 'Required';
+    if (!pickupForm.relationship) errs.relationship = 'Required';
+    if (!pickupForm.phone.trim()) errs.phone = 'Required';
+    else if (!validatePhone(pickupForm.phone)) errs.phone = 'Invalid phone number';
+    if (!pickupForm.pickup_pin) errs.pickup_pin = 'PIN is required';
+    else if (!/^\d{4,6}$/.test(pickupForm.pickup_pin)) errs.pickup_pin = 'PIN must be 4-6 digits';
+    if (pickupForm.pickup_pin !== pickupForm.pickup_pin_confirm) errs.pickup_pin_confirm = 'PINs do not match';
+    setPickupErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
+
+  async function handleAddPickup(e: React.FormEvent) {
+    e.preventDefault();
+    if (!validatePickupForm() || !createdChild) return;
+    setSaving(true);
+    setError('');
+
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/children/${createdChild.id}/authorized-pickups`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          first_name: pickupForm.first_name.trim(),
+          last_name: pickupForm.last_name.trim(),
+          relationship: pickupForm.relationship,
+          phone: pickupForm.phone.replace(/\D/g, ''),
+          pickup_pin: pickupForm.pickup_pin,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to add authorized pickup');
+      setPickups(prev => [...prev, data.pickup]);
+      setShowPickupForm(false);
+      setPickupForm({ first_name: '', last_name: '', relationship: '', phone: '', pickup_pin: '', pickup_pin_confirm: '' });
+      setSaving(false);
+    } catch (err: any) {
+      setError(err.message);
+      setSaving(false);
+    }
+  }
+
   function handleBack() {
     setError('');
     setFieldErrors({});
     if (step === 'child') setStep('account');
-    if (step === 'emergency') setStep('child');
+    if (step === 'medical') setStep('child');
+    if (step === 'emergency') setStep('medical');
+    if (step === 'pickups') setStep('emergency');
+  }
+
+  async function handleEmergencyNext() {
+    if (emergencyContacts.length === 0) return;
+    await updateOnboardingStatus('emergency_contact_added');
+    setStep('pickups');
+  }
+
+  async function handleComplete() {
+    await updateOnboardingStatus('complete');
+    setStep('done');
   }
 
   // ── Derived values ──────────────────────────────────────────────────
@@ -297,16 +458,22 @@ export default function SignupPage() {
   const stepTitles: Record<Step, string> = {
     account: 'Create Your Account',
     child: 'Add Your Child',
+    medical: 'Medical & Safety',
     emergency: 'Emergency Contact',
+    pickups: 'Authorized Pickups',
     done: '',
   };
 
   const stepDescriptions: Record<Step, string> = {
     account: 'Join DreamWatch Overnight',
     child: 'Tell us about your little one',
+    medical: 'Help us keep your child safe',
     emergency: 'Who should we call in an emergency?',
+    pickups: 'Who else can pick up your child?',
     done: '',
   };
+
+  const allPickups = [...autoCreatedPickups, ...pickups];
 
   // ── Main render ────────────────────────────────────────────────────
 
@@ -332,7 +499,7 @@ export default function SignupPage() {
                 <li key={s} className="flex items-center flex-1 last:flex-none">
                   <div className="flex flex-col items-center">
                     <div
-                      className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
+                      className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold transition-colors ${
                         isComplete
                           ? 'bg-green-500 text-white'
                           : isCurrent
@@ -340,10 +507,10 @@ export default function SignupPage() {
                           : 'bg-gray-200 text-gray-500'
                       }`}
                     >
-                      {isComplete ? <Check className="w-4 h-4" /> : i + 1}
+                      {isComplete ? <Check className="w-3.5 h-3.5" /> : i + 1}
                     </div>
                     <span
-                      className={`mt-1.5 text-xs font-medium ${
+                      className={`mt-1 text-[10px] font-medium ${
                         isCurrent ? 'text-navy-700' : isComplete ? 'text-green-600' : 'text-gray-400'
                       }`}
                     >
@@ -352,7 +519,7 @@ export default function SignupPage() {
                   </div>
                   {i < STEPS.length - 1 && (
                     <div
-                      className={`flex-1 h-0.5 mx-2 mt-[-1rem] ${
+                      className={`flex-1 h-0.5 mx-1.5 mt-[-1rem] ${
                         i < stepIndex ? 'bg-green-400' : 'bg-gray-200'
                       }`}
                     />
@@ -493,7 +660,7 @@ export default function SignupPage() {
 
               <div>
                 <label htmlFor="address" className="onboarding-label">
-                  Address or ZIP Code
+                  Address or ZIP Code <span className="text-gray-400 font-normal">(optional)</span>
                 </label>
                 <input
                   id="address"
@@ -506,7 +673,6 @@ export default function SignupPage() {
                   className="onboarding-input"
                   placeholder="123 Main St, Atlanta, GA or 30301"
                   autoComplete="street-address"
-                  required
                   aria-invalid={!!fieldErrors.address}
                 />
                 {fieldErrors.address && (
@@ -601,7 +767,7 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* Step 2: Child Profile — uses shared ChildFormBasics component */}
+          {/* Step 2: Child Profile */}
           {step === 'child' && (
             <div>
               {createdChild ? (
@@ -611,7 +777,7 @@ export default function SignupPage() {
                     {createdChild.first_name} {createdChild.last_name}&apos;s profile has been created.
                   </div>
                   <p className="text-sm text-gray-600">
-                    You can edit this profile later in the dashboard. Click Continue to add an emergency contact.
+                    You can edit this profile later in the dashboard. Click Continue to add medical information.
                   </p>
                 </div>
               ) : (
@@ -624,9 +790,138 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* Step 3: Emergency Contact — uses shared EmergencyContactsEditor */}
-          {/* When "authorized for pickup" is toggled, inline PIN fields appear */}
-          {/* and the API auto-creates an authorized pickup record */}
+          {/* Step 3: Medical / Safety Acknowledgement */}
+          {step === 'medical' && createdChild && (
+            <div className="space-y-5">
+              {medicalSaved ? (
+                <div className="space-y-4">
+                  <div className="bg-green-50 text-green-700 px-4 py-3 rounded-lg text-sm">
+                    <Check className="w-4 h-4 inline mr-1" />
+                    Medical information saved for {createdChild.first_name}.
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    You can update this anytime from the dashboard, including physician details and hospital preference.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800 flex items-start gap-2">
+                    <Stethoscope className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                    <span>
+                      This helps our staff prepare for {createdChild.first_name}&apos;s overnight stay. Physician details can be added later in the dashboard.
+                    </span>
+                  </div>
+
+                  {/* Allergies */}
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={medicalAck.has_allergies}
+                        onChange={e => {
+                          setMedicalAck(prev => ({ ...prev, has_allergies: e.target.checked }));
+                          if (!e.target.checked) clearFieldError('allergies_summary');
+                        }}
+                        className="w-5 h-5 text-accent-600 focus:ring-accent-500 rounded"
+                      />
+                      <span className="text-sm font-medium text-gray-900">My child has allergies</span>
+                    </label>
+                    {medicalAck.has_allergies && (
+                      <div className="ml-8">
+                        <textarea
+                          value={medicalAck.allergies_summary}
+                          onChange={e => {
+                            setMedicalAck(prev => ({ ...prev, allergies_summary: e.target.value }));
+                            clearFieldError('allergies_summary');
+                          }}
+                          className="input-field min-h-[60px] resize-none"
+                          placeholder="Please describe allergies (e.g., peanut allergy - carries EpiPen)"
+                          maxLength={1000}
+                        />
+                        {fieldErrors.allergies_summary && (
+                          <p className="mt-1 text-sm text-red-600">{fieldErrors.allergies_summary}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Medications */}
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={medicalAck.has_medications}
+                        onChange={e => {
+                          setMedicalAck(prev => ({ ...prev, has_medications: e.target.checked }));
+                          if (!e.target.checked) clearFieldError('medications_summary');
+                        }}
+                        className="w-5 h-5 text-accent-600 focus:ring-accent-500 rounded"
+                      />
+                      <span className="text-sm font-medium text-gray-900">My child takes medications</span>
+                    </label>
+                    {medicalAck.has_medications && (
+                      <div className="ml-8">
+                        <textarea
+                          value={medicalAck.medications_summary}
+                          onChange={e => {
+                            setMedicalAck(prev => ({ ...prev, medications_summary: e.target.value }));
+                            clearFieldError('medications_summary');
+                          }}
+                          className="input-field min-h-[60px] resize-none"
+                          placeholder="Please describe medications (e.g., melatonin at bedtime)"
+                          maxLength={1000}
+                        />
+                        {fieldErrors.medications_summary && (
+                          <p className="mt-1 text-sm text-red-600">{fieldErrors.medications_summary}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Medical Conditions */}
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={medicalAck.has_medical_conditions}
+                        onChange={e => {
+                          setMedicalAck(prev => ({ ...prev, has_medical_conditions: e.target.checked }));
+                          if (!e.target.checked) clearFieldError('medical_conditions_summary');
+                        }}
+                        className="w-5 h-5 text-accent-600 focus:ring-accent-500 rounded"
+                      />
+                      <span className="text-sm font-medium text-gray-900">My child has medical conditions</span>
+                    </label>
+                    {medicalAck.has_medical_conditions && (
+                      <div className="ml-8">
+                        <textarea
+                          value={medicalAck.medical_conditions_summary}
+                          onChange={e => {
+                            setMedicalAck(prev => ({ ...prev, medical_conditions_summary: e.target.value }));
+                            clearFieldError('medical_conditions_summary');
+                          }}
+                          className="input-field min-h-[60px] resize-none"
+                          placeholder="Please describe conditions (e.g., asthma - uses inhaler as needed)"
+                          maxLength={1000}
+                        />
+                        {fieldErrors.medical_conditions_summary && (
+                          <p className="mt-1 text-sm text-red-600">{fieldErrors.medical_conditions_summary}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {!medicalAck.has_allergies && !medicalAck.has_medications && !medicalAck.has_medical_conditions && (
+                    <p className="text-sm text-gray-500 bg-gray-50 rounded-lg px-4 py-3">
+                      No medical concerns? Great! You can always update this later if anything changes.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Step 4: Emergency Contact */}
           {step === 'emergency' && createdChild && (
             <div>
               <EmergencyContactsEditor
@@ -651,7 +946,159 @@ export default function SignupPage() {
             </div>
           )}
 
-          {/* Step 4: Done */}
+          {/* Step 5: Authorized Pickups */}
+          {step === 'pickups' && createdChild && (
+            <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800 flex items-start gap-2">
+                <UserCheck className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <span>
+                  Add people (other than yourself) who are authorized to pick up {createdChild.first_name}. You can skip this step if only you will be picking up.
+                </span>
+              </div>
+
+              {autoCreatedPickups.length > 0 && (
+                <div className="text-sm text-green-700 bg-green-50 px-4 py-3 rounded-lg">
+                  <Check className="w-4 h-4 inline mr-1" />
+                  {autoCreatedPickups.length} pickup{autoCreatedPickups.length > 1 ? 's' : ''} already added from emergency contacts.
+                </div>
+              )}
+
+              {/* List existing pickups added in this step */}
+              {pickups.map(pickup => (
+                <div key={pickup.id} className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-medium text-gray-900">
+                        {pickup.first_name} {pickup.last_name}
+                      </h4>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {pickup.relationship} &middot; {pickup.phone}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Add pickup form */}
+              {showPickupForm && (
+                <form onSubmit={handleAddPickup} className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-4">
+                  <h4 className="font-medium text-gray-900">Add Authorized Pickup</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+                      <input
+                        type="text"
+                        value={pickupForm.first_name}
+                        onChange={e => setPickupForm(f => ({ ...f, first_name: e.target.value }))}
+                        className="input-field"
+                        required
+                      />
+                      {pickupErrors.first_name && <p className="mt-1 text-sm text-red-600">{pickupErrors.first_name}</p>}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+                      <input
+                        type="text"
+                        value={pickupForm.last_name}
+                        onChange={e => setPickupForm(f => ({ ...f, last_name: e.target.value }))}
+                        className="input-field"
+                        required
+                      />
+                      {pickupErrors.last_name && <p className="mt-1 text-sm text-red-600">{pickupErrors.last_name}</p>}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Relationship *</label>
+                      <select
+                        value={pickupForm.relationship}
+                        onChange={e => setPickupForm(f => ({ ...f, relationship: e.target.value }))}
+                        className="input-field"
+                        required
+                      >
+                        <option value="">Select...</option>
+                        {PICKUP_RELATIONSHIPS.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                      {pickupErrors.relationship && <p className="mt-1 text-sm text-red-600">{pickupErrors.relationship}</p>}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
+                      <input
+                        type="tel"
+                        value={pickupForm.phone}
+                        onChange={e => setPickupForm(f => ({ ...f, phone: formatPhoneInput(e.target.value) }))}
+                        className="input-field"
+                        placeholder="(404) 555-0123"
+                        required
+                      />
+                      {pickupErrors.phone && <p className="mt-1 text-sm text-red-600">{pickupErrors.phone}</p>}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Pickup PIN * (4-6 digits)</label>
+                      <input
+                        type="text"
+                        value={pickupForm.pickup_pin}
+                        onChange={e => setPickupForm(f => ({ ...f, pickup_pin: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                        className="input-field text-center tracking-widest font-mono"
+                        placeholder="1234"
+                        maxLength={6}
+                      />
+                      {pickupErrors.pickup_pin && <p className="mt-1 text-sm text-red-600">{pickupErrors.pickup_pin}</p>}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Confirm PIN *</label>
+                      <input
+                        type="text"
+                        value={pickupForm.pickup_pin_confirm}
+                        onChange={e => setPickupForm(f => ({ ...f, pickup_pin_confirm: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                        className="input-field text-center tracking-widest font-mono"
+                        placeholder="1234"
+                        maxLength={6}
+                      />
+                      {pickupErrors.pickup_pin_confirm && <p className="mt-1 text-sm text-red-600">{pickupErrors.pickup_pin_confirm}</p>}
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <button type="button" onClick={() => setShowPickupForm(false)} className="btn-secondary">
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={saving} className="btn-primary">
+                      {saving ? 'Saving...' : 'Add Pickup'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {!showPickupForm && (
+                <button
+                  type="button"
+                  onClick={() => setShowPickupForm(true)}
+                  className="btn-secondary flex items-center gap-2 text-sm w-full justify-center"
+                >
+                  <UserCheck className="h-4 w-4" /> Add Authorized Pickup Person
+                </button>
+              )}
+
+              {/* Skip option */}
+              {!showPickupForm && allPickups.length === 0 && (
+                <label className="flex items-start gap-3 cursor-pointer bg-gray-50 rounded-lg p-4 border border-gray-200 mt-2">
+                  <input
+                    type="checkbox"
+                    checked={skipPickups}
+                    onChange={e => setSkipPickups(e.target.checked)}
+                    className="w-5 h-5 text-accent-600 focus:ring-accent-500 rounded mt-0.5"
+                  />
+                  <span className="text-sm text-gray-700">
+                    No authorized pickups other than parent/legal guardian at this time
+                  </span>
+                </label>
+              )}
+            </div>
+          )}
+
+          {/* Step 6: Done */}
           {step === 'done' && (
             <div className="text-center py-6">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-5">
@@ -668,18 +1115,22 @@ export default function SignupPage() {
                     <span className="font-medium">{createdChild.first_name} {createdChild.last_name}</span>
                   </div>
                   <div className="flex justify-between">
+                    <span className="text-gray-500">Medical Acknowledgement</span>
+                    <span className="font-medium text-green-600">Complete</span>
+                  </div>
+                  <div className="flex justify-between">
                     <span className="text-gray-500">Emergency Contacts</span>
                     <span className="font-medium">{emergencyContacts.length}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-500">Authorized Pickups</span>
-                    <span className="font-medium">{autoCreatedPickups.length}</span>
+                    <span className="font-medium">{allPickups.length}</span>
                   </div>
                 </div>
               )}
 
               <p className="text-xs text-gray-500 mb-6">
-                You can add more children, emergency contacts, and authorized pickups from the dashboard.
+                Complete your profile in the dashboard to add physician info, sleep routines, and more.
               </p>
 
               <button
@@ -724,6 +1175,25 @@ export default function SignupPage() {
               {step === 'child' && createdChild && (
                 <button
                   type="button"
+                  onClick={() => setStep('medical')}
+                  className="btn-primary flex-1 py-3 text-base font-semibold"
+                >
+                  Continue
+                </button>
+              )}
+              {step === 'medical' && !medicalSaved && (
+                <button
+                  type="button"
+                  onClick={handleSaveMedicalAck}
+                  className="btn-primary flex-1 py-3 text-base font-semibold"
+                  disabled={saving}
+                >
+                  {saving ? 'Saving...' : 'Continue'}
+                </button>
+              )}
+              {step === 'medical' && medicalSaved && (
+                <button
+                  type="button"
                   onClick={() => setStep('emergency')}
                   className="btn-primary flex-1 py-3 text-base font-semibold"
                 >
@@ -733,11 +1203,21 @@ export default function SignupPage() {
               {step === 'emergency' && (
                 <button
                   type="button"
-                  onClick={() => setStep('done')}
+                  onClick={handleEmergencyNext}
                   className="btn-primary flex-1 py-3 text-base font-semibold"
                   disabled={emergencyContacts.length === 0}
                 >
-                  {emergencyContacts.length === 0 ? 'Add a Contact First' : 'Complete Signup'}
+                  {emergencyContacts.length === 0 ? 'Add a Contact First' : 'Continue'}
+                </button>
+              )}
+              {step === 'pickups' && (
+                <button
+                  type="button"
+                  onClick={handleComplete}
+                  className="btn-primary flex-1 py-3 text-base font-semibold"
+                  disabled={allPickups.length === 0 && !skipPickups}
+                >
+                  {allPickups.length === 0 && !skipPickups ? 'Add Pickup or Skip' : 'Complete Signup'}
                 </button>
               )}
             </div>

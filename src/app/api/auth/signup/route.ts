@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
       phone: phone?.replace(/\D/g, '') || null,
       address: address || null,
       role: 'parent',
+      onboarding_status: 'parent_profile_complete',
     }, { onConflict: 'id' });
 
     if (parentError) {

@@ -213,6 +213,7 @@ ALTER TABLE public.child_allergies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.child_allergy_action_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.child_emergency_contacts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.child_authorized_pickups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.child_medical_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.admin_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 
@@ -449,3 +450,46 @@ CREATE POLICY admins_manage_authorized_pickups ON public.child_authorized_pickup
   FOR ALL USING (
     EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
   );
+
+-- ── child_medical_profiles ───────────────────────────────────
+DROP POLICY IF EXISTS parents_select_medical_profiles ON public.child_medical_profiles;
+CREATE POLICY parents_select_medical_profiles ON public.child_medical_profiles
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS parents_insert_medical_profiles ON public.child_medical_profiles;
+CREATE POLICY parents_insert_medical_profiles ON public.child_medical_profiles
+  FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS parents_update_medical_profiles ON public.child_medical_profiles;
+CREATE POLICY parents_update_medical_profiles ON public.child_medical_profiles
+  FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS parents_delete_medical_profiles ON public.child_medical_profiles;
+CREATE POLICY parents_delete_medical_profiles ON public.child_medical_profiles
+  FOR DELETE USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS admins_manage_medical_profiles ON public.child_medical_profiles;
+CREATE POLICY admins_manage_medical_profiles ON public.child_medical_profiles
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── onboarding_status check ──────────────────────────────────
+ALTER TABLE public.parents DROP CONSTRAINT IF EXISTS chk_parents_onboarding_status;
+ALTER TABLE public.parents ADD CONSTRAINT chk_parents_onboarding_status
+  CHECK (onboarding_status IN (
+    'started',
+    'parent_profile_complete',
+    'child_created',
+    'medical_ack_complete',
+    'emergency_contact_added',
+    'complete'
+  ));

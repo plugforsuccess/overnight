@@ -55,9 +55,15 @@ export interface ChildRow {
   parent_id: string;
   first_name: string;
   last_name: string;
+  middle_name: string | null;
+  preferred_name: string | null;
   date_of_birth: string;
+  gender: string | null;
   photo_url: string | null;
   medical_notes: string | null;
+  notes: string | null;
+  active: boolean;
+  center_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -92,11 +98,14 @@ export interface ChildAllergyActionPlanRow {
 export interface ChildEmergencyContactRow {
   id: string;
   child_id: string;
+  center_id: string | null;
   first_name: string;
   last_name: string;
   relationship: string;
   phone: string;
   phone_alt: string | null;
+  email: string | null;
+  is_primary: boolean;
   priority: number;
   authorized_for_pickup: boolean;
   created_at: string;
@@ -106,11 +115,17 @@ export interface ChildEmergencyContactRow {
 export interface ChildAuthorizedPickupRow {
   id: string;
   child_id: string;
+  center_id: string | null;
   first_name: string;
   last_name: string;
   relationship: string;
   phone: string;
-  pickup_pin_hash: string;
+  email: string | null;
+  dob: string | null;
+  pickup_pin_hash: string | null;
+  photo_id_url: string | null;
+  is_emergency_contact: boolean;
+  is_active: boolean;
   id_verified: boolean;
   id_verified_at: string | null;
   id_verified_by: string | null;
@@ -119,10 +134,39 @@ export interface ChildAuthorizedPickupRow {
   updated_at: string;
 }
 
+export interface ChildMedicalProfileRow {
+  id: string;
+  child_id: string;
+  center_id: string | null;
+  has_allergies: boolean;
+  has_medications: boolean;
+  has_medical_conditions: boolean;
+  allergies_summary: string | null;
+  medications_summary: string | null;
+  medical_conditions_summary: string | null;
+  physician_name: string | null;
+  physician_phone: string | null;
+  hospital_preference: string | null;
+  special_instructions: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const ONBOARDING_STATUSES = [
+  'started',
+  'parent_profile_complete',
+  'child_created',
+  'medical_ack_complete',
+  'emergency_contact_added',
+  'complete',
+] as const;
+export type OnboardingStatus = typeof ONBOARDING_STATUSES[number];
+
 // ─── Full child with nested data (for UI) ────────────────────────────────────
 
 export interface ChildWithDetails extends ChildRow {
   allergies: ChildAllergyRow[];
   emergency_contacts: ChildEmergencyContactRow[];
   authorized_pickups: Omit<ChildAuthorizedPickupRow, 'pickup_pin_hash'>[];
+  medical_profile: ChildMedicalProfileRow | null;
 }
