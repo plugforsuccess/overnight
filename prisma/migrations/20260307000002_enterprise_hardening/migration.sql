@@ -1,6 +1,9 @@
 -- Enterprise Hardening: event ledger, attendance sessions, timestamp automation,
 -- emergency contact deduplication, and reservation safety constraints.
 
+-- Ensure uuid-ossp extension is available (Supabase enables by default)
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- ============================================================
 -- 1. Global update_timestamp() function
 -- ============================================================
@@ -193,8 +196,23 @@ CREATE POLICY admins_manage_audit ON public.audit_log
   );
 
 -- ============================================================
--- 8. RLS — Enable on pickup_events (was missing)
+-- 8. pickup_events table + RLS
 -- ============================================================
+-- pickup_events was defined in the Prisma schema but not created
+-- by the baseline migration. Create it here before enabling RLS.
+
+CREATE TABLE IF NOT EXISTS public.pickup_events (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  child_id uuid NOT NULL REFERENCES public.children(id) ON DELETE CASCADE,
+  pickup_person_id uuid REFERENCES public.child_authorized_pickups(id) ON DELETE SET NULL,
+  verified_by_staff_id uuid REFERENCES public.parents(id),
+  verification_method text NOT NULL,
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pickup_events_child
+  ON public.pickup_events (child_id, created_at);
 
 ALTER TABLE public.pickup_events ENABLE ROW LEVEL SECURITY;
 
