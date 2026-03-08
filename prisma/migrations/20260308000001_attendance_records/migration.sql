@@ -56,13 +56,12 @@ ALTER TABLE "attendance_records"
     ADD CONSTRAINT "attendance_records_late_arrival_check"
     CHECK ("late_arrival_minutes" >= 0);
 
--- CHECK: checkout must be after checkin
+-- CHECK: if checked_out_at is set, checked_in_at must also be set and checkout >= checkin
 ALTER TABLE "attendance_records"
     ADD CONSTRAINT "attendance_records_checkout_after_checkin_check"
     CHECK (
         "checked_out_at" IS NULL
-        OR "checked_in_at" IS NULL
-        OR "checked_out_at" >= "checked_in_at"
+        OR ("checked_in_at" IS NOT NULL AND "checked_out_at" >= "checked_in_at")
     );
 
 -- CHECK: check_in_method values

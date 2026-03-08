@@ -36,21 +36,43 @@ export async function checkCapacity(
 
   if (!capacityRows || capacityRows.length === 0) return issues;
 
-  // Get actual reservation_nights counts per (program_capacity_id)
+  // Get actual reservation_nights counts per program_capacity row
+  // Count by program_capacity_id (for linked rows) AND by care_date (for unlinked rows)
   const dates = capacityRows.map((r: any) => r.care_date);
+  const capIds = capacityRows.map((r: any) => r.id);
   const { data: nightRows } = await supabase
     .from('reservation_nights')
     .select('care_date, program_capacity_id, status')
     .in('care_date', dates)
     .in('status', ['confirmed', 'pending']);
 
-  // Count by care_date + program_capacity_id
+  // Count by program_capacity_id (primary) and by care_date (fallback for unlinked rows)
   const nightCountByCapId = new Map<string, number>();
+  const nightCountByDate = new Map<string, number>();
   (nightRows || []).forEach((r: any) => {
+    // Count by care_date for all rows as a fallback
+    nightCountByDate.set(r.care_date, (nightCountByDate.get(r.care_date) || 0) + 1);
+    // Also count by program_capacity_id for linked rows
     if (r.program_capacity_id) {
       nightCountByCapId.set(r.program_capacity_id, (nightCountByCapId.get(r.program_capacity_id) || 0) + 1);
     }
   });
+
+  // Flag reservation_nights missing program_capacity linkage
+  const unlinkedByDate = new Map<string, number>();
+  (nightRows || []).forEach((r: any) => {
+    if (!r.program_capacity_id) {
+      unlinkedByDate.set(r.care_date, (unlinkedByDate.get(r.care_date) || 0) + 1);
+    }
+  });
+  for (const [date, count] of unlinkedByDate) {
+    issues.push({
+      issueType: 'reservation_night_missing_capacity',
+      severity: 'warning',
+      careDate: date,
+      metadata: { unlinked_count: count },
+    });
+  }
 
   // Get waitlist counts by date
   const { data: waitlistRows } = await supabase
@@ -77,7 +99,10 @@ export async function checkCapacity(
   });
 
   for (const cap of capacityRows) {
-    const actualReserved = nightCountByCapId.get(cap.id) || 0;
+    // Use linked count if available, fall back to date-based count for unlinked rows
+    const linkedCount = nightCountByCapId.get(cap.id) || 0;
+    const unlinkedCount = unlinkedByDate.get(cap.care_date) || 0;
+    const actualReserved = linkedCount + unlinkedCount;
     const actualWaitlisted = waitlistCountByDate.get(cap.care_date) || 0;
 
     // capacity_reserved_drift

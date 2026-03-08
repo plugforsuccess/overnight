@@ -41,13 +41,21 @@ export async function applyOverride(
   const overCapacityDates: string[] = [];
 
   for (const careDate of dates) {
-    // Deactivate any existing active override for this date
-    await supabase
+    // Fetch and deactivate any existing active override for this date
+    const { data: priorOverride } = await supabase
       .from('capacity_overrides')
-      .update({ is_active: false, updated_by_user_id: input.actorUserId })
+      .select('id, override_type, capacity_override, reason_code')
       .eq('program_id', input.programId)
       .eq('care_date', careDate)
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .single();
+
+    if (priorOverride) {
+      await supabase
+        .from('capacity_overrides')
+        .update({ is_active: false, updated_by_user_id: input.actorUserId })
+        .eq('id', priorOverride.id);
+    }
 
     // Create new override
     const { data: override, error: insertError } = await supabase
@@ -69,13 +77,31 @@ export async function applyOverride(
     if (insertError || !override) continue;
     overridesCreated++;
 
-    // Get current capacity state
-    const { data: cap } = await supabase
+    // Get or create program_capacity row for this date
+    let { data: cap } = await supabase
       .from('program_capacity')
       .select('id, capacity_total, capacity_reserved, capacity_waitlisted, status')
       .eq('program_id', input.programId)
       .eq('care_date', careDate)
       .single();
+
+    if (!cap) {
+      // Lazy-create missing program_capacity row with defaults
+      const { data: created } = await supabase
+        .from('program_capacity')
+        .insert({
+          center_id: input.centerId,
+          program_id: input.programId,
+          care_date: careDate,
+          capacity_total: 6,
+          capacity_reserved: 0,
+          capacity_waitlisted: 0,
+          status: 'open',
+        })
+        .select()
+        .single();
+      cap = created;
+    }
 
     const previousTotal = cap?.capacity_total ?? 6;
     const previousStatus = cap?.status ?? 'open';
@@ -96,7 +122,25 @@ export async function applyOverride(
       overCapacityDates.push(careDate);
     }
 
-    // Log audit event
+    // Log deactivation event for prior override if one existed
+    if (priorOverride) {
+      await supabase.from('capacity_override_events').insert({
+        capacity_override_id: priorOverride.id,
+        center_id: input.centerId,
+        program_id: input.programId,
+        care_date: careDate,
+        actor_user_id: input.actorUserId,
+        event_type: 'capacity_override_deactivated',
+        metadata: {
+          prior_override_type: priorOverride.override_type,
+          prior_capacity_override: priorOverride.capacity_override,
+          prior_reason_code: priorOverride.reason_code,
+          replaced_by_override_id: override.id,
+        },
+      });
+    }
+
+    // Log new override event
     await supabase.from('capacity_override_events').insert({
       capacity_override_id: override.id,
       center_id: input.centerId,

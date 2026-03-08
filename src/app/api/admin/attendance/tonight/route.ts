@@ -27,10 +27,10 @@ export async function GET(req: NextRequest) {
       .from('attendance_records')
       .select(`
         id, reservation_night_id, child_id, parent_id, care_date,
-        attendance_status, check_in_time, check_in_method,
-        check_out_time, check_out_method, picked_up_by_name,
+        attendance_status, checked_in_at, check_in_method,
+        checked_out_at, check_out_method, checked_out_to_pickup_id,
         pickup_verification_status, late_arrival_minutes, no_show_marked_at,
-        notes,
+        arrival_notes, departure_notes,
         child:children(
           id, first_name, last_name, date_of_birth, medical_notes,
           child_allergies(allergen, severity, custom_label),

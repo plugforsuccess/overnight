@@ -51,19 +51,10 @@ interface OverrideItem {
   overCapacityBy: number;
 }
 
-interface ActivityEvent {
-  id: string;
-  event_type: string;
-  care_date: string;
-  event_at: string;
-  metadata: any;
-}
-
 export default function ClosuresPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [overrides, setOverrides] = useState<OverrideItem[]>([]);
-  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [weekStart, setWeekStart] = useState(() => startOfDay(new Date()));
 
   // Action panel state
@@ -91,19 +82,13 @@ export default function ClosuresPage() {
   const loadData = useCallback(async () => {
     const headers = await getAuthHeaders();
 
-    const [overridesRes, activityRes] = await Promise.all([
-      fetch(`/api/admin/closures?start=${rangeStart}&end=${rangeEnd}`, { headers }),
-      fetch(`/api/admin/closures?start=${rangeStart}&end=${rangeEnd}`, { headers }),
-    ]);
+    const overridesRes = await fetch(`/api/admin/closures?start=${rangeStart}&end=${rangeEnd}`, { headers });
 
     if (overridesRes.ok) {
       const { overrides: o } = await overridesRes.json();
       setOverrides(o || []);
     }
 
-    // Load recent activity events
-    // We'll load from the override events via the list endpoint metadata
-    setActivity([]);
     setLoading(false);
   }, [getAuthHeaders, rangeStart, rangeEnd]);
 
@@ -374,7 +359,7 @@ export default function ClosuresPage() {
           </div>
 
           <div className="grid grid-cols-7 gap-2">
-            {calDays.slice(0, 28).map(day => {
+            {calDays.map(day => {
               const override = overrideMap.get(day.date);
               const isClosed = override?.overrideType === 'closed';
               const isReduced = override?.overrideType === 'reduced_capacity';

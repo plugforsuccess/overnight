@@ -60,12 +60,14 @@ export async function previewOverrideImpact(
   const overrideMap = new Map<string, string>();
   (overrides || []).forEach((r: any) => overrideMap.set(r.care_date, r.override_type));
 
-  // Fetch confirmed reservation nights counts per date
+  // Fetch confirmed reservation nights counts per date, filtered by program
+  // reservation_nights links to program_capacity which has program_id
   const { data: nightCounts } = await supabase
     .from('reservation_nights')
-    .select('care_date')
+    .select('care_date, program_capacity:program_capacity!inner(program_id)')
     .in('care_date', dates)
-    .in('status', ['confirmed', 'pending']);
+    .in('status', ['confirmed', 'pending'])
+    .eq('program_capacity.program_id', input.programId);
 
   const reservedCountMap = new Map<string, number>();
   (nightCounts || []).forEach((r: any) => {
@@ -73,6 +75,7 @@ export async function previewOverrideImpact(
   });
 
   // Fetch waitlist counts per date
+  // Waitlist is not program-scoped in the current schema, so count all active entries
   const { data: waitlistRows } = await supabase
     .from('waitlist')
     .select('date')

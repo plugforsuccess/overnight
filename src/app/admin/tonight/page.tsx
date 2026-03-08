@@ -88,12 +88,12 @@ export default function TonightPage() {
           child: r.child || { id: r.child_id, first_name: '?', last_name: '?', date_of_birth: '', medical_notes: null },
           parent: r.parent || null,
           attendanceStatus: r.attendance_status,
-          checkInTime: r.check_in_time,
-          checkOutTime: r.check_out_time,
+          checkInTime: r.checked_in_at,
+          checkOutTime: r.checked_out_at,
           lateArrivalMinutes: r.late_arrival_minutes,
           pickupVerificationStatus: r.pickup_verification_status,
-          pickedUpByName: r.picked_up_by_name,
-          notes: r.notes,
+          pickedUpByName: null,
+          notes: r.arrival_notes || r.departure_notes || null,
           allergies: r.child?.child_allergies || [],
           emergencyContacts: r.child?.child_emergency_contacts || [],
           authorizedPickups: r.child?.child_authorized_pickups || [],
@@ -119,7 +119,7 @@ export default function TonightPage() {
         const { record } = await res.json();
         setRoster(prev => prev.map(r =>
           r.id === item.id
-            ? { ...r, attendanceStatus: 'checked_in' as AttendanceStatus, checkInTime: record.check_in_time, lateArrivalMinutes: record.late_arrival_minutes }
+            ? { ...r, attendanceStatus: 'checked_in' as AttendanceStatus, checkInTime: record.checked_in_at, lateArrivalMinutes: record.late_arrival_minutes }
             : r
         ));
       } else {
@@ -144,7 +144,7 @@ export default function TonightPage() {
         const { record } = await res.json();
         setRoster(prev => prev.map(r =>
           r.id === item.id
-            ? { ...r, attendanceStatus: 'checked_out' as AttendanceStatus, checkOutTime: record.check_out_time, pickedUpByName: record.picked_up_by_name }
+            ? { ...r, attendanceStatus: 'checked_out' as AttendanceStatus, checkOutTime: record.checked_out_at, pickedUpByName: null }
             : r
         ));
       } else {

@@ -31,6 +31,12 @@ export async function checkOutChild(
   const method = input.checkOutMethod || 'staff_manual';
   const verificationStatus = input.pickupVerificationStatus || (input.pickupId ? 'pending' : 'not_applicable');
 
+  // Validate pickup verification status against allowed values
+  const validPickupStatuses = ['not_applicable', 'pending', 'verified', 'failed', 'manual_override'];
+  if (!validPickupStatuses.includes(verificationStatus)) {
+    throw new Error(`Invalid pickup verification status: '${verificationStatus}'. Must be one of: ${validPickupStatuses.join(', ')}`);
+  }
+
   const { data: updated, error } = await supabase
     .from('attendance_records')
     .update({
