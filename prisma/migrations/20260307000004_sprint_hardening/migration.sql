@@ -14,23 +14,14 @@
 --     enforce_attendance_transition()
 --
 -- This migration ALTERs tables from 000003 (adds archived_at columns,
--- attaches triggers). If those tables do not exist, every ALTER TABLE
--- and CREATE TRIGGER referencing them will fail.
+-- attaches triggers). To guard against metadata drift (000003 marked
+-- APPLIED but objects never materialised), this migration now includes
+-- idempotent CREATE TABLE IF NOT EXISTS guards for every 000003 table
+-- it references: center_staff_memberships, incident_reports, and
+-- pickup_verifications. When 000003 ran correctly these are no-ops.
 --
--- IMPORTANT:
--- If this migration fails with "relation does not exist" errors,
--- the most common cause is metadata drift — where 000003 is marked
--- APPLIED in _prisma_migrations but its objects were never created.
--- This happened in the 2026-03-07 production incident.
---
--- Diagnose with:
---   npm run migrate:check
---
--- If drift is detected, follow docs/prisma-migration-recovery.md
--- Scenario D to delete the stale row and redeploy. Do NOT simply
--- re-run prisma migrate resolve --rolled-back on 000003 — that
--- adds a new rolled-back row but does not remove the stale applied
--- row, so Prisma will still skip re-running 000003.
+-- See docs/prisma-migration-recovery.md Scenarios D and E for details
+-- on the 2026-03-07 production metadata-drift incident.
 -- ============================================================
 
 -- ============================================================
@@ -97,6 +88,31 @@ ALTER TABLE public.child_emergency_contacts
   ADD COLUMN IF NOT EXISTS archived_at timestamptz;
 
 -- 4d. Center staff memberships: already have `active` boolean. Add archived_at.
+-- Guard: create the table if 000003 was metadata-drifted (marked APPLIED but
+-- objects never materialised). Uses identical DDL to 000003 so this is a no-op
+-- when 000003 actually ran.  See docs/prisma-migration-recovery.md Scenario D/E.
+CREATE TABLE IF NOT EXISTS public.center_staff_memberships (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES public.parents(id) ON DELETE CASCADE,
+  center_id uuid NOT NULL,
+  role text NOT NULL,
+  active boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS center_staff_memberships_user_center_unique
+  ON public.center_staff_memberships (user_id, center_id);
+CREATE INDEX IF NOT EXISTS idx_staff_memberships_center_active
+  ON public.center_staff_memberships (center_id, active);
+ALTER TABLE public.center_staff_memberships DROP CONSTRAINT IF EXISTS chk_staff_role;
+ALTER TABLE public.center_staff_memberships ADD CONSTRAINT chk_staff_role
+  CHECK (role IN ('staff', 'admin', 'center_admin', 'super_admin'));
+DROP TRIGGER IF EXISTS center_staff_memberships_update_timestamp ON public.center_staff_memberships;
+CREATE TRIGGER center_staff_memberships_update_timestamp
+  BEFORE UPDATE ON public.center_staff_memberships
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
+ALTER TABLE public.center_staff_memberships ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE public.center_staff_memberships
   ADD COLUMN IF NOT EXISTS archived_at timestamptz;
 
@@ -107,6 +123,26 @@ ALTER TABLE public.overnight_blocks
 -- ============================================================
 -- 5. Incident Report — Status Transition Trigger
 -- ============================================================
+-- Guard: ensure incident_reports exists (000003 metadata drift protection).
+CREATE TABLE IF NOT EXISTS public.incident_reports (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  child_id uuid NOT NULL REFERENCES public.children(id) ON DELETE CASCADE,
+  attendance_session_id uuid REFERENCES public.child_attendance_sessions(id) ON DELETE SET NULL,
+  center_id uuid,
+  severity text NOT NULL,
+  category text NOT NULL,
+  summary text NOT NULL,
+  details text,
+  reported_by uuid,
+  parent_notified_at timestamptz,
+  resolved_at timestamptz,
+  closed_at timestamptz,
+  status text NOT NULL DEFAULT 'open',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.incident_reports ENABLE ROW LEVEL SECURITY;
+
 -- Enforce valid incident status transitions:
 --   open -> investigating | resolved | closed
 --   investigating -> resolved | closed
@@ -183,6 +219,21 @@ CREATE TRIGGER prevent_incident_hard_delete
   FOR EACH ROW
   WHEN (current_setting('app.allow_cascade_delete', true) IS DISTINCT FROM 'true')
   EXECUTE FUNCTION public.prevent_hard_delete();
+
+-- Guard: ensure pickup_verifications exists (000003 metadata drift protection).
+CREATE TABLE IF NOT EXISTS public.pickup_verifications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  attendance_session_id uuid NOT NULL UNIQUE REFERENCES public.child_attendance_sessions(id) ON DELETE CASCADE,
+  authorized_pickup_id uuid,
+  verified_name text NOT NULL,
+  verified_relationship text NOT NULL,
+  verification_method text NOT NULL,
+  verified_by uuid,
+  verified_at timestamptz NOT NULL DEFAULT now(),
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.pickup_verifications ENABLE ROW LEVEL SECURITY;
 
 -- Block hard deletes on pickup_verifications (legal record)
 DROP TRIGGER IF EXISTS prevent_pickup_verification_hard_delete ON public.pickup_verifications;
