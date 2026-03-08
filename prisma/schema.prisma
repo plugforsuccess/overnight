@@ -51,6 +51,7 @@ model Center {
   // Relations
   programs          Program[]
   program_capacities ProgramCapacity[]
+  capacity_overrides CapacityOverride[]
 
   @@map("centers")
 }
@@ -75,6 +76,7 @@ model Program {
   // Relations
   center             Center            @relation(fields: [center_id], references: [id], onDelete: Cascade)
   program_capacities ProgramCapacity[]
+  capacity_overrides CapacityOverride[]
 
   @@map("programs")
 }
@@ -103,6 +105,62 @@ model ProgramCapacity {
   @@unique([program_id, care_date], map: "program_capacity_program_date_unique")
   @@index([care_date, status], map: "idx_program_capacity_date_status")
   @@map("program_capacity")
+}
+
+// ─── capacity_overrides ──────────────────────────────────────────────────────
+// Operator-managed per-date overrides for closures and reduced capacity.
+// Partial unique index: one active override per (program_id, care_date).
+// CHECK: override_type IN (closed, reduced_capacity, reopened)
+// CHECK: reason_code IN (holiday, staff_shortage, weather, facility_issue, emergency_closure, low_demand, maintenance, other)
+model CapacityOverride {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  center_id          String    @db.Uuid
+  program_id         String    @db.Uuid
+  care_date          DateTime  @db.Date
+  override_type      String    // closed | reduced_capacity | reopened
+  capacity_override  Int?
+  reason_code        String    // holiday | staff_shortage | weather | facility_issue | emergency_closure | low_demand | maintenance | other
+  reason_text        String?
+  is_active          Boolean   @default(true)
+  created_by_user_id String    @db.Uuid
+  updated_by_user_id String?   @db.Uuid
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  center Center @relation(fields: [center_id], references: [id], onDelete: Cascade)
+  program Program @relation(fields: [program_id], references: [id], onDelete: Cascade)
+  events  CapacityOverrideEvent[]
+
+  @@index([center_id, care_date], map: "idx_capacity_overrides_center_date")
+  @@index([program_id, care_date], map: "idx_capacity_overrides_program_date")
+  @@index([is_active, care_date], map: "idx_capacity_overrides_active")
+  @@index([created_by_user_id], map: "idx_capacity_overrides_created_by")
+  @@map("capacity_overrides")
+}
+
+// ─── capacity_override_events ────────────────────────────────────────────────
+// Immutable audit trail for closure/reduction operator actions.
+model CapacityOverrideEvent {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  capacity_override_id  String   @db.Uuid
+  center_id             String   @db.Uuid
+  program_id            String   @db.Uuid
+  care_date             DateTime @db.Date
+  actor_user_id         String   @db.Uuid
+  event_type            String
+  event_at              DateTime @default(now()) @db.Timestamptz(6)
+  metadata              Json     @default("{}") @db.JsonB
+
+  // Relations
+  capacity_override CapacityOverride @relation(fields: [capacity_override_id], references: [id], onDelete: Cascade)
+
+  @@index([capacity_override_id, event_at], map: "idx_override_events_override")
+  @@index([center_id, care_date], map: "idx_override_events_center_date")
+  @@index([event_type, event_at], map: "idx_override_events_type")
+  @@index([actor_user_id], map: "idx_override_events_actor")
+  @@map("capacity_override_events")
 }
 
 // ─── parents ──────────────────────────────────────────────────────────────────
@@ -946,4 +1004,59 @@ model AttendanceEvent {
   @@index([center_id, event_at], map: "idx_attendance_events_center")
   @@index([event_type, event_at], map: "idx_attendance_events_type")
   @@map("attendance_events")
+}
+
+// ─── health_check_runs ───────────────────────────────────────────────────────
+// Tracks executions of reconciliation sweeps.
+// CHECK: run_type IN (manual, scheduled, startup, repair_followup)
+// CHECK: status IN (running, completed, failed)
+model HealthCheckRun {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  run_type              String    // manual | scheduled | startup | repair_followup
+  started_at            DateTime  @default(now()) @db.Timestamptz(6)
+  completed_at          DateTime? @db.Timestamptz(6)
+  status                String    @default("running") // running | completed | failed
+  triggered_by_user_id  String?   @db.Uuid
+  summary               Json      @default("{}") @db.JsonB
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  issues HealthIssue[]
+
+  @@index([status, started_at], map: "idx_health_runs_status")
+  @@index([triggered_by_user_id], map: "idx_health_runs_user")
+  @@map("health_check_runs")
+}
+
+// ─── health_issues ───────────────────────────────────────────────────────────
+// Stores current and historical detected integrity issues.
+// CHECK: severity IN (critical, warning, info)
+// CHECK: status IN (open, reviewed, resolved, ignored)
+model HealthIssue {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  health_check_run_id   String    @db.Uuid
+  issue_type            String
+  severity              String    // critical | warning | info
+  status                String    @default("open") // open | reviewed | resolved | ignored
+  center_id             String?   @db.Uuid
+  program_id            String?   @db.Uuid
+  care_date             DateTime? @db.Date
+  reservation_night_id  String?   @db.Uuid
+  attendance_record_id  String?   @db.Uuid
+  child_id              String?   @db.Uuid
+  metadata              Json      @default("{}") @db.JsonB
+  detected_at           DateTime  @default(now()) @db.Timestamptz(6)
+  resolved_at           DateTime? @db.Timestamptz(6)
+  resolved_by_user_id   String?   @db.Uuid
+  resolution_notes      String?
+
+  // Relations
+  health_check_run HealthCheckRun @relation(fields: [health_check_run_id], references: [id], onDelete: Cascade)
+
+  @@index([health_check_run_id], map: "idx_health_issues_run")
+  @@index([severity, status], map: "idx_health_issues_severity_status")
+  @@index([issue_type, status], map: "idx_health_issues_type")
+  @@index([care_date], map: "idx_health_issues_date")
+  @@map("health_issues")
 }
