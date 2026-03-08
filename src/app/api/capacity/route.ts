@@ -16,7 +16,8 @@ function getUserClient(req: NextRequest) {
  * GET /api/capacity?dates=2026-03-08,2026-03-09,...
  *
  * Returns availability for requested dates.
- * Uses program_capacity table (preferred) with fallback to counting reservations.
+ * Uses program_capacity as the sole source of truth.
+ * Missing rows are lazily created from admin_settings defaults.
  */
 export async function GET(req: NextRequest) {
   const supabase = getUserClient(req);
@@ -36,12 +37,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'No valid dates provided' }, { status: 400 });
   }
 
-  // Try program_capacity first
-  const { data: programCapData } = await supabaseAdmin
-    .from('program_capacity')
-    .select('care_date, capacity_total, capacity_reserved, capacity_waitlisted, status')
-    .in('care_date', dates);
-
   // Fetch admin settings for default capacity
   const { data: adminSettings } = await supabaseAdmin
     .from('admin_settings')
@@ -50,26 +45,49 @@ export async function GET(req: NextRequest) {
     .single();
   const defaultCapacity = adminSettings?.max_capacity ?? 6;
 
-  // For dates not in program_capacity, count reservations
-  const coveredDates = new Set((programCapData ?? []).map((r: { care_date: string }) => r.care_date));
-  const uncoveredDates = dates.filter(d => !coveredDates.has(d));
+  // Fetch existing program_capacity rows
+  const { data: existingRows } = await supabaseAdmin
+    .from('program_capacity')
+    .select('care_date, capacity_total, capacity_reserved, capacity_waitlisted, status')
+    .in('care_date', dates);
 
-  let reservationCounts: Record<string, number> = {};
-  if (uncoveredDates.length > 0) {
-    const { data: reservations } = await supabaseAdmin
-      .from('reservations')
-      .select('date')
-      .in('date', uncoveredDates)
-      .eq('status', 'confirmed');
+  const existingDates = new Set((existingRows ?? []).map((r: { care_date: string }) => r.care_date));
+  const missingDates = dates.filter(d => !existingDates.has(d));
 
-    reservationCounts = {};
-    uncoveredDates.forEach(d => reservationCounts[d] = 0);
-    reservations?.forEach((r: { date: string }) => {
-      reservationCounts[r.date] = (reservationCounts[r.date] || 0) + 1;
-    });
+  // Lazy-create missing rows from defaults
+  if (missingDates.length > 0) {
+    const { data: defaultProgram } = await supabaseAdmin
+      .from('programs')
+      .select('id, center_id')
+      .eq('care_type', 'overnight')
+      .eq('is_active', true)
+      .limit(1)
+      .single();
+
+    if (defaultProgram) {
+      const seedRows = missingDates.map(dateStr => ({
+        care_date: dateStr,
+        capacity_total: defaultCapacity,
+        capacity_reserved: 0,
+        capacity_waitlisted: 0,
+        status: 'open',
+        center_id: defaultProgram.center_id,
+        program_id: defaultProgram.id,
+      }));
+
+      await supabaseAdmin
+        .from('program_capacity')
+        .upsert(seedRows, { onConflict: 'program_id,care_date', ignoreDuplicates: true });
+    }
   }
 
-  // Build unified response
+  // Re-fetch all rows (including newly seeded ones)
+  const { data: allRows } = await supabaseAdmin
+    .from('program_capacity')
+    .select('care_date, capacity_total, capacity_reserved, capacity_waitlisted, status')
+    .in('care_date', dates);
+
+  // Build response
   const capacity: Record<string, {
     total: number;
     reserved: number;
@@ -79,7 +97,7 @@ export async function GET(req: NextRequest) {
   }> = {};
 
   for (const date of dates) {
-    const pcRow = (programCapData ?? []).find((r: { care_date: string }) => r.care_date === date);
+    const pcRow = (allRows ?? []).find((r: { care_date: string }) => r.care_date === date);
     if (pcRow) {
       capacity[date] = {
         total: pcRow.capacity_total,
@@ -89,13 +107,13 @@ export async function GET(req: NextRequest) {
         status: pcRow.status,
       };
     } else {
-      const reserved = reservationCounts[date] ?? 0;
+      // Shouldn't happen after lazy-create, but fail safe
       capacity[date] = {
         total: defaultCapacity,
-        reserved,
+        reserved: 0,
         waitlisted: 0,
-        remaining: defaultCapacity - reserved,
-        status: reserved >= defaultCapacity ? 'full' : 'open',
+        remaining: defaultCapacity,
+        status: 'open',
       };
     }
   }
