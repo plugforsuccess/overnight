@@ -169,6 +169,12 @@ MIGRATION_TABLES["20260307000002_enterprise_hardening"]="child_events child_atte
 MIGRATION_TABLES["20260307000003_operational_hardening"]="reservation_events incident_reports center_staff_memberships pickup_verifications"
 MIGRATION_TABLES["20260307000004_sprint_hardening"]="idempotency_keys"
 
+# Map migrations to the functions they create
+declare -A MIGRATION_FUNCTIONS
+MIGRATION_FUNCTIONS["20260307000002_enterprise_hardening"]="update_timestamp"
+MIGRATION_FUNCTIONS["20260307000003_operational_hardening"]="enforce_attendance_transition"
+MIGRATION_FUNCTIONS["20260307000004_sprint_hardening"]="enforce_incident_transition prevent_hard_delete cleanup_expired_idempotency_keys"
+
 DRIFT_FOUND=false
 
 for migration in "${!MIGRATION_TABLES[@]}"; do
@@ -201,10 +207,69 @@ for migration in "${!MIGRATION_TABLES[@]}"; do
       DRIFT_FOUND=true
     fi
   done
+
+  # Check if its functions actually exist
+  if [ -n "${MIGRATION_FUNCTIONS[$migration]:-}" ]; then
+    for func in ${MIGRATION_FUNCTIONS[$migration]}; do
+      FUNC_EXISTS=$(psql "$DB_URL" -tAc "
+        SELECT EXISTS (
+          SELECT 1 FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public' AND p.proname = '$func'
+        );
+      " 2>/dev/null || echo "error")
+
+      if [ "$FUNC_EXISTS" = "f" ]; then
+        echo -e "  ${RED}DRIFT${NC} $migration marked APPLIED but ${RED}$func()${NC} is missing"
+        echo -e "        Fix: delete stale row, then redeploy. See docs/prisma-migration-recovery.md Scenario D"
+        DRIFT_FOUND=true
+      fi
+    done
+  fi
 done
 
 if [ "$DRIFT_FOUND" = "false" ]; then
   echo -e "  ${GREEN}✓${NC} No metadata drift detected"
+fi
+echo ""
+
+# ── Step 7: Dependency integrity (000003 → 000004) ──────────
+echo -e "${YELLOW}7. Dependency integrity (000003 → 000004)${NC}"
+echo "─────────────────────────────────────────────────────"
+
+# 000004 depends on 000003. If 000004 exists in metadata (applied OR failed),
+# then 000003's objects must exist in the actual schema.
+HAS_000004=$(psql "$DB_URL" -tAc "
+  SELECT EXISTS (
+    SELECT 1 FROM _prisma_migrations
+    WHERE migration_name = '20260307000004_sprint_hardening'
+  );
+" 2>/dev/null || echo "error")
+
+if [ "$HAS_000004" = "t" ]; then
+  DEP_OK=true
+  DEP_TABLES="reservation_events incident_reports center_staff_memberships pickup_verifications"
+
+  for table in $DEP_TABLES; do
+    TABLE_EXISTS=$(psql "$DB_URL" -tAc "
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = '$table'
+      );
+    " 2>/dev/null || echo "error")
+
+    if [ "$TABLE_EXISTS" = "f" ]; then
+      echo -e "  ${RED}DEPENDENCY BROKEN${NC} 000004 requires ${RED}$table${NC} from 000003 — not found"
+      echo -e "        000003 is likely metadata-drifted. See docs/prisma-migration-recovery.md Scenario E"
+      DEP_OK=false
+    fi
+  done
+
+  if [ "$DEP_OK" = "true" ]; then
+    echo -e "  ${GREEN}✓${NC} 000004 dependencies satisfied (all 000003 tables exist)"
+  fi
+else
+  echo -e "  ${GREEN}✓${NC} 000004 not yet in migration history — dependency check not applicable"
 fi
 echo ""
 

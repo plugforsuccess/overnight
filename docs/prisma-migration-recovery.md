@@ -212,6 +212,76 @@ npx prisma migrate deploy
 npx prisma migrate status
 ```
 
+### Scenario E: Migration dependency drift (000003 → 000004 pattern)
+
+A downstream migration fails not because of its own SQL, but because an
+**upstream migration's objects are missing** despite being marked APPLIED.
+
+**Symptoms:**
+
+- Migration `000004_sprint_hardening` fails with:
+  `ERROR: relation "public.center_staff_memberships" does not exist`
+- `_prisma_migrations` shows `000003_operational_hardening` as **APPLIED**
+- But querying `information_schema.tables` reveals the 000003 tables are absent
+- The failure is a dependency issue, not a SQL syntax issue
+
+**Why `--rolled-back` alone is insufficient:**
+
+Running `npx prisma migrate resolve --rolled-back 000003` does **not** remove
+the existing APPLIED row. It inserts a second row with `rolled_back_at` set.
+Prisma's migration engine sees the APPLIED row first and concludes 000003 has
+already run — it will never re-execute the SQL.
+
+```
+Before --rolled-back:
+  000003 | APPLIED      ← Prisma trusts this, skips re-run
+
+After --rolled-back:
+  000003 | APPLIED      ← Still here — Prisma still skips
+  000003 | ROLLED_BACK  ← New row, but APPLIED row takes precedence
+```
+
+**When to delete the stale row:**
+
+Delete the APPLIED row when **all three** conditions are true:
+
+1. `_prisma_migrations` shows the migration as APPLIED (`finished_at` set,
+   `rolled_back_at` NULL)
+2. The migration's schema objects do not exist in the database
+3. `./scripts/check-migration-state.sh` reports DRIFT for that migration
+
+**Full recovery sequence:**
+
+```bash
+# 1. Diagnose — confirm drift exists
+npm run migrate:check
+
+# 2. Delete the stale APPLIED row for the drifted upstream migration
+psql $DATABASE_URL -c "
+  DELETE FROM _prisma_migrations
+  WHERE migration_name = '20260307000003_operational_hardening'
+    AND finished_at IS NOT NULL
+    AND rolled_back_at IS NULL;
+"
+
+# 3. Resolve the downstream failed migration
+npx prisma migrate resolve --rolled-back 20260307000004_sprint_hardening
+
+# 4. Redeploy — Prisma re-runs 000003 (now missing from metadata) then 000004
+npx prisma migrate deploy
+
+# 5. Verify everything is healthy
+npm run migrate:check
+```
+
+**How to prevent this from recurring:**
+
+- Always run `npm run migrate:check` before `prisma migrate deploy` (see the
+  Pre-Flight Checklist in ARCHITECTURE.md)
+- The CI workflow (`.github/workflows/migration-ci.yml`) applies all migrations
+  from scratch on every PR to catch dependency ordering issues early
+- Migration `000004` now documents its exact dependencies in its header comment
+
 ---
 
 ## 4. When to Use `--applied` vs `--rolled-back` vs Row Deletion
@@ -222,6 +292,7 @@ npx prisma migrate status
 | SQL error partway | Failed | Partially present | `--rolled-back` + deploy |
 | SQL wrong, needs fix | Failed | Partially present | `--rolled-back` + fix SQL + deploy |
 | Metadata drift | Applied | Missing | Delete row + deploy |
+| Dependency drift (E) | Upstream: Applied, Downstream: Failed | Upstream objects missing | Delete upstream row + `--rolled-back` downstream + deploy |
 | Schema present, metadata missing | No row | Fully present | `--applied` |
 
 ---

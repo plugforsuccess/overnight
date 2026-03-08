@@ -1,11 +1,37 @@
--- Sprint Hardening: idempotency keys, archive semantics, reservation event expansion,
--- booking deduplication, and operational safety constraints.
+-- ============================================================
+-- Migration: 20260307000004_sprint_hardening
 --
--- Depends on: 20260307000003_operational_hardening (creates reservation_events,
--- incident_reports, center_staff_memberships, pickup_verifications).
--- If 000003 is stuck as failed/partially-applied, resolve it first:
---   npx prisma migrate resolve --rolled-back 20260307000003_operational_hardening
---   npx prisma migrate deploy
+-- Depends on:
+--   20260307000003_operational_hardening
+--
+-- Required objects created by 000003:
+--   Tables:
+--     reservation_events
+--     incident_reports
+--     center_staff_memberships
+--     pickup_verifications
+--   Functions:
+--     enforce_attendance_transition()
+--
+-- This migration ALTERs tables from 000003 (adds archived_at columns,
+-- attaches triggers). If those tables do not exist, every ALTER TABLE
+-- and CREATE TRIGGER referencing them will fail.
+--
+-- IMPORTANT:
+-- If this migration fails with "relation does not exist" errors,
+-- the most common cause is metadata drift — where 000003 is marked
+-- APPLIED in _prisma_migrations but its objects were never created.
+-- This happened in the 2026-03-07 production incident.
+--
+-- Diagnose with:
+--   npm run migrate:check
+--
+-- If drift is detected, follow docs/prisma-migration-recovery.md
+-- Scenario D to delete the stale row and redeploy. Do NOT simply
+-- re-run prisma migrate resolve --rolled-back on 000003 — that
+-- adds a new rolled-back row but does not remove the stale applied
+-- row, so Prisma will still skip re-running 000003.
+-- ============================================================
 
 -- ============================================================
 -- 1. Idempotency Keys Table
