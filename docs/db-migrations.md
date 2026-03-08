@@ -140,6 +140,36 @@ Supabase compatibility.
   concurrency-safe capacity enforcement
 - **RLS policies** on all parent-facing tables — see table above
 
+## CI Migration Verification
+
+Every push or pull request that touches `prisma/**` triggers the **Migration
+Verification** GitHub Actions workflow (`.github/workflows/migration-ci.yml`).
+
+**What it does:**
+
+1. Boots a clean Postgres 16 instance (no prior state)
+2. Runs `npx prisma migrate deploy` to apply all migrations from scratch
+3. Runs `./scripts/check-migration-state.sh` (diagnostic)
+4. Runs `./scripts/verify-migrations-ci.sh` (comprehensive object verification)
+
+**What it checks:**
+
+- All migrations apply cleanly with no failures or rolled-back rows
+- All required tables exist (12 tables)
+- Critical columns from migration-order dependencies exist (e.g., `archived_at`)
+- All functions exist exactly once (no duplicates, no missing)
+- All triggers are attached to the correct tables
+- RLS is enabled on all security-critical tables
+- RLS policies exist with expected minimum counts
+- No metadata drift (migration marked applied but objects missing)
+
+**Local equivalent:**
+
+```bash
+npm run migrate:verify    # Runs verify-migrations-ci.sh locally
+npm run migrate:check     # Runs the diagnostic script
+```
+
 ## Migration Recovery
 
 If a migration fails during deployment, see
