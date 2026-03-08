@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { List, CalendarDays, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { List, CalendarDays, CheckCircle, Clock, XCircle, AlertTriangle, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { DAY_SHORT_LABELS, DAY_LABELS, OVERNIGHT_START, OVERNIGHT_END } from '@/lib/constants';
+import { DAY_SHORT_LABELS, OVERNIGHT_START, OVERNIGHT_END } from '@/lib/constants';
 import { DayOfWeek } from '@/types/database';
 import { format, addDays, startOfWeek, isSameDay, parseISO } from 'date-fns';
 
@@ -21,46 +21,84 @@ interface CalendarViewProps {
 
 type ViewMode = 'list' | 'calendar';
 
+const STATUS_CONFIG: Record<string, {
+  text: string;
+  dotClass: string;
+  badgeClass: string;
+  icon: React.ReactNode;
+}> = {
+  confirmed: {
+    text: 'Confirmed',
+    dotClass: 'bg-green-500',
+    badgeClass: 'text-green-700 bg-green-50 border-green-200',
+    icon: <CheckCircle className="h-3 w-3" />,
+  },
+  pending_payment: {
+    text: 'Pending',
+    dotClass: 'bg-yellow-500',
+    badgeClass: 'text-yellow-700 bg-yellow-50 border-yellow-200',
+    icon: <Clock className="h-3 w-3" />,
+  },
+  locked: {
+    text: 'Locked',
+    dotClass: 'bg-navy-500',
+    badgeClass: 'text-navy-700 bg-navy-50 border-navy-200',
+    icon: <CheckCircle className="h-3 w-3" />,
+  },
+  cancelled: {
+    text: 'Cancelled',
+    dotClass: 'bg-gray-400',
+    badgeClass: 'text-gray-500 bg-gray-50 border-gray-200',
+    icon: <XCircle className="h-3 w-3" />,
+  },
+  canceled: {
+    text: 'Cancelled',
+    dotClass: 'bg-gray-400',
+    badgeClass: 'text-gray-500 bg-gray-50 border-gray-200',
+    icon: <XCircle className="h-3 w-3" />,
+  },
+  canceled_low_enrollment: {
+    text: 'Low Enrollment',
+    dotClass: 'bg-orange-400',
+    badgeClass: 'text-orange-700 bg-orange-50 border-orange-200',
+    icon: <AlertTriangle className="h-3 w-3" />,
+  },
+  waitlisted: {
+    text: 'Waitlisted',
+    dotClass: 'bg-amber-500',
+    badgeClass: 'text-amber-700 bg-amber-50 border-amber-200',
+    icon: <Clock className="h-3 w-3" />,
+  },
+  completed: {
+    text: 'Completed',
+    dotClass: 'bg-navy-400',
+    badgeClass: 'text-navy-600 bg-navy-50 border-navy-200',
+    icon: <CheckCircle className="h-3 w-3" />,
+  },
+  no_show: {
+    text: 'No Show',
+    dotClass: 'bg-red-400',
+    badgeClass: 'text-red-600 bg-red-50 border-red-200',
+    icon: <XCircle className="h-3 w-3" />,
+  },
+};
+
+const DEFAULT_STATUS = {
+  text: 'Unknown',
+  dotClass: 'bg-gray-400',
+  badgeClass: 'text-gray-500 bg-gray-50 border-gray-200',
+  icon: null,
+};
+
 function StatusDot({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    confirmed: 'bg-green-500',
-    pending_payment: 'bg-yellow-500',
-    locked: 'bg-navy-500',
-    canceled: 'bg-gray-400',
-    canceled_low_enrollment: 'bg-orange-400',
-    waitlisted: 'bg-yellow-500',
-  };
-  return <span className={cn('inline-block w-2 h-2 rounded-full', colors[status] || 'bg-gray-400')} />;
+  const cfg = STATUS_CONFIG[status] || DEFAULT_STATUS;
+  return <span className={cn('inline-block w-2 h-2 rounded-full', cfg.dotClass)} />;
 }
 
-function StatusLabel({ status }: { status: string }) {
-  const labels: Record<string, { text: string; className: string; icon: React.ReactNode }> = {
-    confirmed: {
-      text: 'Confirmed',
-      className: 'text-green-700 bg-green-50 border-green-200',
-      icon: <CheckCircle className="h-3 w-3" />,
-    },
-    pending_payment: {
-      text: 'Pending',
-      className: 'text-yellow-700 bg-yellow-50 border-yellow-200',
-      icon: <Clock className="h-3 w-3" />,
-    },
-    locked: {
-      text: 'Locked',
-      className: 'text-navy-700 bg-navy-50 border-navy-200',
-      icon: <CheckCircle className="h-3 w-3" />,
-    },
-    canceled: {
-      text: 'Cancelled',
-      className: 'text-gray-500 bg-gray-50 border-gray-200',
-      icon: <XCircle className="h-3 w-3" />,
-    },
-  };
-
-  const cfg = labels[status] || { text: status, className: 'text-gray-500 bg-gray-50 border-gray-200', icon: null };
-
+function StatusBadge({ status }: { status: string }) {
+  const cfg = STATUS_CONFIG[status] || DEFAULT_STATUS;
   return (
-    <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border', cfg.className)}>
+    <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border', cfg.badgeClass)}>
       {cfg.icon}
       {cfg.text}
     </span>
@@ -81,6 +119,9 @@ export default function CalendarView({ bookedNights, weekStart, operatingNights 
     return { day, date: cellDate, dateStr, isOperating, bookings };
   });
 
+  // Determine which statuses are visible for the legend
+  const visibleStatuses = new Set(bookedNights.map(n => n.status));
+
   return (
     <div>
       {/* Toggle */}
@@ -95,7 +136,7 @@ export default function CalendarView({ bookedNights, weekStart, operatingNights 
           )}
         >
           <List className="h-4 w-4" />
-          List View
+          List
         </button>
         <button
           onClick={() => setViewMode('calendar')}
@@ -107,7 +148,7 @@ export default function CalendarView({ bookedNights, weekStart, operatingNights 
           )}
         >
           <CalendarDays className="h-4 w-4" />
-          Calendar View
+          Calendar
         </button>
       </div>
 
@@ -115,17 +156,18 @@ export default function CalendarView({ bookedNights, weekStart, operatingNights 
         /* List View */
         <div className="space-y-2">
           {bookedNights.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              No booked nights for this week.
+            <div className="text-center py-8">
+              <Moon className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500 text-sm">No booked nights for this week</p>
             </div>
           ) : (
             bookedNights.map((night, i) => {
               const dateObj = parseISO(night.date);
               return (
-                <div key={`${night.date}-${i}`} className="flex items-center justify-between p-3 rounded-lg border border-gray-200 bg-white">
+                <div key={`${night.date}-${i}`} className="flex items-center justify-between p-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition-colors">
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-navy-50 flex flex-col items-center justify-center">
-                      <span className="text-xs font-semibold text-navy-600 leading-none">
+                    <div className="h-11 w-11 rounded-xl bg-navy-100 flex flex-col items-center justify-center flex-shrink-0">
+                      <span className="text-[10px] font-semibold text-navy-600 leading-none uppercase">
                         {format(dateObj, 'MMM')}
                       </span>
                       <span className="text-sm font-bold text-navy-800 leading-tight">
@@ -141,7 +183,7 @@ export default function CalendarView({ bookedNights, weekStart, operatingNights 
                       </div>
                     </div>
                   </div>
-                  <StatusLabel status={night.status} />
+                  <StatusBadge status={night.status} />
                 </div>
               );
             })
@@ -166,11 +208,11 @@ export default function CalendarView({ bookedNights, weekStart, operatingNights 
               <div
                 key={day}
                 className={cn(
-                  'min-h-[80px] rounded-lg border p-1.5 text-center',
+                  'min-h-[80px] rounded-xl border p-1.5 text-center transition-colors',
                   !isOperating && 'bg-gray-50 border-gray-100',
                   isOperating && !hasBookings && 'border-gray-200 bg-white',
                   hasBookings && 'border-navy-200 bg-navy-50',
-                  isToday && 'ring-2 ring-accent-500'
+                  isToday && 'ring-2 ring-accent-500 ring-offset-1'
                 )}
               >
                 <div className={cn(
@@ -186,8 +228,23 @@ export default function CalendarView({ bookedNights, weekStart, operatingNights 
                   </div>
                 ))}
                 {!isOperating && (
-                  <span className="text-xs text-gray-400">-</span>
+                  <span className="text-[10px] text-gray-400">Closed</span>
                 )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Legend — only shown if there are bookings */}
+      {bookedNights.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-4 pt-3 border-t border-gray-100 text-xs text-gray-500">
+          {Array.from(visibleStatuses).map(status => {
+            const cfg = STATUS_CONFIG[status] || DEFAULT_STATUS;
+            return (
+              <div key={status} className="flex items-center gap-1.5">
+                <span className={cn('w-2 h-2 rounded-full', cfg.dotClass)} />
+                <span>{cfg.text}</span>
               </div>
             );
           })}

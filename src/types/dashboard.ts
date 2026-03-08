@@ -34,6 +34,14 @@ export interface DashboardSubscription {
   next_billing_date: string | null;
 }
 
+export interface DashboardUpcomingNight {
+  id: string;
+  date: string;
+  status: string;
+  child_first_name: string;
+  child_last_name: string;
+}
+
 export interface DashboardData {
   profile: {
     first_name: string;
@@ -46,6 +54,7 @@ export interface DashboardData {
   };
   children: DashboardChild[];
   nextReservation: DashboardNextReservation | null;
+  upcomingNights: DashboardUpcomingNight[];
   subscriptions: DashboardSubscription[];
   weeklyTotalCents: number;
   upcomingReservationsCount: number;

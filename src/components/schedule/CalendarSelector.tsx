@@ -14,7 +14,6 @@ import {
   isSameDay,
   isBefore,
   isAfter,
-  parseISO,
 } from 'date-fns';
 
 interface CalendarSelectorProps {
@@ -69,7 +68,11 @@ export default function CalendarSelector({
   const canGoBack = pageOffset > 0;
   const canGoForward = isBefore(addWeeks(pageStart, 4), addDays(maxDate, 7));
 
-  const monthLabel = format(pageStart, 'MMMM yyyy');
+  // Show month range for the visible weeks
+  const pageEnd = addDays(startOfWeek(addWeeks(pageStart, 3), { weekStartsOn: 0 }), 6);
+  const startMonth = format(pageStart, 'MMMM yyyy');
+  const endMonth = format(pageEnd, 'MMMM yyyy');
+  const monthLabel = startMonth === endMonth ? startMonth : `${format(pageStart, 'MMM')} \u2013 ${endMonth}`;
 
   return (
     <div>
@@ -79,7 +82,7 @@ export default function CalendarSelector({
           onClick={() => setPageOffset(p => p - 1)}
           disabled={!canGoBack}
           className={cn(
-            'p-1.5 rounded-lg transition-colors',
+            'p-2 rounded-lg transition-colors',
             canGoBack ? 'hover:bg-gray-100 text-gray-700' : 'text-gray-300 cursor-not-allowed'
           )}
         >
@@ -90,7 +93,7 @@ export default function CalendarSelector({
           onClick={() => setPageOffset(p => p + 1)}
           disabled={!canGoForward}
           className={cn(
-            'p-1.5 rounded-lg transition-colors',
+            'p-2 rounded-lg transition-colors',
             canGoForward ? 'hover:bg-gray-100 text-gray-700' : 'text-gray-300 cursor-not-allowed'
           )}
         >
@@ -101,7 +104,7 @@ export default function CalendarSelector({
       {/* Day-of-week headers */}
       <div className="grid grid-cols-7 gap-1 mb-1">
         {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(label => (
-          <div key={label} className="text-center text-xs font-semibold text-gray-500 py-1">
+          <div key={label} className="text-center text-xs font-semibold text-gray-500 py-1.5">
             {label}
           </div>
         ))}
@@ -124,6 +127,26 @@ export default function CalendarSelector({
               const count = nightCapacity[dateStr] ?? 0;
               const remaining = capacity - count;
               const isFull = remaining <= 0;
+              const isLow = remaining > 0 && remaining <= 2;
+
+              // Determine capacity label
+              let capacityLabel = '';
+              let capacityClass = '';
+              if (isOperating && !isPast && !isBeyondWindow) {
+                if (isFull) {
+                  capacityLabel = 'Full';
+                  capacityClass = 'text-red-500 font-semibold';
+                } else if (isLow) {
+                  capacityLabel = `${remaining} bed${remaining !== 1 ? 's' : ''} left`;
+                  capacityClass = 'text-amber-600 font-medium';
+                } else {
+                  capacityLabel = `${remaining} beds left`;
+                  capacityClass = 'text-green-600';
+                }
+              } else if (!isOperating && !isPast && !isBeyondWindow) {
+                capacityLabel = 'Closed';
+                capacityClass = 'text-gray-400';
+              }
 
               return (
                 <button
@@ -133,37 +156,33 @@ export default function CalendarSelector({
                   }}
                   disabled={isDisabled && !isSelected}
                   className={cn(
-                    'relative flex flex-col items-center py-2 px-1 rounded-lg transition-colors min-h-[52px]',
+                    'relative flex flex-col items-center py-2 px-0.5 rounded-xl transition-all min-h-[58px]',
                     isSelected
-                      ? 'bg-navy-600 text-white shadow-sm'
+                      ? 'bg-navy-600 text-white shadow-soft-sm ring-2 ring-navy-400 ring-offset-1'
                       : isDisabled
-                        ? 'text-gray-300 cursor-default'
+                        ? 'text-gray-300 cursor-default bg-gray-50'
                         : isFull
-                          ? 'text-gray-400 hover:bg-gray-50 cursor-pointer'
-                          : 'text-gray-900 hover:bg-navy-50 cursor-pointer',
-                    isToday && !isSelected && 'ring-2 ring-accent-500 ring-inset'
+                          ? 'text-gray-400 bg-red-50/50 hover:bg-red-50 cursor-pointer'
+                          : isLow
+                            ? 'text-gray-900 bg-amber-50/30 hover:bg-amber-50 cursor-pointer'
+                            : 'text-gray-900 hover:bg-navy-50 cursor-pointer',
+                    isToday && !isSelected && 'ring-2 ring-accent-500 ring-offset-1'
                   )}
                 >
                   <span className={cn(
-                    'text-sm font-medium',
+                    'text-sm font-medium leading-tight',
                     isSelected && 'font-bold'
                   )}>
                     {format(date, 'd')}
                   </span>
 
                   {/* Capacity indicator */}
-                  {isOperating && !isPast && !isBeyondWindow && (
+                  {capacityLabel && (
                     <span className={cn(
-                      'text-[10px] leading-tight mt-0.5',
-                      isSelected
-                        ? 'text-navy-200'
-                        : isFull
-                          ? 'text-red-500 font-medium'
-                          : remaining <= 2
-                            ? 'text-yellow-600'
-                            : 'text-green-600'
+                      'text-[9px] leading-tight mt-0.5 text-center',
+                      isSelected ? 'text-navy-200' : capacityClass
                     )}>
-                      {isFull ? 'Full' : `${remaining} left`}
+                      {capacityLabel}
                     </span>
                   )}
                 </button>
@@ -174,21 +193,25 @@ export default function CalendarSelector({
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 mt-4 text-xs text-gray-500">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-4 pt-3 border-t border-gray-100 text-xs text-gray-500">
         <div className="flex items-center gap-1.5">
-          <span className="w-3 h-3 rounded bg-navy-600" />
+          <span className="w-3 h-3 rounded bg-navy-600 shadow-sm" />
           <span>Selected</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-green-600 font-medium">3 left</span>
+          <span className="w-3 h-3 rounded bg-green-100 border border-green-300" />
           <span>Available</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-red-500 font-medium">Full</span>
-          <span>Waitlist</span>
+          <span className="w-3 h-3 rounded bg-amber-100 border border-amber-300" />
+          <span>Low availability</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-gray-300">&mdash;</span>
+          <span className="w-3 h-3 rounded bg-red-100 border border-red-300" />
+          <span>Full (waitlist)</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-3 h-3 rounded bg-gray-100 border border-gray-200" />
           <span>Closed</span>
         </div>
       </div>

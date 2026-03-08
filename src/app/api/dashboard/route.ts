@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, unauthorized } from '@/lib/api-auth';
-import type { DashboardData, DashboardChild, DashboardAllergyInfo } from '@/types/dashboard';
+import type { DashboardData, DashboardChild, DashboardAllergyInfo, DashboardUpcomingNight } from '@/types/dashboard';
 
 /**
  * GET /api/dashboard
@@ -121,10 +121,31 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Compute upcoming reservation count
+  // Fetch upcoming nights list (next 28 days, up to 20)
+  let upcomingNights: DashboardUpcomingNight[] = [];
   let upcomingCount = 0;
   if (dashboardChildren.length > 0) {
-    const childIds = dashboardChildren.map(c => c.id);
+    const childIds = dashboardChildren.map((c: DashboardChild) => c.id);
+    const { data: upcomingData } = await supabase
+      .from('reservations')
+      .select('id, date, status, child:children(first_name, last_name)')
+      .in('child_id', childIds)
+      .gte('date', new Date().toISOString().split('T')[0])
+      .in('status', ['confirmed', 'pending_payment', 'waitlisted'])
+      .order('date', { ascending: true })
+      .limit(20);
+
+    upcomingNights = (upcomingData || []).map((r: any) => {
+      const childData = r.child as any;
+      return {
+        id: r.id,
+        date: r.date,
+        status: r.status,
+        child_first_name: childData?.first_name || '',
+        child_last_name: childData?.last_name || '',
+      };
+    });
+
     const { count } = await supabase
       .from('reservations')
       .select('id', { count: 'exact', head: true })
@@ -161,6 +182,7 @@ export async function GET(req: NextRequest) {
     },
     children: dashboardChildren,
     nextReservation,
+    upcomingNights,
     subscriptions: (subscriptionsRes.data || []).map((s: any) => ({
       id: s.id,
       plan_tier: s.plan_tier,
