@@ -18,8 +18,8 @@ export const treatmentTypeSchema = z.enum([
 const MAX_AGE_YEARS = 18;
 
 export const childBasicsSchema = z.object({
-  first_name: z.string().min(1, 'First name is required').max(50, 'First name must be 50 characters or less'),
-  last_name: z.string().min(1, 'Last name is required').max(50, 'Last name must be 50 characters or less'),
+  first_name: z.string().trim().min(1, 'First name is required').max(50, 'First name must be 50 characters or less'),
+  last_name: z.string().trim().min(1, 'Last name is required').max(50, 'Last name must be 50 characters or less'),
   date_of_birth: z.string().refine((val) => {
     const date = new Date(val);
     if (isNaN(date.getTime())) return false;
@@ -69,7 +69,7 @@ export const allergySchema = z.object({
   allergen: allergyTypeSchema,
   custom_label: z.string().max(50).optional().nullable(),
   severity: allergySeveritySchema.default('UNKNOWN'),
-  action_plan: actionPlanSchema.optional().nullable(),
+  action_plan: actionPlanSchema,
 }).refine((data) => {
   if (data.allergen === 'OTHER') {
     return data.custom_label && data.custom_label.trim().length >= 2;
@@ -95,9 +95,9 @@ const phoneSchema = z.string().min(1, 'Phone number is required').refine((val) =
 }, { message: 'Please enter a valid phone number (10-11 digits)' });
 
 export const emergencyContactSchema = z.object({
-  first_name: z.string().min(1, 'First name is required').max(50),
-  last_name: z.string().min(1, 'Last name is required').max(50),
-  relationship: z.string().min(1, 'Relationship is required').max(50),
+  first_name: z.string().trim().min(1, 'First name is required').max(50),
+  last_name: z.string().trim().min(1, 'Last name is required').max(50),
+  relationship: z.string().trim().min(1, 'Relationship is required').max(50),
   phone: phoneSchema,
   phone_alt: z.string().optional().nullable(),
   priority: z.number().int().min(1).max(2),
@@ -109,9 +109,9 @@ export type EmergencyContactInput = z.infer<typeof emergencyContactSchema>;
 // ─── Authorized Pickup ───────────────────────────────────────────────────────
 
 export const authorizedPickupSchema = z.object({
-  first_name: z.string().min(1, 'First name is required').max(50),
-  last_name: z.string().min(1, 'Last name is required').max(50),
-  relationship: z.string().min(1, 'Relationship is required').max(50),
+  first_name: z.string().trim().min(1, 'First name is required').max(50),
+  last_name: z.string().trim().min(1, 'Last name is required').max(50),
+  relationship: z.string().trim().min(1, 'Relationship is required').max(50),
   phone: phoneSchema,
   pickup_pin: z.string().regex(/^\d{4,6}$/, 'PIN must be 4-6 digits'),
   notes: z.string().max(500).optional().nullable(),
@@ -121,9 +121,9 @@ export type AuthorizedPickupInput = z.infer<typeof authorizedPickupSchema>;
 
 // For update (PIN optional — only set if resetting)
 export const authorizedPickupUpdateSchema = z.object({
-  first_name: z.string().min(1).max(50),
-  last_name: z.string().min(1).max(50),
-  relationship: z.string().min(1).max(50),
+  first_name: z.string().trim().min(1).max(50),
+  last_name: z.string().trim().min(1).max(50),
+  relationship: z.string().trim().min(1).max(50),
   phone: phoneSchema,
   pickup_pin: z.string().regex(/^\d{4,6}$/, 'PIN must be 4-6 digits').optional().nullable(),
   notes: z.string().max(500).optional().nullable(),

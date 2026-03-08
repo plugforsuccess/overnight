@@ -28,7 +28,7 @@ interface AllergyFormData {
     medication_expires_on: string;
     physician_name: string;
     parent_confirmed: boolean;
-  } | null;
+  };
 }
 
 interface Props {
@@ -68,7 +68,7 @@ function allergyRowToForm(a: ChildAllergyRow): AllergyFormData {
       medication_expires_on: plan.medication_expires_on || '',
       physician_name: plan.physician_name || '',
       parent_confirmed: false, // require re-confirmation on edit
-    } : null,
+    } : emptyActionPlan(), // always initialize action plan — it's required
   };
 }
 
@@ -84,7 +84,7 @@ export function ChildAllergiesEditor({ childId, allergies, onSave, saving }: Pro
       allergen: 'PEANUT',
       custom_label: '',
       severity: 'UNKNOWN',
-      action_plan: null,
+      action_plan: emptyActionPlan(),
     }]);
     setExpandedIdx(items.length);
   }
@@ -98,16 +98,9 @@ export function ChildAllergiesEditor({ childId, allergies, onSave, saving }: Pro
     setItems(prev => prev.map((item, i) => i === idx ? { ...item, ...updates } : item));
   }
 
-  function toggleActionPlan(idx: number) {
+  function updateActionPlan(idx: number, updates: Partial<AllergyFormData['action_plan']>) {
     setItems(prev => prev.map((item, i) => {
       if (i !== idx) return item;
-      return { ...item, action_plan: item.action_plan ? null : emptyActionPlan() };
-    }));
-  }
-
-  function updateActionPlan(idx: number, updates: Partial<NonNullable<AllergyFormData['action_plan']>>) {
-    setItems(prev => prev.map((item, i) => {
-      if (i !== idx || !item.action_plan) return item;
       return { ...item, action_plan: { ...item.action_plan, ...updates } };
     }));
   }
@@ -121,19 +114,20 @@ export function ChildAllergiesEditor({ childId, allergies, onSave, saving }: Pro
       if (a.allergen === 'OTHER' && (!a.custom_label || a.custom_label.trim().length < 2)) {
         return `Allergy #${i + 1}: Custom label required for "Other" (min 2 chars)`;
       }
-      if (a.action_plan) {
-        const p = a.action_plan;
-        if (!p.parent_confirmed) {
-          return `Allergy #${i + 1}: Parent confirmation required for action plan`;
+      if (!a.action_plan) {
+        return `Allergy #${i + 1}: Emergency action plan is required`;
+      }
+      const p = a.action_plan;
+      if (!p.parent_confirmed) {
+        return `Allergy #${i + 1}: Parent confirmation required for action plan`;
+      }
+      const needsMedExpiry = p.requires_med_on_site || MEDS_TREATMENTS.includes(p.treatment_first_line);
+      if (needsMedExpiry) {
+        if (!p.medication_expires_on) {
+          return `Allergy #${i + 1}: Medication expiry date required`;
         }
-        const needsMedExpiry = p.requires_med_on_site || MEDS_TREATMENTS.includes(p.treatment_first_line);
-        if (needsMedExpiry) {
-          if (!p.medication_expires_on) {
-            return `Allergy #${i + 1}: Medication expiry date required`;
-          }
-          if (new Date(p.medication_expires_on) <= new Date()) {
-            return `Allergy #${i + 1}: Medication expiry must be in the future`;
-          }
+        if (new Date(p.medication_expires_on) <= new Date()) {
+          return `Allergy #${i + 1}: Medication expiry must be in the future`;
         }
       }
     }
@@ -237,21 +231,15 @@ export function ChildAllergiesEditor({ childId, allergies, onSave, saving }: Pro
                 </div>
               )}
 
-              {/* Action Plan Toggle */}
+              {/* Emergency Action Plan (required) */}
               <div className="border-t pt-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={!!allergy.action_plan}
-                    onChange={() => toggleActionPlan(idx)}
-                    className="w-4 h-4 text-accent-600 focus:ring-accent-500 rounded"
-                  />
-                  <span className="text-sm font-medium text-gray-700">Add Emergency Action Plan</span>
-                </label>
+                <p className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  Emergency Action Plan <span className="text-red-500">*</span>
+                </p>
               </div>
 
-              {allergy.action_plan && (
-                <div className="bg-gray-50 rounded-lg p-4 space-y-4">
+              <div className="bg-gray-50 rounded-lg p-4 space-y-4">
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">First-Line Treatment *</label>
@@ -340,7 +328,6 @@ export function ChildAllergiesEditor({ childId, allergies, onSave, saving }: Pro
                     </label>
                   </div>
                 </div>
-              )}
             </div>
           )}
         </div>
