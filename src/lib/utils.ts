@@ -71,6 +71,45 @@ export function getWeekNights(weekStart: Date, operatingNights: DayOfWeek[]): { 
 }
 
 /**
+ * Get upcoming weeks starting from the current week, limited by booking window.
+ * Returns an array of week start dates (Sundays).
+ */
+export function getUpcomingWeeks(count: number, bookingWindowDays: number): Date[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const maxDate = addDays(today, bookingWindowDays);
+  const currentWeekStart = startOfWeek(today, { weekStartsOn: 0 });
+
+  const weeks: Date[] = [];
+  for (let i = 0; i < count; i++) {
+    const weekStart = addDays(currentWeekStart, i * 7);
+    if (weekStart <= maxDate) {
+      weeks.push(weekStart);
+    }
+  }
+  return weeks;
+}
+
+/**
+ * Format a week range for display (e.g., "Mar 8 - Mar 14").
+ */
+export function formatWeekRange(weekStart: Date): string {
+  const weekEnd = addDays(weekStart, 6);
+  return `${format(weekStart, 'MMM d')} \u2013 ${format(weekEnd, 'MMM d')}`;
+}
+
+/**
+ * Check if a date is within the booking window.
+ */
+export function isWithinBookingWindow(dateStr: string, bookingWindowDays: number): boolean {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const date = parseISO(dateStr);
+  const maxDate = addDays(today, bookingWindowDays);
+  return date >= today && date <= maxDate;
+}
+
+/**
  * Classnames helper (simple version).
  */
 export function cn(...classes: (string | false | null | undefined)[]): string {

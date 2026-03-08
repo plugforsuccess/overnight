@@ -1,5 +1,53 @@
 export type DayOfWeek = 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
 
+// ─── centers ────────────────────────────────────────────────────────────────
+export interface Center {
+  id: string;
+  name: string;
+  slug: string;
+  timezone: string;
+  address_line_1: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── programs ───────────────────────────────────────────────────────────────
+export interface Program {
+  id: string;
+  center_id: string;
+  name: string;
+  care_type: 'overnight' | 'daycare' | 'drop_in';
+  start_time: string;
+  end_time: string;
+  age_min_months: number | null;
+  age_max_months: number | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  // Joined
+  center?: Center;
+}
+
+// ─── program_capacity ───────────────────────────────────────────────────────
+export interface ProgramCapacity {
+  id: string;
+  center_id: string;
+  program_id: string;
+  care_date: string;
+  capacity_total: number;
+  capacity_reserved: number;
+  capacity_waitlisted: number;
+  status: 'open' | 'full' | 'closed';
+  created_at: string;
+  updated_at: string;
+  // Joined
+  program?: Program;
+}
+
 export interface Profile {
   id: string;
   email: string;
@@ -89,6 +137,22 @@ export interface WaitlistEntry {
   // Joined fields
   child?: Child;
   parent?: Profile;
+}
+
+export interface ReservationNight {
+  id: string;
+  reservation_id: string;
+  child_id: string;
+  program_capacity_id: string | null;
+  care_date: string;
+  status: 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'waitlisted' | 'no_show';
+  capacity_snapshot: number;
+  created_at: string;
+  updated_at: string;
+  // Joined fields
+  child?: Child;
+  reservation?: Reservation;
+  program_capacity?: ProgramCapacity;
 }
 
 export interface PricingTier {

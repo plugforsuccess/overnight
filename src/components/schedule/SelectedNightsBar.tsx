@@ -1,0 +1,86 @@
+'use client';
+
+import { X } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { formatCents } from '@/lib/constants';
+import { PricingTier } from '@/types/database';
+import { format, parseISO } from 'date-fns';
+
+interface SelectedNightsBarProps {
+  selectedNights: Set<string>;
+  onRemoveNight: (dateStr: string) => void;
+  pricingTiers: PricingTier[];
+  onContinue: () => void;
+}
+
+function autoCalculatePlan(nightCount: number, pricingTiers: PricingTier[]): PricingTier | null {
+  return pricingTiers.find(t => t.nights === nightCount) ?? null;
+}
+
+export default function SelectedNightsBar({
+  selectedNights,
+  onRemoveNight,
+  pricingTiers,
+  onContinue,
+}: SelectedNightsBarProps) {
+  const nightCount = selectedNights.size;
+  if (nightCount === 0) return null;
+
+  const sortedNights = Array.from(selectedNights).sort();
+  const matchedPlan = autoCalculatePlan(nightCount, pricingTiers);
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-40 px-4 py-3 sm:py-4">
+      <div className="max-w-4xl mx-auto">
+        {/* Selected nights pills */}
+        <div className="flex flex-wrap gap-2 mb-3">
+          {sortedNights.map(dateStr => {
+            const date = parseISO(dateStr);
+            return (
+              <span
+                key={dateStr}
+                className="inline-flex items-center gap-1 bg-navy-50 text-navy-800 text-sm font-medium px-2.5 py-1 rounded-full"
+              >
+                {format(date, 'EEE MMM d')}
+                <button
+                  onClick={() => onRemoveNight(dateStr)}
+                  className="text-navy-400 hover:text-navy-700 transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            );
+          })}
+        </div>
+
+        {/* Plan auto-calculation and continue */}
+        <div className="flex items-center justify-between">
+          <div>
+            <span className="text-sm font-semibold text-gray-900">
+              {nightCount} night{nightCount !== 1 ? 's' : ''} selected
+            </span>
+            {matchedPlan ? (
+              <span className="text-sm text-gray-500 ml-2">
+                &middot; {formatCents(matchedPlan.price_cents)}/week
+              </span>
+            ) : (
+              <span className="text-sm text-yellow-600 ml-2">
+                &middot; No matching plan for {nightCount} night{nightCount !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={onContinue}
+            disabled={!matchedPlan}
+            className={cn(
+              'btn-primary text-sm px-6',
+              !matchedPlan && 'opacity-50 cursor-not-allowed'
+            )}
+          >
+            Continue
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

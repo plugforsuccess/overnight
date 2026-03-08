@@ -1,24 +1,31 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Calendar, AlertCircle, Check, Clock } from 'lucide-react';
+import { Calendar, AlertCircle, Check, Clock, ArrowLeft } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
-import { DEFAULT_PRICING_TIERS, DEFAULT_OPERATING_NIGHTS, formatCents, DAY_LABELS, DEFAULT_CAPACITY } from '@/lib/constants';
-import { getWeekNights, getNextWeekStart, cn } from '@/lib/utils';
-import { DayOfWeek, Child, AdminSettings } from '@/types/database';
+import { DEFAULT_PRICING_TIERS, DEFAULT_OPERATING_NIGHTS, formatCents, DAY_LABELS, DEFAULT_CAPACITY, BOOKING_WINDOW_DAYS, OVERNIGHT_START, OVERNIGHT_END } from '@/lib/constants';
+import { getWeekNights, cn, formatWeekRange, getUpcomingWeeks } from '@/lib/utils';
+import { DayOfWeek, Child, AdminSettings, PricingTier } from '@/types/database';
+import CalendarSelector from '@/components/schedule/CalendarSelector';
+import SelectedNightsBar from '@/components/schedule/SelectedNightsBar';
+import CalendarView from '@/components/schedule/CalendarView';
+import { format, parseISO, startOfWeek } from 'date-fns';
 
 interface ChildProfile extends Child {
   emergency_contacts_count: number;
   authorized_pickups_count: number;
 }
 
+function autoCalculatePlan(nightCount: number, pricingTiers: PricingTier[]): PricingTier | null {
+  return pricingTiers.find(t => t.nights === nightCount) ?? null;
+}
+
 export default function SchedulePage() {
   const router = useRouter();
-  const [step, setStep] = useState<'plan' | 'nights' | 'child' | 'confirm'>('plan');
+  const [step, setStep] = useState<'calendar' | 'child' | 'confirm'>('calendar');
   const [children, setChildren] = useState<ChildProfile[]>([]);
   const [selectedChild, setSelectedChild] = useState<string>('');
-  const [selectedPlan, setSelectedPlan] = useState<number>(0);
   const [selectedNights, setSelectedNights] = useState<Set<string>>(new Set());
   const [nightCapacity, setNightCapacity] = useState<Record<string, number>>({});
   const [settings, setSettings] = useState<AdminSettings | null>(null);
@@ -28,11 +35,54 @@ export default function SchedulePage() {
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
-  const weekStart = getNextWeekStart();
   const pricingTiers = settings?.pricing_tiers ?? DEFAULT_PRICING_TIERS;
   const operatingNights = (settings?.operating_nights ?? DEFAULT_OPERATING_NIGHTS) as DayOfWeek[];
   const capacity = settings?.max_capacity ?? DEFAULT_CAPACITY;
-  const weekNights = getWeekNights(weekStart, operatingNights);
+
+  const matchedPlan = autoCalculatePlan(selectedNights.size, pricingTiers);
+
+  // Derive the week start from selected nights for the booking API
+  const sortedNights = Array.from(selectedNights).sort();
+  const weekStartDate = sortedNights.length > 0
+    ? startOfWeek(parseISO(sortedNights[0]), { weekStartsOn: 0 })
+    : null;
+
+  // Build booked nights for CalendarView
+  const bookedNightsForCalendar = sortedNights.map(dateStr => {
+    const count = nightCapacity[dateStr] ?? 0;
+    const isFull = count >= capacity;
+    const childProfile = children.find((c: ChildProfile) => c.id === selectedChild);
+    return {
+      date: dateStr,
+      status: isFull ? 'waitlisted' : 'pending_payment',
+      childName: childProfile ? `${childProfile.first_name} ${childProfile.last_name}` : 'Selected',
+    };
+  });
+
+  const loadCapacity = useCallback(async (opNights: DayOfWeek[]) => {
+    // Load capacity for all weeks in the booking window
+    const weeks = getUpcomingWeeks(5, BOOKING_WINDOW_DAYS);
+    const allDates: string[] = [];
+    for (const week of weeks) {
+      const nights = getWeekNights(week, opNights);
+      allDates.push(...nights.map(n => n.dateStr));
+    }
+
+    if (allDates.length === 0) return;
+
+    const { data: reservations } = await supabase
+      .from('reservations')
+      .select('date')
+      .in('date', allDates)
+      .eq('status', 'confirmed');
+
+    const counts: Record<string, number> = {};
+    allDates.forEach(d => counts[d] = 0);
+    reservations?.forEach((r: { date: string }) => {
+      counts[r.date] = (counts[r.date] || 0) + 1;
+    });
+    setNightCapacity(counts);
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -41,7 +91,6 @@ export default function SchedulePage() {
         router.push('/login');
         return;
       }
-      // parents.id = auth user ID
       const { data: parentRow } = await supabase
         .from('parents')
         .select('id')
@@ -71,44 +120,32 @@ export default function SchedulePage() {
         })) as ChildProfile[];
         setChildren(enriched);
       }
-      if (settingsRes.data) setSettings(settingsRes.data as AdminSettings);
 
-      // Load capacity for each night — use `date` column (correct schema)
-      const nightDates = getWeekNights(
-        getNextWeekStart(),
-        (settingsRes.data?.operating_nights ?? DEFAULT_OPERATING_NIGHTS) as DayOfWeek[]
-      ).map(n => n.dateStr);
+      const resolvedSettings = settingsRes.data as AdminSettings | null;
+      if (resolvedSettings) setSettings(resolvedSettings);
 
-      const { data: reservations } = await supabase
-        .from('reservations')
-        .select('date')
-        .in('date', nightDates)
-        .eq('status', 'confirmed');
+      const opNights = (resolvedSettings?.operating_nights ?? DEFAULT_OPERATING_NIGHTS) as DayOfWeek[];
+      await loadCapacity(opNights);
 
-      const counts: Record<string, number> = {};
-      nightDates.forEach(d => counts[d] = 0);
-      reservations?.forEach((r: { date: string }) => {
-        counts[r.date] = (counts[r.date] || 0) + 1;
-      });
-      setNightCapacity(counts);
       setLoading(false);
     }
     load();
-  }, [router]);
+  }, [router, loadCapacity]);
 
   function toggleNight(dateStr: string) {
     const updated = new Set(selectedNights);
     if (updated.has(dateStr)) {
       updated.delete(dateStr);
     } else {
-      if (updated.size >= selectedPlan) return;
       updated.add(dateStr);
     }
     setSelectedNights(updated);
   }
 
-  function getSelectedChildProfile(): ChildProfile | undefined {
-    return children.find(c => c.id === selectedChild);
+  function removeNight(dateStr: string) {
+    const updated = new Set(selectedNights);
+    updated.delete(dateStr);
+    setSelectedNights(updated);
   }
 
   function isChildProfileComplete(child: ChildProfile): boolean {
@@ -124,16 +161,26 @@ export default function SchedulePage() {
 
   function handleSelectChild(childId: string) {
     setSelectedChild(childId);
-    const child = children.find(c => c.id === childId);
+    const child = children.find((c: ChildProfile) => c.id === childId);
     if (child && !isChildProfileComplete(child)) {
       setError(getProfileIncompleteMessage(child));
       setErrorCode('PROFILE_INCOMPLETE');
-      // Don't advance to confirm step
       return;
     }
     setError('');
     setErrorCode(null);
     setStep('confirm');
+  }
+
+  function handleContinueFromCalendar() {
+    if (!matchedPlan) {
+      setError(`No plan available for ${selectedNights.size} nights. Available plans: ${pricingTiers.map((t: PricingTier) => `${t.nights} nights`).join(', ')}.`);
+      setErrorCode('INVALID_PLAN_SELECTION');
+      return;
+    }
+    setError('');
+    setErrorCode(null);
+    setStep('child');
   }
 
   async function handleSubmit() {
@@ -143,14 +190,13 @@ export default function SchedulePage() {
       router.push('/login');
       return;
     }
-    if (!selectedChild || selectedPlan === 0 || selectedNights.size !== selectedPlan) {
+    if (!selectedChild || !matchedPlan || selectedNights.size === 0) {
       setError('Please complete all steps before confirming.');
       setErrorCode('INVALID_PLAN_SELECTION');
       return;
     }
 
-    // Double-check profile completeness
-    const childProfile = getSelectedChildProfile();
+    const childProfile = children.find((c: ChildProfile) => c.id === selectedChild);
     if (childProfile && !isChildProfileComplete(childProfile)) {
       setError(getProfileIncompleteMessage(childProfile));
       setErrorCode('PROFILE_INCOMPLETE');
@@ -162,7 +208,6 @@ export default function SchedulePage() {
     setErrorCode(null);
 
     try {
-      // Get auth token for server API calls
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         setError('Session expired. Please log in again.');
@@ -175,16 +220,17 @@ export default function SchedulePage() {
         'Authorization': `Bearer ${session.access_token}`,
       };
 
+      const weekStart = weekStartDate ? format(weekStartDate, 'yyyy-MM-dd') : sortedNights[0];
+
       const requestPayload = {
         childId: selectedChild,
-        nightsPerWeek: selectedPlan,
-        selectedNights: Array.from(selectedNights),
-        weekStart: weekNights[0]?.dateStr,
+        nightsPerWeek: matchedPlan.nights,
+        selectedNights: sortedNights,
+        weekStart,
       };
 
       console.log('[schedule] submitting booking:', JSON.stringify(requestPayload));
 
-      // Create plan + reservations via server API
       const bookingRes = await fetch('/api/bookings', {
         method: 'POST',
         headers: authHeaders,
@@ -198,7 +244,6 @@ export default function SchedulePage() {
         const code = bookingData.code || 'UNKNOWN_ERROR';
         setErrorCode(code);
 
-        // Show user-friendly messages based on error code
         if (code === 'PROFILE_INCOMPLETE') {
           setError(bookingData.error);
         } else if (code === 'CHILD_NOT_OWNED') {
@@ -214,7 +259,6 @@ export default function SchedulePage() {
         return;
       }
 
-      // Create Stripe checkout via server API
       console.log('[schedule] creating stripe checkout for plan:', bookingData.plan.id);
 
       const stripeRes = await fetch('/api/stripe', {
@@ -256,31 +300,36 @@ export default function SchedulePage() {
     );
   }
 
-  const stepOrder = ['plan', 'nights', 'child', 'confirm'] as const;
+  const stepOrder = ['calendar', 'child', 'confirm'] as const;
   const stepIndex = stepOrder.indexOf(step);
+  const stepLabels = ['Select Nights', 'Select Child', 'Confirm'];
 
   return (
-    <div className="py-16">
+    <div className="py-12 pb-32">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <Calendar className="h-12 w-12 text-navy-700 mx-auto mb-4" />
-          <h1 className="text-3xl font-bold text-gray-900">Reserve Your Nights</h1>
-          <p className="text-gray-600 mt-2">Choose your plan, pick your nights, and confirm your booking</p>
+        <div className="text-center mb-8">
+          <Calendar className="h-10 w-10 text-navy-700 mx-auto mb-3" />
+          <h1 className="text-3xl font-bold text-gray-900">Reserve Nights</h1>
+          <p className="text-gray-600 mt-1">Tap the nights you need care. We&apos;ll handle the rest.</p>
+          <p className="text-xs text-gray-400 mt-1">Book up to {BOOKING_WINDOW_DAYS} days ahead</p>
         </div>
 
         {/* Progress */}
         <div className="flex items-center justify-center gap-2 mb-8">
           {stepOrder.map((s, i) => (
             <div key={s} className="flex items-center gap-2">
-              <div className={cn(
-                'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold',
-                step === s ? 'bg-navy-700 text-white' :
-                stepIndex > i ? 'bg-green-500 text-white' :
-                'bg-gray-200 text-gray-500'
-              )}>
-                {stepIndex > i ? <Check className="h-4 w-4" /> : i + 1}
+              <div className="flex flex-col items-center">
+                <div className={cn(
+                  'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold',
+                  step === s ? 'bg-navy-700 text-white' :
+                  stepIndex > i ? 'bg-green-500 text-white' :
+                  'bg-gray-200 text-gray-500'
+                )}>
+                  {stepIndex > i ? <Check className="h-4 w-4" /> : i + 1}
+                </div>
+                <span className="text-xs text-gray-500 mt-1 hidden sm:block">{stepLabels[i]}</span>
               </div>
-              {i < 3 && <div className="w-12 h-0.5 bg-gray-200" />}
+              {i < stepOrder.length - 1 && <div className="w-10 sm:w-16 h-0.5 bg-gray-200 mb-4 sm:mb-5" />}
             </div>
           ))}
         </div>
@@ -307,106 +356,49 @@ export default function SchedulePage() {
           </div>
         )}
 
-        {/* Step 1: Select Plan */}
-        {step === 'plan' && (
+        {/* Step 1: Calendar */}
+        {step === 'calendar' && (
           <div className="card">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Choose Your Weekly Plan</h2>
-            <p className="text-gray-600 mb-4">Weekly plans reserve your spot&mdash;paid weekly in advance.</p>
-            <div className="space-y-3">
-              {pricingTiers.map(tier => (
-                <button
-                  key={tier.nights}
-                  onClick={() => { setSelectedPlan(tier.nights); setSelectedNights(new Set()); setStep('nights'); }}
-                  className={cn(
-                    'w-full text-left p-4 rounded-lg border-2 transition-colors',
-                    selectedPlan === tier.nights ? 'border-navy-600 bg-navy-50' : 'border-gray-200 hover:border-gray-300'
-                  )}
-                >
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <div className="font-semibold text-gray-900">
-                        {tier.nights} Night{tier.nights > 1 ? 's' : ''} per Week
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        {formatCents(Math.round(tier.price_cents / tier.nights))}/night
-                      </div>
-                    </div>
-                    <div className="text-2xl font-bold text-gray-900">
-                      {formatCents(tier.price_cents)}<span className="text-sm font-normal text-gray-500">/wk</span>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
+            <CalendarSelector
+              operatingNights={operatingNights}
+              capacity={capacity}
+              nightCapacity={nightCapacity}
+              selectedNights={selectedNights}
+              onToggleNight={toggleNight}
+            />
           </div>
         )}
 
-        {/* Step 2: Select Nights — Week Grid (Sun–Thu) */}
-        {step === 'nights' && (
-          <div className="card">
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Select Your Nights</h2>
-            <p className="text-gray-600 mb-6">
-              Choose {selectedPlan} night{selectedPlan > 1 ? 's' : ''} for next week.
-              Week of {weekNights[0]?.dateStr}.
-            </p>
-
-            {/* Week Grid */}
-            <div className="grid grid-cols-5 gap-3 mb-6">
-              {weekNights.map(({ day, dateStr }) => {
-                const count = nightCapacity[dateStr] ?? 0;
-                const remaining = capacity - count;
-                const isFull = remaining <= 0;
-                const isSelected = selectedNights.has(dateStr);
-                const canSelect = !isFull && (isSelected || selectedNights.size < selectedPlan);
-
-                return (
-                  <button
-                    key={dateStr}
-                    onClick={() => {
-                      if (isFull && !isSelected) return;
-                      if (canSelect) toggleNight(dateStr);
-                    }}
-                    className={cn(
-                      'flex flex-col items-center p-4 rounded-xl border-2 transition-colors text-center',
-                      isSelected ? 'border-navy-600 bg-navy-50 shadow-sm' :
-                      isFull ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed' :
-                      'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    )}
-                  >
-                    <div className="text-sm font-bold text-gray-900 mb-1">{DAY_LABELS[day]}</div>
-                    <div className="text-xs text-gray-400 mb-3">{dateStr.slice(5)}</div>
-                    {isFull ? (
-                      <span className="text-xs font-semibold text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded-full">
-                        Join waitlist
-                      </span>
-                    ) : (
-                      <span className="text-xs font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
-                        {remaining}/{capacity} spots
-                      </span>
-                    )}
-                    {isSelected && <Check className="h-5 w-5 text-navy-700 mt-2" />}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="flex gap-3">
-              <button onClick={() => setStep('plan')} className="btn-secondary">Back</button>
-              <button
-                onClick={() => setStep('child')}
-                disabled={selectedNights.size !== selectedPlan}
-                className="btn-primary flex-1"
-              >
-                Continue ({selectedNights.size}/{selectedPlan} selected)
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Select Child */}
+        {/* Step 2: Select Child */}
         {step === 'child' && (
           <div className="card">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Select a Child</h2>
+            <div className="flex items-center gap-3 mb-4">
+              <button
+                onClick={() => { setStep('calendar'); setError(''); setErrorCode(null); }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <h2 className="text-xl font-semibold text-gray-900">Select a Child</h2>
+            </div>
+
+            {/* Summary of selected nights */}
+            <div className="bg-gray-50 rounded-lg p-3 mb-4">
+              <div className="text-sm text-gray-500 mb-1">
+                {selectedNights.size} night{selectedNights.size !== 1 ? 's' : ''} selected
+                {matchedPlan && (
+                  <span className="ml-1">&middot; {formatCents(matchedPlan.price_cents)}/week</span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {sortedNights.map(dateStr => (
+                  <span key={dateStr} className="text-xs font-medium bg-navy-50 text-navy-800 px-2 py-0.5 rounded-full">
+                    {format(parseISO(dateStr), 'EEE MMM d')}
+                  </span>
+                ))}
+              </div>
+            </div>
+
             {children.length === 0 ? (
               <div className="text-center py-8">
                 <p className="text-gray-600 mb-4">You haven&apos;t added any children yet.</p>
@@ -449,44 +441,74 @@ export default function SchedulePage() {
                 })}
               </div>
             )}
-            <button onClick={() => { setStep('nights'); setError(''); setErrorCode(null); }} className="btn-secondary mt-4">Back</button>
           </div>
         )}
 
-        {/* Step 4: Confirm */}
-        {step === 'confirm' && (
+        {/* Step 3: Confirm */}
+        {step === 'confirm' && matchedPlan && weekStartDate && (
           <div className="card">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Confirm Your Booking</h2>
+            <div className="flex items-center gap-3 mb-4">
+              <button
+                onClick={() => { setStep('child'); setError(''); setErrorCode(null); }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <h2 className="text-xl font-semibold text-gray-900">Confirm Reservation</h2>
+            </div>
+
             <div className="space-y-4">
               <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-500 mb-1">Plan</div>
-                <div className="font-semibold">
-                  {selectedPlan} Night{selectedPlan > 1 ? 's' : ''}/Week &mdash;{' '}
-                  {formatCents(pricingTiers.find(t => t.nights === selectedPlan)!.price_cents)}/week
+                <div className="text-sm text-gray-500 mb-1">Child</div>
+                <div className="font-semibold text-gray-900">
+                  {children.find(c => c.id === selectedChild)?.first_name}{' '}
+                  {children.find(c => c.id === selectedChild)?.last_name}
                 </div>
               </div>
+
               <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-500 mb-1">Selected Nights</div>
-                <div className="space-y-1">
-                  {Array.from(selectedNights).sort().map(dateStr => {
-                    const night = weekNights.find(n => n.dateStr === dateStr);
+                <div className="text-sm text-gray-500 mb-2">Dates</div>
+                <div className="space-y-1.5">
+                  {sortedNights.map(dateStr => {
+                    const date = parseISO(dateStr);
                     const count = nightCapacity[dateStr] ?? 0;
                     const isFull = count >= capacity;
                     return (
-                      <div key={dateStr} className="font-semibold flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-navy-700" />
-                        {night ? DAY_LABELS[night.day] : ''} ({dateStr}) &mdash; 9:00 PM to 7:00 AM
-                        {isFull && <span className="badge-yellow text-xs ml-2">Waitlisted</span>}
+                      <div key={dateStr} className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-navy-700 flex-shrink-0" />
+                        <span className="font-medium text-gray-900">
+                          {format(date, 'EEEE, MMM d')}
+                        </span>
+                        <span className="text-sm text-gray-500">
+                          {OVERNIGHT_START} &ndash; {OVERNIGHT_END}
+                        </span>
+                        {isFull && <span className="text-xs font-semibold text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded-full ml-auto">Waitlist</span>}
                       </div>
                     );
                   })}
                 </div>
               </div>
+
               <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-500 mb-1">Child</div>
-                <div className="font-semibold">{children.find(c => c.id === selectedChild)?.first_name} {children.find(c => c.id === selectedChild)?.last_name}</div>
+                <div className="text-sm text-gray-500 mb-1">Total</div>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-bold text-gray-900">
+                    {formatCents(matchedPlan.price_cents)}
+                  </span>
+                  <span className="text-sm text-gray-500">/week &middot; {matchedPlan.nights} nights</span>
+                </div>
               </div>
             </div>
+
+            {/* Calendar preview */}
+            <div className="mt-4 border-t border-gray-200 pt-4">
+              <CalendarView
+                bookedNights={bookedNightsForCalendar}
+                weekStart={weekStartDate}
+                operatingNights={operatingNights}
+              />
+            </div>
+
             <div className="flex gap-3 mt-6">
               <button onClick={() => setStep('child')} className="btn-secondary">Back</button>
               <button onClick={handleSubmit} disabled={submitting} className="btn-primary flex-1">
@@ -496,6 +518,16 @@ export default function SchedulePage() {
           </div>
         )}
       </div>
+
+      {/* Floating selected nights bar */}
+      {step === 'calendar' && (
+        <SelectedNightsBar
+          selectedNights={selectedNights}
+          onRemoveNight={removeNight}
+          pricingTiers={pricingTiers}
+          onContinue={handleContinueFromCalendar}
+        />
+      )}
     </div>
   );
 }

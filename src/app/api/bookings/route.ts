@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import { DEFAULT_PRICING_TIERS } from '@/lib/constants';
+import { DEFAULT_PRICING_TIERS, BOOKING_WINDOW_DAYS } from '@/lib/constants';
 import { rateLimit } from '@/lib/rate-limit';
 import { cancelSubscription } from '@/lib/stripe';
 import { checkIdempotencyKey, saveIdempotencyResult } from '@/lib/idempotency';
@@ -223,6 +223,22 @@ export async function POST(req: NextRequest) {
 
   console.log(`[bookings POST] plan tier: planId=${planId} planName=${planName} priceCents=${priceCents}`);
 
+  // Validate booking window (28 days ahead)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const maxBookingDate = new Date(today);
+  maxBookingDate.setDate(maxBookingDate.getDate() + BOOKING_WINDOW_DAYS);
+
+  for (const nightDate of selectedNights) {
+    const d = new Date(nightDate + 'T00:00:00');
+    if (d < today) {
+      return errorResponse('INVALID_PLAN_SELECTION', `Cannot book a night in the past: ${nightDate}`, 400);
+    }
+    if (d > maxBookingDate) {
+      return errorResponse('INVALID_PLAN_SELECTION', `Cannot book more than ${BOOKING_WINDOW_DAYS} days ahead: ${nightDate}`, 400);
+    }
+  }
+
   // Validate night count matches plan
   if (selectedNights.length !== nightsPerWeek) {
     return errorResponse(
@@ -232,27 +248,50 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Check capacity for each night (server-side)
+  // Check capacity for each night using program_capacity (preferred) or nightly_capacity (fallback)
   const maxCapacity = 6; // default
+
+  // Try program_capacity first (new schema)
+  const { data: programCapData } = await supabaseAdmin
+    .from('program_capacity')
+    .select('id, care_date, capacity_total, capacity_reserved, capacity_waitlisted, status')
+    .in('care_date', selectedNights);
+
+  // Fallback to nightly_capacity (legacy schema)
   const { data: capacityData } = await supabaseAdmin
     .from('nightly_capacity')
     .select('date, capacity')
     .in('date', selectedNights);
 
   const fullNights: string[] = [];
+  const nightCapacityMap: Record<string, { programCapId: string | null; total: number; reserved: number }> = {};
+
   for (const nightDate of selectedNights) {
-    // Use nightly_capacity table if available, otherwise count reservations
-    const capRow = capacityData?.find((c: { date: string; capacity: number }) => c.date === nightDate);
-    const nightCapacity = capRow?.capacity ?? maxCapacity;
+    // Prefer program_capacity if available
+    const pcRow = programCapData?.find((c: { care_date: string }) => c.care_date === nightDate);
+    if (pcRow) {
+      const remaining = pcRow.capacity_total - pcRow.capacity_reserved;
+      nightCapacityMap[nightDate] = { programCapId: pcRow.id, total: pcRow.capacity_total, reserved: pcRow.capacity_reserved };
+      if (remaining <= 0 || pcRow.status === 'full' || pcRow.status === 'closed') {
+        fullNights.push(nightDate);
+      }
+    } else {
+      // Fallback: use nightly_capacity or count reservations
+      const capRow = capacityData?.find((c: { date: string; capacity: number }) => c.date === nightDate);
+      const nightCapacity = capRow?.capacity ?? maxCapacity;
 
-    const { count } = await supabaseAdmin
-      .from('reservations')
-      .select('*', { count: 'exact', head: true })
-      .eq('date', nightDate)
-      .eq('status', 'confirmed');
+      const { count } = await supabaseAdmin
+        .from('reservations')
+        .select('*', { count: 'exact', head: true })
+        .eq('date', nightDate)
+        .eq('status', 'confirmed');
 
-    if ((count ?? 0) >= nightCapacity) {
-      fullNights.push(nightDate);
+      const reserved = count ?? 0;
+      nightCapacityMap[nightDate] = { programCapId: null, total: nightCapacity, reserved };
+
+      if (reserved >= nightCapacity) {
+        fullNights.push(nightDate);
+      }
     }
   }
 
@@ -327,6 +366,44 @@ export async function POST(req: NextRequest) {
         created_by: user.id,
       }));
       await supabaseAdmin.from('reservation_events').insert(eventRows);
+
+      // Create reservation_nights for each confirmed night
+      const nightRows = createdRes.map((r: { id: string }, idx: number) => {
+        const nightDate = availableNights[idx];
+        const capInfo = nightCapacityMap[nightDate];
+        return {
+          reservation_id: r.id,
+          child_id: childId,
+          program_capacity_id: capInfo?.programCapId ?? null,
+          care_date: nightDate,
+          status: 'pending',
+          capacity_snapshot: capInfo?.total ?? maxCapacity,
+        };
+      });
+
+      const { error: nightsError } = await supabaseAdmin
+        .from('reservation_nights')
+        .insert(nightRows);
+
+      if (nightsError) {
+        console.warn(`[bookings POST] reservation_nights insert failed (non-blocking):`, nightsError);
+      } else {
+        console.log(`[bookings POST] created ${nightRows.length} reservation_nights`);
+      }
+
+      // Increment capacity_reserved on program_capacity rows
+      for (const nightDate of availableNights) {
+        const capInfo = nightCapacityMap[nightDate];
+        if (capInfo?.programCapId) {
+          await supabaseAdmin
+            .from('program_capacity')
+            .update({
+              capacity_reserved: capInfo.reserved + 1,
+              status: capInfo.reserved + 1 >= capInfo.total ? 'full' : 'open',
+            })
+            .eq('id', capInfo.programCapId);
+        }
+      }
     }
   }
 
@@ -346,6 +423,22 @@ export async function POST(req: NextRequest) {
     });
 
     console.log(`[bookings POST] waitlisted: date=${nightDate} position=${(waitlistCount ?? 0) + 1}`);
+
+    // Increment capacity_waitlisted on program_capacity if available
+    const capInfo = nightCapacityMap[nightDate];
+    if (capInfo?.programCapId) {
+      const { data: pcRow } = await supabaseAdmin
+        .from('program_capacity')
+        .select('capacity_waitlisted')
+        .eq('id', capInfo.programCapId)
+        .single();
+      if (pcRow) {
+        await supabaseAdmin
+          .from('program_capacity')
+          .update({ capacity_waitlisted: (pcRow.capacity_waitlisted ?? 0) + 1 })
+          .eq('id', capInfo.programCapId);
+      }
+    }
   }
 
   console.log(`[bookings POST] booking complete: blockId=${block.id} confirmed=${availableNights.length} waitlisted=${fullNights.length}`);

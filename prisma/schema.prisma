@@ -32,6 +32,79 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// ─── centers ─────────────────────────────────────────────────────────────────
+// Physical childcare center. Even single-center deployments get one row.
+model Center {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String
+  slug           String   @unique
+  timezone       String   @default("America/New_York")
+  address_line_1 String?
+  city           String?
+  state          String?
+  postal_code    String?
+  is_active      Boolean  @default(true)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  programs          Program[]
+  program_capacities ProgramCapacity[]
+
+  @@map("centers")
+}
+
+// ─── programs ────────────────────────────────────────────────────────────────
+// A care offering at a center (e.g., "Overnight Care").
+// Pricing is handled separately via plans table.
+model Program {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  center_id  String  @db.Uuid
+  name       String
+  care_type  String  @default("overnight") // CHECK: overnight | daycare | drop_in
+  start_time String  @default("21:00")
+  end_time   String  @default("07:00")
+  age_min_months Int? // minimum age in months
+  age_max_months Int? // maximum age in months
+  is_active  Boolean @default(true)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  center             Center            @relation(fields: [center_id], references: [id], onDelete: Cascade)
+  program_capacities ProgramCapacity[]
+
+  @@map("programs")
+}
+
+// ─── program_capacity ────────────────────────────────────────────────────────
+// One row per program per date. Source of truth for night-level availability.
+// CHECK: status IN (open, full, closed)
+model ProgramCapacity {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  center_id            String   @db.Uuid
+  program_id           String   @db.Uuid
+  care_date            DateTime @db.Date
+  capacity_total       Int
+  capacity_reserved    Int      @default(0)
+  capacity_waitlisted  Int      @default(0)
+  status               String   @default("open") // CHECK: open | full | closed
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  center            Center            @relation(fields: [center_id], references: [id], onDelete: Cascade)
+  program           Program           @relation(fields: [program_id], references: [id], onDelete: Cascade)
+  reservation_nights ReservationNight[]
+
+  @@unique([program_id, care_date], map: "program_capacity_program_date_unique")
+  @@index([care_date, status], map: "idx_program_capacity_date_status")
+  @@map("program_capacity")
+}
+
 // ─── parents ──────────────────────────────────────────────────────────────────
 // parents.id is set to auth.users.id by the handle_new_user() trigger.
 // No default — ID comes from Supabase Auth, not auto-generated.
@@ -102,6 +175,7 @@ model Child {
   events                ChildEvent[]
   attendance_sessions   ChildAttendanceSession[]
   incident_reports      IncidentReport[]
+  reservation_nights    ReservationNight[]
 
   @@index([parent_id], map: "idx_children_parent_id")
   @@map("children")
@@ -472,8 +546,9 @@ model Reservation {
   // Relations
   child               Child                    @relation(fields: [child_id], references: [id], onDelete: Cascade)
   overnight_block     OvernightBlock           @relation(fields: [overnight_block_id], references: [id], onDelete: Cascade)
-  attendance_sessions ChildAttendanceSession[]
-  reservation_events  ReservationEvent[]
+  attendance_sessions  ChildAttendanceSession[]
+  reservation_events   ReservationEvent[]
+  reservation_nights   ReservationNight[]
 
   @@index([date], map: "idx_reservations_date")
   @@index([overnight_block_id], map: "idx_reservations_block")
@@ -741,6 +816,34 @@ model BillingEvent {
   subscription Subscription? @relation(fields: [subscription_id], references: [id])
 
   @@map("billing_events")
+}
+
+// ─── reservation_nights ──────────────────────────────────────────────────────
+// Per-night booking records linked to a reservation, child, and program capacity.
+// Each row represents one booked night. Links to program_capacity for availability tracking.
+// CHECK: status IN (pending, confirmed, cancelled, completed, waitlisted, no_show)
+model ReservationNight {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_id       String   @db.Uuid
+  child_id             String   @db.Uuid
+  program_capacity_id  String?  @db.Uuid
+  care_date            DateTime @db.Date
+  status               String   @default("pending") // CHECK: pending | confirmed | cancelled | completed | waitlisted | no_show
+  capacity_snapshot    Int
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  reservation      Reservation      @relation(fields: [reservation_id], references: [id], onDelete: Cascade)
+  child            Child            @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  program_capacity ProgramCapacity? @relation(fields: [program_capacity_id], references: [id], onDelete: SetNull)
+
+  @@unique([reservation_id, care_date], map: "reservation_nights_reservation_date_unique")
+  @@unique([child_id, care_date], map: "reservation_nights_child_date_unique")
+  @@index([reservation_id], map: "idx_reservation_nights_reservation")
+  @@index([care_date], map: "idx_reservation_nights_date")
+  @@map("reservation_nights")
 }
 
 // ─── idempotency_keys ────────────────────────────────────────────────────────

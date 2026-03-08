@@ -15,6 +15,7 @@ export const DEFAULT_PRICING_TIERS: PricingTier[] = [
   { nights: 5, price_cents: 42500 },
 ];
 
+export const BOOKING_WINDOW_DAYS = 28;
 export const MIN_NIGHTS_PER_WEEK = 3;
 export const MIN_ENROLLMENT_PER_NIGHT = 4;
 export const MULTI_CHILD_DISCOUNT_PCT = 10;
