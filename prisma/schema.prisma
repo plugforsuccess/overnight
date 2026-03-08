@@ -508,6 +508,7 @@ model OvernightBlock {
   payment_status           String  @default("pending")
   stripe_subscription_id   String?
   stripe_invoice_id        String?
+  caregiver_notes          String?  // Parent-provided care instructions (max 500 chars)
   archived_at              DateTime? @db.Timestamptz(6)
 
   created_at DateTime @default(now()) @db.Timestamptz(6)

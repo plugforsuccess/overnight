@@ -2,23 +2,42 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Calendar, AlertCircle, Check, Clock, ArrowLeft } from 'lucide-react';
+import { Moon, AlertCircle, Check, ArrowLeft, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
-import { DEFAULT_PRICING_TIERS, DEFAULT_OPERATING_NIGHTS, formatCents, DAY_LABELS, DEFAULT_CAPACITY, BOOKING_WINDOW_DAYS, OVERNIGHT_START, OVERNIGHT_END } from '@/lib/constants';
-import { getWeekNights, cn, formatWeekRange, getUpcomingWeeks } from '@/lib/utils';
+import { DEFAULT_PRICING_TIERS, DEFAULT_OPERATING_NIGHTS, formatCents, DEFAULT_CAPACITY, BOOKING_WINDOW_DAYS } from '@/lib/constants';
+import { getWeekNights, cn, getUpcomingWeeks } from '@/lib/utils';
 import { DayOfWeek, Child, AdminSettings, PricingTier } from '@/types/database';
 import CalendarSelector from '@/components/schedule/CalendarSelector';
 import SelectedNightsBar from '@/components/schedule/SelectedNightsBar';
-import CalendarView from '@/components/schedule/CalendarView';
+import { ReservationConfirmationCard } from '@/components/schedule/ReservationConfirmationCard';
+import { ChildSafetyCard, ChildSafetyInfo } from '@/components/ui/ChildSafetyCard';
+import { EmptyStateCard } from '@/components/ui/EmptyStateCard';
 import { format, parseISO, startOfWeek, isSameWeek } from 'date-fns';
 
 interface ChildProfile extends Child {
   emergency_contacts_count: number;
   authorized_pickups_count: number;
+  has_medical_profile?: boolean;
+  has_medical_notes?: boolean;
+  allergies_data?: { id: string; display_name: string; severity: string }[];
 }
 
 function autoCalculatePlan(nightCount: number, pricingTiers: PricingTier[]): PricingTier | null {
   return pricingTiers.find(t => t.nights === nightCount) ?? null;
+}
+
+function childToSafetyInfo(child: ChildProfile): ChildSafetyInfo {
+  return {
+    id: child.id,
+    first_name: child.first_name,
+    last_name: child.last_name,
+    date_of_birth: child.date_of_birth,
+    allergies: child.allergies_data || [],
+    emergency_contacts_count: child.emergency_contacts_count,
+    authorized_pickups_count: child.authorized_pickups_count,
+    has_medical_profile: child.has_medical_profile || false,
+    has_medical_notes: child.has_medical_notes || false,
+  };
 }
 
 export default function SchedulePage() {
@@ -28,6 +47,7 @@ export default function SchedulePage() {
   const [selectedChild, setSelectedChild] = useState<string>('');
   const [selectedNights, setSelectedNights] = useState<Set<string>>(new Set());
   const [nightCapacity, setNightCapacity] = useState<Record<string, number>>({});
+  const [caregiverNotes, setCaregiverNotes] = useState<string>('');
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -41,26 +61,12 @@ export default function SchedulePage() {
 
   const matchedPlan = autoCalculatePlan(selectedNights.size, pricingTiers);
 
-  // Derive the week start from selected nights for the booking API
   const sortedNights = Array.from(selectedNights).sort();
   const weekStartDate = sortedNights.length > 0
     ? startOfWeek(parseISO(sortedNights[0]), { weekStartsOn: 0 })
     : null;
 
-  // Build booked nights for CalendarView
-  const bookedNightsForCalendar = sortedNights.map(dateStr => {
-    const count = nightCapacity[dateStr] ?? 0;
-    const isFull = count >= capacity;
-    const childProfile = children.find((c: ChildProfile) => c.id === selectedChild);
-    return {
-      date: dateStr,
-      status: isFull ? 'waitlisted' : 'pending_payment',
-      childName: childProfile ? `${childProfile.first_name} ${childProfile.last_name}` : 'Selected',
-    };
-  });
-
   const loadCapacity = useCallback(async (opNights: DayOfWeek[]) => {
-    // Load capacity for all weeks in the booking window
     const weeks = getUpcomingWeeks(5, BOOKING_WINDOW_DAYS);
     const allDates: string[] = [];
     for (const week of weeks) {
@@ -106,7 +112,9 @@ export default function SchedulePage() {
           .select(`
             *,
             child_emergency_contacts(id),
-            child_authorized_pickups(id)
+            child_authorized_pickups(id),
+            child_medical_profiles(id),
+            child_allergies(id, allergen, custom_label, severity)
           `)
           .eq('parent_id', parentId),
         supabase.from('admin_settings').select('*').limit(1).single(),
@@ -117,6 +125,15 @@ export default function SchedulePage() {
           ...c,
           emergency_contacts_count: Array.isArray(c.child_emergency_contacts) ? c.child_emergency_contacts.length : 0,
           authorized_pickups_count: Array.isArray(c.child_authorized_pickups) ? c.child_authorized_pickups.length : 0,
+          has_medical_profile: Array.isArray(c.child_medical_profiles) && c.child_medical_profiles.length > 0,
+          has_medical_notes: !!(c as any).medical_notes,
+          allergies_data: Array.isArray(c.child_allergies)
+            ? (c.child_allergies as any[]).map((a: any) => ({
+                id: a.id,
+                display_name: a.allergen === 'OTHER' ? (a.custom_label || 'Other') : formatAllergen(a.allergen),
+                severity: a.severity,
+              }))
+            : [],
         })) as ChildProfile[];
         setChildren(enriched);
       }
@@ -179,7 +196,6 @@ export default function SchedulePage() {
       return;
     }
 
-    // Enforce all nights must be in the same operational week
     const sorted = Array.from(selectedNights).sort();
     const firstDate = parseISO(sorted[0]);
     const allSameWeek = sorted.every(d => isSameWeek(parseISO(d), firstDate, { weekStartsOn: 0 }));
@@ -238,6 +254,7 @@ export default function SchedulePage() {
         nightsPerWeek: matchedPlan.nights,
         selectedNights: sortedNights,
         weekStart,
+        caregiverNotes: caregiverNotes || undefined,
       };
 
       console.log('[schedule] submitting booking:', JSON.stringify(requestPayload));
@@ -315,12 +332,14 @@ export default function SchedulePage() {
   const stepIndex = stepOrder.indexOf(step);
   const stepLabels = ['Select Nights', 'Select Child', 'Confirm'];
 
+  const selectedChildProfile = children.find((c: ChildProfile) => c.id === selectedChild);
+
   return (
-    <div className="py-12 pb-32">
+    <div className="py-8 sm:py-12 pb-32">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-8">
-          <Calendar className="h-10 w-10 text-navy-700 mx-auto mb-3" />
-          <h1 className="text-3xl font-bold text-gray-900">Reserve Nights</h1>
+          <Moon className="h-10 w-10 text-navy-700 mx-auto mb-3" />
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Book Overnight Care</h1>
           <p className="text-gray-600 mt-1">Tap the nights you need care. We&apos;ll handle the rest.</p>
           <p className="text-xs text-gray-400 mt-1">Book up to {BOOKING_WINDOW_DAYS} days ahead</p>
         </div>
@@ -331,7 +350,7 @@ export default function SchedulePage() {
             <div key={s} className="flex items-center gap-2">
               <div className="flex flex-col items-center">
                 <div className={cn(
-                  'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold',
+                  'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors',
                   step === s ? 'bg-navy-700 text-white' :
                   stepIndex > i ? 'bg-green-500 text-white' :
                   'bg-gray-200 text-gray-500'
@@ -340,14 +359,19 @@ export default function SchedulePage() {
                 </div>
                 <span className="text-xs text-gray-500 mt-1 hidden sm:block">{stepLabels[i]}</span>
               </div>
-              {i < stepOrder.length - 1 && <div className="w-10 sm:w-16 h-0.5 bg-gray-200 mb-4 sm:mb-5" />}
+              {i < stepOrder.length - 1 && (
+                <div className={cn(
+                  'w-10 sm:w-16 h-0.5 mb-4 sm:mb-5 transition-colors',
+                  stepIndex > i ? 'bg-green-500' : 'bg-gray-200',
+                )} />
+              )}
             </div>
           ))}
         </div>
 
         {error && (
           <div className={cn(
-            'px-4 py-3 rounded-lg mb-6 flex items-start gap-2',
+            'px-4 py-3 rounded-xl mb-6 flex items-start gap-2',
             errorCode === 'PROFILE_INCOMPLETE'
               ? 'bg-yellow-50 text-yellow-800 border border-yellow-200'
               : 'bg-red-50 text-red-700'
@@ -386,7 +410,7 @@ export default function SchedulePage() {
             <div className="flex items-center gap-3 mb-4">
               <button
                 onClick={() => { setStep('calendar'); setError(''); setErrorCode(null); }}
-                className="text-gray-500 hover:text-gray-700"
+                className="p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
               >
                 <ArrowLeft className="h-5 w-5" />
               </button>
@@ -394,8 +418,8 @@ export default function SchedulePage() {
             </div>
 
             {/* Summary of selected nights */}
-            <div className="bg-gray-50 rounded-lg p-3 mb-4">
-              <div className="text-sm text-gray-500 mb-1">
+            <div className="bg-navy-50/50 rounded-xl p-3 mb-4 border border-navy-100">
+              <div className="text-sm text-navy-600 mb-1">
                 {selectedNights.size} night{selectedNights.size !== 1 ? 's' : ''} selected
                 {matchedPlan && (
                   <span className="ml-1">&middot; {formatCents(matchedPlan.price_cents)}/week</span>
@@ -403,50 +427,36 @@ export default function SchedulePage() {
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {sortedNights.map(dateStr => (
-                  <span key={dateStr} className="text-xs font-medium bg-navy-50 text-navy-800 px-2 py-0.5 rounded-full">
-                    {format(parseISO(dateStr), 'EEE MMM d')}
+                  <span key={dateStr} className="text-xs font-medium bg-navy-100 text-navy-800 px-2 py-0.5 rounded-lg border border-navy-200">
+                    {format(parseISO(dateStr), 'EEE, MMM d')}
                   </span>
                 ))}
               </div>
             </div>
 
             {children.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-gray-600 mb-4">You haven&apos;t added any children yet.</p>
-                <button onClick={() => router.push('/dashboard/children')} className="btn-primary">
-                  Add a Child
-                </button>
-              </div>
+              <EmptyStateCard
+                icon={<Users className="h-8 w-8" />}
+                title="No children added"
+                description="Add your child to begin booking overnight care."
+                actionLabel="Add Child"
+                actionHref="/dashboard/children"
+              />
             ) : (
               <div className="space-y-3">
                 {children.map(child => {
                   const complete = isChildProfileComplete(child);
+                  const safetyInfo = childToSafetyInfo(child);
                   return (
                     <button
                       key={child.id}
                       onClick={() => handleSelectChild(child.id)}
                       className={cn(
-                        'w-full text-left p-4 rounded-lg border-2 transition-colors',
-                        selectedChild === child.id ? 'border-navy-600 bg-navy-50' : 'border-gray-200 hover:border-gray-300'
+                        'w-full text-left rounded-2xl border-2 transition-all',
+                        selectedChild === child.id ? 'border-navy-600 bg-navy-50/30 shadow-soft-sm' : 'border-gray-200 hover:border-gray-300 hover:shadow-soft-sm'
                       )}
                     >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="font-semibold text-gray-900">{child.first_name} {child.last_name}</div>
-                          <div className="text-sm text-gray-500">DOB: {child.date_of_birth}</div>
-                        </div>
-                        {!complete && (
-                          <span className="text-xs font-semibold text-yellow-700 bg-yellow-100 px-2 py-1 rounded-full flex items-center gap-1">
-                            <AlertCircle className="h-3 w-3" />
-                            Profile incomplete
-                          </span>
-                        )}
-                      </div>
-                      {!complete && (
-                        <div className="mt-2 text-xs text-yellow-700">
-                          {getProfileIncompleteMessage(child)}
-                        </div>
-                      )}
+                      <ChildSafetyCard child={safetyInfo} compact showEditLink={false} />
                     </button>
                   );
                 })}
@@ -456,84 +466,20 @@ export default function SchedulePage() {
         )}
 
         {/* Step 3: Confirm */}
-        {step === 'confirm' && matchedPlan && weekStartDate && (
-          <div className="card">
-            <div className="flex items-center gap-3 mb-4">
-              <button
-                onClick={() => { setStep('child'); setError(''); setErrorCode(null); }}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </button>
-              <h2 className="text-xl font-semibold text-gray-900">Confirm Reservation</h2>
-            </div>
-
-            <div className="space-y-4">
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-500 mb-1">Child</div>
-                <div className="font-semibold text-gray-900">
-                  {children.find((c: ChildProfile) => c.id === selectedChild)?.first_name}{' '}
-                  {children.find((c: ChildProfile) => c.id === selectedChild)?.last_name}
-                </div>
-              </div>
-
-              <div className="bg-navy-50 rounded-lg p-4 border border-navy-200">
-                <div className="text-sm text-navy-600 font-medium mb-1">Week</div>
-                <div className="font-semibold text-navy-900">
-                  {formatWeekRange(weekStartDate)}
-                </div>
-              </div>
-
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-500 mb-2">Dates</div>
-                <div className="space-y-1.5">
-                  {sortedNights.map(dateStr => {
-                    const date = parseISO(dateStr);
-                    const count = nightCapacity[dateStr] ?? 0;
-                    const isFull = count >= capacity;
-                    return (
-                      <div key={dateStr} className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-navy-700 flex-shrink-0" />
-                        <span className="font-medium text-gray-900">
-                          {format(date, 'EEEE, MMM d')}
-                        </span>
-                        <span className="text-sm text-gray-500">
-                          {OVERNIGHT_START} &ndash; {OVERNIGHT_END}
-                        </span>
-                        {isFull && <span className="text-xs font-semibold text-yellow-700 bg-yellow-100 px-2 py-0.5 rounded-full ml-auto">Waitlist</span>}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="text-sm text-gray-500 mb-1">Total</div>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-gray-900">
-                    {formatCents(matchedPlan.price_cents)}
-                  </span>
-                  <span className="text-sm text-gray-500">/week &middot; {matchedPlan.nights} nights</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Calendar preview */}
-            <div className="mt-4 border-t border-gray-200 pt-4">
-              <CalendarView
-                bookedNights={bookedNightsForCalendar}
-                weekStart={weekStartDate}
-                operatingNights={operatingNights}
-              />
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button onClick={() => setStep('child')} className="btn-secondary">Back</button>
-              <button onClick={handleSubmit} disabled={submitting} className="btn-primary flex-1">
-                {submitting ? 'Processing...' : 'Confirm & Pay'}
-              </button>
-            </div>
-          </div>
+        {step === 'confirm' && matchedPlan && weekStartDate && selectedChildProfile && (
+          <ReservationConfirmationCard
+            child={childToSafetyInfo(selectedChildProfile)}
+            weekStart={weekStartDate}
+            sortedNights={sortedNights}
+            matchedPlan={matchedPlan}
+            nightCapacity={nightCapacity}
+            capacity={capacity}
+            caregiverNotes={caregiverNotes}
+            onCaregiverNotesChange={setCaregiverNotes}
+            onBack={() => { setStep('child'); setError(''); setErrorCode(null); }}
+            onSubmit={handleSubmit}
+            submitting={submitting}
+          />
         )}
       </div>
 
@@ -548,4 +494,14 @@ export default function SchedulePage() {
       )}
     </div>
   );
+}
+
+function formatAllergen(allergen: string): string {
+  const labels: Record<string, string> = {
+    PEANUT: 'Peanut', TREE_NUT: 'Tree Nut', MILK: 'Milk', EGG: 'Egg',
+    WHEAT: 'Wheat', SOY: 'Soy', FISH: 'Fish', SHELLFISH: 'Shellfish',
+    SESAME: 'Sesame', PENICILLIN: 'Penicillin', INSECT_STING: 'Insect Sting',
+    LATEX: 'Latex', ASTHMA: 'Asthma', ENVIRONMENTAL: 'Environmental',
+  };
+  return labels[allergen] || allergen;
 }

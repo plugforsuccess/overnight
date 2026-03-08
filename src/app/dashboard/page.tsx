@@ -7,13 +7,14 @@ import { supabase } from '@/lib/supabase-client';
 import { formatCents } from '@/lib/constants';
 import type { DashboardData } from '@/types/dashboard';
 
-import { ChildSnapshotCard } from '@/components/dashboard/ChildSnapshotCard';
 import { NextReservationCard } from '@/components/dashboard/NextReservationCard';
 import { BookOvernightCTA } from '@/components/dashboard/BookOvernightCTA';
 import { UpcomingWeekCard } from '@/components/dashboard/UpcomingWeekCard';
 import { QuickActions } from '@/components/dashboard/QuickActions';
 import { TodoAlertsFeed } from '@/components/dashboard/TodoAlertsFeed';
 import { BillingSummaryCard } from '@/components/dashboard/BillingSummaryCard';
+import { ChildSafetyCard } from '@/components/ui/ChildSafetyCard';
+import { SafetyChipRow } from '@/components/ui/SafetyChipRow';
 
 /**
  * Dashboard page — client component for interactivity.
@@ -315,11 +316,35 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ── Row B: Upcoming Nights (grouped by week) + Child Snapshot ── */}
+        {/* ── Safety chips ── */}
+        {hasChildren && selectedChild && (
+          <div className="mb-4">
+            <SafetyChipRow
+              emergencyContactsCount={selectedChild.emergency_contacts_count}
+              authorizedPickupsCount={selectedChild.authorized_pickups_count}
+              hasMedicalProfile={selectedChild.has_medical_profile}
+              hasAllergyInfo={selectedChild.allergies.length > 0}
+            />
+          </div>
+        )}
+
+        {/* ── Row B: Upcoming Nights (grouped by week) + Child Safety Card ── */}
         {hasChildren && selectedChild && (
           <div className="grid lg:grid-cols-2 gap-4 mb-6">
             <UpcomingWeekCard nights={upcomingNights || []} />
-            <ChildSnapshotCard child={selectedChild} />
+            <ChildSafetyCard
+              child={{
+                id: selectedChild.id,
+                first_name: selectedChild.first_name,
+                last_name: selectedChild.last_name,
+                date_of_birth: selectedChild.date_of_birth,
+                allergies: selectedChild.allergies,
+                emergency_contacts_count: selectedChild.emergency_contacts_count,
+                authorized_pickups_count: selectedChild.authorized_pickups_count,
+                has_medical_profile: selectedChild.has_medical_profile,
+                has_medical_notes: selectedChild.has_medical_notes,
+              }}
+            />
           </div>
         )}
 
