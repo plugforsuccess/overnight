@@ -55,9 +55,8 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Enable required Postgres extensions
-        run: |
-          psql "$DATABASE_URL" -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";'
+      - name: Bootstrap Supabase auth stubs and extensions
+        run: psql "$DATABASE_URL" -f scripts/ci-bootstrap-supabase.sql
 
       - name: Deploy all migrations from scratch
         run: npx prisma migrate deploy
