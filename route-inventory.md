@@ -13,7 +13,7 @@
 /dashboard                      PARENT        Parent dashboard (server-side auth via layout)
 /dashboard/children             PARENT        Manage child profiles
 /dashboard/reservations         PARENT        Reservation list
-/dashboard/reservations/[id]    PARENT        Reservation detail
+/dashboard/reservations/[blockId] PARENT      Reservation detail
 /dashboard/payments             PARENT        Payment history
 /dashboard/settings             PARENT        Profile & notification settings
 
@@ -23,6 +23,9 @@
 /admin/capacity                 ADMIN         4-week capacity planner
 /admin/closures                 ADMIN         Closure & capacity override management
 /admin/health                   ADMIN         System health dashboard
+/admin/safety                   ADMIN         Safety compliance dashboard
+/admin/incidents                ADMIN         Incident log & management
+/admin/revenue                  ADMIN         Revenue analytics dashboard
 /admin/roster                   ADMIN         Weekly roster view
 /admin/plans                    ADMIN         Active plan management
 /admin/waitlist                 ADMIN         Waitlist family management
@@ -45,7 +48,7 @@
 |-------|---------|------|---------|
 | `/api/dashboard` | GET | `authenticateRequest()` | Parent dashboard data |
 | `/api/children` | GET, POST, PUT, DELETE | `authenticateRequest()` | CRUD children |
-| `/api/children/[id]/details` | GET, PUT | `authenticateRequest()` | Child details |
+| `/api/children/[id]/details` | GET | `authenticateRequest()` | Child details |
 | `/api/children/[id]/allergies` | GET, POST, PUT, DELETE | `authenticateRequest()` | Child allergies |
 | `/api/children/[id]/emergency-contacts` | GET, POST, PUT, DELETE | `authenticateRequest()` | Emergency contacts |
 | `/api/children/[id]/authorized-pickups` | GET, POST, PUT, DELETE | `authenticateRequest()` | Authorized pickups |
@@ -54,13 +57,13 @@
 | `/api/children/[id]/events` | GET | `authenticateRequest()` | Child event log |
 | `/api/children/[id]/attendance` | GET | `authenticateRequest()` | Attendance history |
 | `/api/bookings` | GET, POST, DELETE, PATCH | `authenticateRequest()` | Booking CRUD + RPC |
-| `/api/reservations` | GET | `authenticateRequest()` | List reservations |
-| `/api/reservations/detail` | GET | `authenticateRequest()` | Reservation detail |
+| `/api/reservations` | GET, DELETE | `authenticateRequest()` | List/cancel reservations |
+| `/api/reservations/detail` | GET, PATCH | `authenticateRequest()` | Reservation detail + notes |
 | `/api/reservations/[id]/events` | GET | `authenticateRequest()` | Reservation events |
-| `/api/authorized-pickups/[id]` | PUT, DELETE | `authenticateRequest()` | Pickup person CRUD |
-| `/api/emergency-contacts/[id]` | PUT, DELETE | `authenticateRequest()` | Contact CRUD |
-| `/api/onboarding-status` | GET, PUT | `authenticateRequest()` | Onboarding progress |
-| `/api/settings` | GET, PUT | `authenticateRequest()` | User preferences |
+| `/api/authorized-pickups/[id]` | PATCH, DELETE | `authenticateRequest()` | Pickup person CRUD |
+| `/api/emergency-contacts/[id]` | PATCH, DELETE | `authenticateRequest()` | Contact CRUD |
+| `/api/onboarding-status` | GET, PATCH | `authenticateRequest()` | Onboarding progress |
+| `/api/settings` | GET, PATCH | `authenticateRequest()` | User preferences |
 | `/api/capacity` | GET | `authenticateRequest()` | Available capacity |
 | `/api/attendance/[id]/pickup-verification` | POST | `authenticateRequest()` | Parent pickup verify |
 
@@ -68,7 +71,7 @@
 
 | Route | Methods | Auth | Purpose |
 |-------|---------|------|---------|
-| `/api/admin` | GET | `checkAdmin()` | Roster/plans/waitlist views |
+| `/api/admin` | GET, PUT | `checkAdmin()` | Roster/plans/waitlist views + updates |
 | `/api/admin/attendance/tonight` | GET | `checkAdmin()` | Tonight's attendance data |
 | `/api/admin/attendance/check-in` | POST | `checkAdmin()` | Check in child |
 | `/api/admin/attendance/check-out` | POST | `checkAdmin()` | Check out child |
@@ -79,6 +82,10 @@
 | `/api/admin/health/issues` | GET, POST | `checkAdmin()` | List/resolve health issues |
 | `/api/admin/health/runs` | GET | `checkAdmin()` | Health check run history |
 | `/api/admin/waitlist-promote` | POST | `checkAdmin()` | Promote waitlist entry |
+| `/api/admin/safety` | GET | `checkAdmin()` | Safety compliance data |
+| `/api/admin/incidents` | GET | `checkAdmin()` | Incident log data |
+| `/api/admin/revenue` | GET | `checkAdmin()` | Revenue analytics data |
+| `/api/admin/health/bootstrap` | GET | `checkAdmin()` | Health check bootstrap |
 | `/api/admin/pickup-verification` | GET, POST | `checkAdmin()` | Admin pickup PIN verify |
 
 ### System/Integration
