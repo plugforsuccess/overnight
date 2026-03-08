@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, unauthorized } from '@/lib/api-auth';
-import type { DashboardData, DashboardChild, DashboardAllergyInfo, DashboardUpcomingNight } from '@/types/dashboard';
+import type { DashboardData, DashboardChild, DashboardAllergyInfo, DashboardUpcomingNight, DashboardNotification } from '@/types/dashboard';
+import { OVERNIGHT_START } from '@/lib/constants';
 
 /**
  * GET /api/dashboard
@@ -171,6 +172,73 @@ export async function GET(req: NextRequest) {
   const completedCount = Object.values(completenessItems).filter(Boolean).length;
   const profileCompleteness = Math.round((completedCount / Object.keys(completenessItems).length) * 100);
 
+  // Generate notifications from existing data
+  const notifications: DashboardNotification[] = [];
+  const today = new Date().toISOString().split('T')[0];
+
+  // Tonight's dropoff reminder
+  const tonightNights = upcomingNights.filter((n: DashboardUpcomingNight) => n.date === today && n.status === 'confirmed');
+  if (tonightNights.length > 0) {
+    const childNames = Array.from(new Set(tonightNights.map((n: DashboardUpcomingNight) => n.child_first_name)));
+    notifications.push({
+      id: `tonight-${today}`,
+      type: 'reminder',
+      title: 'Dropoff tonight',
+      message: `${childNames.join(' & ')}'s overnight care starts at ${OVERNIGHT_START}.`,
+      actionLabel: 'View details',
+      actionHref: '/dashboard/reservations',
+    });
+  }
+
+  // Waitlist promotions (check for recently promoted nights in the upcoming list)
+  const promotedNights = upcomingNights.filter((n: DashboardUpcomingNight) => n.status === 'confirmed');
+  // Check recent reservation events for promotions
+  if (dashboardChildren.length > 0) {
+    const childIds = dashboardChildren.map((c: DashboardChild) => c.id);
+    const threeDaysAgo = new Date();
+    threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+    const { data: recentPromotions } = await supabase
+      .from('reservation_events')
+      .select('id, event_type, event_data, created_at, reservation:reservations(date, child:children(first_name))')
+      .eq('event_type', 'night_promoted')
+      .gte('created_at', threeDaysAgo.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    if (recentPromotions && recentPromotions.length > 0) {
+      for (const promo of recentPromotions) {
+        const res = promo.reservation as any;
+        if (!res) continue;
+        const childData = res.child as any;
+        const childName = childData?.first_name || '';
+        // Only include if the child belongs to this parent
+        const promoChildId = promo.event_data?.child_id;
+        if (promoChildId && !childIds.includes(promoChildId)) continue;
+        notifications.push({
+          id: `promo-${promo.id}`,
+          type: 'promotion',
+          title: 'Waitlist promotion',
+          message: `${childName}'s waitlisted night (${res.date}) was confirmed.`,
+          actionLabel: 'View booking',
+          actionHref: '/dashboard/reservations',
+        });
+      }
+    }
+  }
+
+  // Waitlisted nights warning
+  const waitlistedNights = upcomingNights.filter((n: DashboardUpcomingNight) => n.status === 'waitlisted');
+  if (waitlistedNights.length > 0) {
+    notifications.push({
+      id: `waitlist-${today}`,
+      type: 'warning',
+      title: `${waitlistedNights.length} night${waitlistedNights.length > 1 ? 's' : ''} waitlisted`,
+      message: `You'll be notified if a spot opens up.`,
+      actionLabel: 'View reservations',
+      actionHref: '/dashboard/reservations',
+    });
+  }
+
   const data: DashboardData = {
     profile: {
       first_name: profileRes.data.first_name,
@@ -183,6 +251,7 @@ export async function GET(req: NextRequest) {
     children: dashboardChildren,
     nextReservation,
     upcomingNights,
+    notifications,
     subscriptions: (subscriptionsRes.data || []).map((s: any) => ({
       id: s.id,
       plan_tier: s.plan_tier,

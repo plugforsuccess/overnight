@@ -31,14 +31,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
   }
 
-  // Fetch child with safety info
+  // Fetch child with safety info + full pickup/contact details
   const { data: child } = await supabaseAdmin
     .from('children')
     .select(`
       id, first_name, last_name, date_of_birth, medical_notes,
       child_allergies(id, allergen, custom_label, severity),
-      child_emergency_contacts(id),
-      child_authorized_pickups(id),
+      child_emergency_contacts(id, first_name, last_name, relationship, phone, is_primary, authorized_for_pickup),
+      child_authorized_pickups(id, first_name, last_name, relationship, phone, is_emergency_contact, id_verified),
       child_medical_profiles(id)
     `)
     .eq('id', block.child_id)
@@ -80,6 +80,28 @@ export async function GET(req: NextRequest) {
     has_medical_notes: !!child.medical_notes,
   } : null;
 
+  // Transform authorized pickups
+  const authorizedPickups = child ? (child.child_authorized_pickups || []).map((p: any) => ({
+    id: p.id,
+    first_name: p.first_name,
+    last_name: p.last_name,
+    relationship: p.relationship,
+    phone: p.phone,
+    is_emergency_contact: p.is_emergency_contact,
+    id_verified: p.id_verified,
+  })) : [];
+
+  // Transform emergency contacts
+  const emergencyContacts = child ? (child.child_emergency_contacts || []).map((c: any) => ({
+    id: c.id,
+    first_name: c.first_name,
+    last_name: c.last_name,
+    relationship: c.relationship,
+    phone: c.phone,
+    is_primary: c.is_primary,
+    authorized_for_pickup: c.authorized_for_pickup,
+  })) : [];
+
   return NextResponse.json({
     block: {
       id: block.id,
@@ -92,6 +114,8 @@ export async function GET(req: NextRequest) {
       created_at: block.created_at,
     },
     child: childInfo,
+    authorizedPickups,
+    emergencyContacts,
     nights: (reservations || []).map((r: any) => ({
       id: r.id,
       date: r.date,

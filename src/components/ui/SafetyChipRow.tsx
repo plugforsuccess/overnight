@@ -1,12 +1,13 @@
 'use client';
 
-import { CheckCircle, Phone, UserCheck, AlertTriangle, Heart, FileText } from 'lucide-react';
+import { CheckCircle, Phone, UserCheck, AlertTriangle, Heart, FileText, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface SafetyChip {
   label: string;
   ready: boolean;
   icon: React.ReactNode;
+  readyIcon?: React.ReactNode;
 }
 
 interface Props {
@@ -33,9 +34,10 @@ export function SafetyChipRow({
       icon: <Phone className="h-3 w-3" />,
     },
     {
-      label: authorizedPickupsCount >= 1 ? 'Pickup verified' : 'Add authorized pickup',
+      label: authorizedPickupsCount >= 1 ? 'Pickup verification enabled' : 'Add authorized pickup',
       ready: authorizedPickupsCount >= 1,
       icon: <UserCheck className="h-3 w-3" />,
+      readyIcon: <ShieldCheck className="h-3 w-3" />,
     },
     {
       label: hasAllergyInfo || hasMedicalProfile ? 'Medical info saved' : 'Add medical info',
@@ -71,7 +73,7 @@ export function SafetyChipRow({
               : 'bg-amber-50 text-amber-700 border-amber-200',
           )}
         >
-          {chip.ready ? <CheckCircle className="h-3 w-3" /> : chip.icon}
+          {chip.ready ? (chip.readyIcon || <CheckCircle className="h-3 w-3" />) : chip.icon}
           {chip.label}
         </span>
       ))}

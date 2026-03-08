@@ -14,6 +14,7 @@ import { SafetyChipRow } from '@/components/ui/SafetyChipRow';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { CaregiverNotesCard } from '@/components/ui/CaregiverNotesCard';
 import { ReservationTimeline } from '@/components/ui/ReservationTimeline';
+import { AuthorizedPickupsPanel, PickupContact } from '@/components/ui/AuthorizedPickupsPanel';
 
 interface BlockInfo {
   id: string;
@@ -47,6 +48,18 @@ interface DetailData {
   child: ChildSafetyInfo | null;
   nights: NightInfo[];
   events: TimelineEvent[];
+  authorizedPickups: PickupContact[];
+  emergencyContacts: EmergencyContact[];
+}
+
+interface EmergencyContact {
+  id: string;
+  first_name: string;
+  last_name: string;
+  relationship: string;
+  phone: string;
+  is_primary: boolean;
+  authorized_for_pickup: boolean;
 }
 
 export default function ReservationDetailPage({
@@ -156,7 +169,7 @@ export default function ReservationDetailPage({
     );
   }
 
-  const { block, child, nights, events } = data;
+  const { block, child, nights, events, authorizedPickups = [], emergencyContacts = [] } = data;
   const weekStart = parseISO(block.week_start);
 
   // Derive overall status from nights
@@ -190,7 +203,7 @@ export default function ReservationDetailPage({
 
         <div className="space-y-4">
           {/* Section A — Child safety card */}
-          {child && <ChildSafetyCard child={child} compact={false} showEditLink />}
+          {child && <ChildSafetyCard child={child} compact={false} showEditLink authorizedPickups={authorizedPickups} />}
 
           {/* Section B — Night timeline */}
           <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-soft-sm">
@@ -267,13 +280,16 @@ export default function ReservationDetailPage({
             )}
           </div>
 
-          {/* Section D — Caregiver notes */}
+          {/* Section D — Authorized pickups */}
+          <AuthorizedPickupsPanel pickups={authorizedPickups} />
+
+          {/* Section E — Caregiver notes */}
           <CaregiverNotesCard
             notes={block.caregiver_notes}
             onChange={handleNotesChange}
           />
 
-          {/* Section E — Activity timeline */}
+          {/* Section F — Activity timeline */}
           {events.length > 0 && (
             <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-soft-sm">
               <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Activity</div>

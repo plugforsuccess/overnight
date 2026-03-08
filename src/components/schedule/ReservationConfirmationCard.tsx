@@ -9,6 +9,7 @@ import { ChildSafetyCard, ChildSafetyInfo } from '@/components/ui/ChildSafetyCar
 import { SafetyChipRow } from '@/components/ui/SafetyChipRow';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { CaregiverNotesCard } from '@/components/ui/CaregiverNotesCard';
+import { AuthorizedPickupsPanel, PickupContact } from '@/components/ui/AuthorizedPickupsPanel';
 
 interface Props {
   child: ChildSafetyInfo;
@@ -17,6 +18,7 @@ interface Props {
   matchedPlan: PricingTier;
   nightCapacity: Record<string, number>;
   capacity: number;
+  authorizedPickups: PickupContact[];
   caregiverNotes: string;
   onCaregiverNotesChange: (notes: string) => void;
   onBack: () => void;
@@ -31,6 +33,7 @@ export function ReservationConfirmationCard({
   matchedPlan,
   nightCapacity,
   capacity,
+  authorizedPickups,
   caregiverNotes,
   onCaregiverNotesChange,
   onBack,
@@ -119,13 +122,16 @@ export function ReservationConfirmationCard({
         </div>
       </div>
 
-      {/* Section 5 — Caregiver notes */}
+      {/* Section 5 — Authorized pickups */}
+      <AuthorizedPickupsPanel pickups={authorizedPickups} compact />
+
+      {/* Section 6 — Caregiver notes */}
       <CaregiverNotesCard
         notes={caregiverNotes}
         onChange={onCaregiverNotesChange}
       />
 
-      {/* Section 6 — Trust / safety panel */}
+      {/* Section 7 — Trust / safety panel */}
       <div className="rounded-2xl border border-gray-200 bg-gray-50/50 p-4">
         <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Safety readiness</div>
         <SafetyChipRow

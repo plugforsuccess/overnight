@@ -15,6 +15,7 @@ import { TodoAlertsFeed } from '@/components/dashboard/TodoAlertsFeed';
 import { BillingSummaryCard } from '@/components/dashboard/BillingSummaryCard';
 import { ChildSafetyCard } from '@/components/ui/ChildSafetyCard';
 import { SafetyChipRow } from '@/components/ui/SafetyChipRow';
+import { NotificationBannerStack } from '@/components/ui/NotificationBanner';
 
 /**
  * Dashboard page — client component for interactivity.
@@ -131,7 +132,7 @@ export default function DashboardPage() {
 
   if (!data) return null;
 
-  const { profile, children, nextReservation, upcomingNights, subscriptions, weeklyTotalCents, upcomingReservationsCount, waitlistCount, profileCompleteness } = data;
+  const { profile, children, nextReservation, upcomingNights, subscriptions, notifications = [], weeklyTotalCents, upcomingReservationsCount, waitlistCount, profileCompleteness } = data;
   const selectedChild = children.find((c: typeof children[0]) => c.id === selectedChildId) || children[0] || null;
   const hasChildren = children.length > 0;
 
@@ -219,6 +220,13 @@ export default function DashboardPage() {
                 </ul>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Notification banners */}
+        {notifications.length > 0 && (
+          <div className="mb-6">
+            <NotificationBannerStack notifications={notifications} />
           </div>
         )}
 

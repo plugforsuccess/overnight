@@ -12,6 +12,7 @@ import SelectedNightsBar from '@/components/schedule/SelectedNightsBar';
 import { ReservationConfirmationCard } from '@/components/schedule/ReservationConfirmationCard';
 import { ChildSafetyCard, ChildSafetyInfo } from '@/components/ui/ChildSafetyCard';
 import { EmptyStateCard } from '@/components/ui/EmptyStateCard';
+import { PickupContact } from '@/components/ui/AuthorizedPickupsPanel';
 import { format, parseISO, startOfWeek, isSameWeek } from 'date-fns';
 
 interface ChildProfile extends Child {
@@ -20,6 +21,7 @@ interface ChildProfile extends Child {
   has_medical_profile?: boolean;
   has_medical_notes?: boolean;
   allergies_data?: { id: string; display_name: string; severity: string }[];
+  pickups_data?: PickupContact[];
 }
 
 function autoCalculatePlan(nightCount: number, pricingTiers: PricingTier[]): PricingTier | null {
@@ -112,7 +114,7 @@ export default function SchedulePage() {
           .select(`
             *,
             child_emergency_contacts(id),
-            child_authorized_pickups(id),
+            child_authorized_pickups(id, first_name, last_name, relationship, phone, is_emergency_contact, id_verified),
             child_medical_profiles(id),
             child_allergies(id, allergen, custom_label, severity)
           `)
@@ -132,6 +134,17 @@ export default function SchedulePage() {
                 id: a.id,
                 display_name: a.allergen === 'OTHER' ? (a.custom_label || 'Other') : formatAllergen(a.allergen),
                 severity: a.severity,
+              }))
+            : [],
+          pickups_data: Array.isArray(c.child_authorized_pickups)
+            ? (c.child_authorized_pickups as any[]).map((p: any) => ({
+                id: p.id,
+                first_name: p.first_name,
+                last_name: p.last_name,
+                relationship: p.relationship,
+                phone: p.phone,
+                is_emergency_contact: p.is_emergency_contact,
+                id_verified: p.id_verified,
               }))
             : [],
         })) as ChildProfile[];
@@ -474,6 +487,7 @@ export default function SchedulePage() {
             matchedPlan={matchedPlan}
             nightCapacity={nightCapacity}
             capacity={capacity}
+            authorizedPickups={selectedChildProfile.pickups_data || []}
             caregiverNotes={caregiverNotes}
             onCaregiverNotesChange={setCaregiverNotes}
             onBack={() => { setStep('child'); setError(''); setErrorCode(null); }}

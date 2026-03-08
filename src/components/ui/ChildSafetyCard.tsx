@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { AlertTriangle, Shield, Phone, CheckCircle, Heart, UserCheck } from 'lucide-react';
+import { AlertTriangle, Shield, Phone, CheckCircle, Heart, UserCheck, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { PickupContact } from '@/components/ui/AuthorizedPickupsPanel';
 
 export interface ChildSafetyInfo {
   id: string;
@@ -71,9 +72,10 @@ interface Props {
   child: ChildSafetyInfo;
   compact?: boolean;
   showEditLink?: boolean;
+  authorizedPickups?: PickupContact[];
 }
 
-export function ChildSafetyCard({ child, compact = false, showEditLink = true }: Props) {
+export function ChildSafetyCard({ child, compact = false, showEditLink = true, authorizedPickups }: Props) {
   const age = getAge(child.date_of_birth);
   const initials = getInitials(child.first_name, child.last_name);
   const state = getCompletenessState(child);
@@ -157,6 +159,28 @@ export function ChildSafetyCard({ child, compact = false, showEditLink = true }:
               <span>{child.emergency_contacts_count} contacts</span>
               <span>&middot;</span>
               <span>{child.authorized_pickups_count} pickups</span>
+            </div>
+          )}
+
+          {/* Authorized pickups inline (expanded view only) */}
+          {!compact && authorizedPickups && authorizedPickups.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <ShieldCheck className="h-3 w-3 text-green-600" />
+                <span className="text-xs font-medium text-gray-600">Authorized pickups</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {authorizedPickups.map(p => (
+                  <span
+                    key={p.id}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200"
+                  >
+                    {p.first_name} {p.last_name}
+                    <span className="text-green-500">&middot;</span>
+                    <span className="text-green-600 font-normal">{p.relationship}</span>
+                  </span>
+                ))}
+              </div>
             </div>
           )}
         </div>

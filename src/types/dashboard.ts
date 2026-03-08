@@ -42,6 +42,15 @@ export interface DashboardUpcomingNight {
   child_last_name: string;
 }
 
+export interface DashboardNotification {
+  id: string;
+  type: 'reminder' | 'confirmation' | 'promotion' | 'warning';
+  title: string;
+  message: string;
+  actionLabel?: string;
+  actionHref?: string;
+}
+
 export interface DashboardData {
   profile: {
     first_name: string;
@@ -56,6 +65,7 @@ export interface DashboardData {
   nextReservation: DashboardNextReservation | null;
   upcomingNights: DashboardUpcomingNight[];
   subscriptions: DashboardSubscription[];
+  notifications: DashboardNotification[];
   weeklyTotalCents: number;
   upcomingReservationsCount: number;
   waitlistCount: number;
