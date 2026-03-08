@@ -1,0 +1,889 @@
+{
+  "summary": {
+    "generatedAt": "2026-03-08T23:11:39.168Z",
+    "totalRoutes": 61,
+    "totalFindings": 15,
+    "bySeverity": {
+      "critical": 0,
+      "warning": 13,
+      "info": 2
+    },
+    "byRouteType": {
+      "public_page": 5,
+      "admin_page": 12,
+      "admin_api": 12,
+      "parent_api": 20,
+      "public_api": 4,
+      "parent_page": 8
+    },
+    "byIssueType": {
+      "missing_center_scoping": 6,
+      "inline_admin_auth": 2,
+      "sensitive_field_exposure": 2,
+      "missing_audit_logging": 4,
+      "missing_ownership_validation": 1
+    }
+  },
+  "routes": [
+    {
+      "route": "/",
+      "file": "src/app/page.tsx",
+      "fileType": "page",
+      "routeType": "public_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/admin",
+      "file": "src/app/admin/page.tsx",
+      "fileType": "page",
+      "routeType": "admin_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/admin",
+      "file": "src/app/admin/layout.tsx",
+      "fileType": "layout",
+      "routeType": "admin_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/admin/capacity",
+      "file": "src/app/admin/capacity/page.tsx",
+      "fileType": "page",
+      "routeType": "admin_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/admin/closures",
+      "file": "src/app/admin/closures/page.tsx",
+      "fileType": "page",
+      "routeType": "admin_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/admin/health",
+      "file": "src/app/admin/health/page.tsx",
+      "fileType": "page",
+      "routeType": "admin_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/admin/pickup-verification",
+      "file": "src/app/admin/pickup-verification/page.tsx",
+      "fileType": "page",
+      "routeType": "admin_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/admin/plans",
+      "file": "src/app/admin/plans/page.tsx",
+      "fileType": "page",
+      "routeType": "admin_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/admin/roster",
+      "file": "src/app/admin/roster/page.tsx",
+      "fileType": "page",
+      "routeType": "admin_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/admin/settings",
+      "file": "src/app/admin/settings/page.tsx",
+      "fileType": "page",
+      "routeType": "admin_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/admin/tonight",
+      "file": "src/app/admin/tonight/page.tsx",
+      "fileType": "page",
+      "routeType": "admin_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/admin/waitlist",
+      "file": "src/app/admin/waitlist/page.tsx",
+      "fileType": "page",
+      "routeType": "admin_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/admin/waitlist-ops",
+      "file": "src/app/admin/waitlist-ops/page.tsx",
+      "fileType": "page",
+      "routeType": "admin_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/admin",
+      "file": "src/app/api/admin/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "GET",
+        "PUT"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/admin/attendance/check-in",
+      "file": "src/app/api/admin/attendance/check-in/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "POST"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/admin/attendance/check-out",
+      "file": "src/app/api/admin/attendance/check-out/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "POST"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/admin/attendance/correct",
+      "file": "src/app/api/admin/attendance/correct/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "POST"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/admin/attendance/no-show",
+      "file": "src/app/api/admin/attendance/no-show/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "POST"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/admin/attendance/tonight",
+      "file": "src/app/api/admin/attendance/tonight/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "GET"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/admin/closures",
+      "file": "src/app/api/admin/closures/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "GET",
+        "POST"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/admin/health/issues",
+      "file": "src/app/api/admin/health/issues/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "GET",
+        "POST"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/admin/health/run",
+      "file": "src/app/api/admin/health/run/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "POST"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/admin/health/runs",
+      "file": "src/app/api/admin/health/runs/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "GET"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/admin/pickup-verification",
+      "file": "src/app/api/admin/pickup-verification/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "GET",
+        "POST"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/admin/waitlist-promote",
+      "file": "src/app/api/admin/waitlist-promote/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "POST"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/attendance/[id]/pickup-verification",
+      "file": "src/app/api/attendance/[id]/pickup-verification/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET",
+        "POST"
+      ],
+      "isDynamic": true,
+      "dynamicSegments": [
+        "[id]"
+      ]
+    },
+    {
+      "route": "/api/auth/me",
+      "file": "src/app/api/auth/me/route.ts",
+      "fileType": "route",
+      "routeType": "public_api",
+      "httpMethods": [
+        "POST"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/auth/signup",
+      "file": "src/app/api/auth/signup/route.ts",
+      "fileType": "route",
+      "routeType": "public_api",
+      "httpMethods": [
+        "POST"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/authorized-pickups/[id]",
+      "file": "src/app/api/authorized-pickups/[id]/route.ts",
+      "fileType": "route",
+      "routeType": "public_api",
+      "httpMethods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "isDynamic": true,
+      "dynamicSegments": [
+        "[id]"
+      ]
+    },
+    {
+      "route": "/api/bookings",
+      "file": "src/app/api/bookings/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET",
+        "POST",
+        "PATCH",
+        "DELETE"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/capacity",
+      "file": "src/app/api/capacity/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/children",
+      "file": "src/app/api/children/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/children/[id]/allergies",
+      "file": "src/app/api/children/[id]/allergies/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "POST"
+      ],
+      "isDynamic": true,
+      "dynamicSegments": [
+        "[id]"
+      ]
+    },
+    {
+      "route": "/api/children/[id]/attendance",
+      "file": "src/app/api/children/[id]/attendance/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET",
+        "POST",
+        "PATCH"
+      ],
+      "isDynamic": true,
+      "dynamicSegments": [
+        "[id]"
+      ]
+    },
+    {
+      "route": "/api/children/[id]/authorized-pickups",
+      "file": "src/app/api/children/[id]/authorized-pickups/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET",
+        "POST"
+      ],
+      "isDynamic": true,
+      "dynamicSegments": [
+        "[id]"
+      ]
+    },
+    {
+      "route": "/api/children/[id]/details",
+      "file": "src/app/api/children/[id]/details/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET"
+      ],
+      "isDynamic": true,
+      "dynamicSegments": [
+        "[id]"
+      ]
+    },
+    {
+      "route": "/api/children/[id]/emergency-contacts",
+      "file": "src/app/api/children/[id]/emergency-contacts/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET",
+        "POST"
+      ],
+      "isDynamic": true,
+      "dynamicSegments": [
+        "[id]"
+      ]
+    },
+    {
+      "route": "/api/children/[id]/events",
+      "file": "src/app/api/children/[id]/events/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET",
+        "POST"
+      ],
+      "isDynamic": true,
+      "dynamicSegments": [
+        "[id]"
+      ]
+    },
+    {
+      "route": "/api/children/[id]/incidents",
+      "file": "src/app/api/children/[id]/incidents/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET",
+        "POST"
+      ],
+      "isDynamic": true,
+      "dynamicSegments": [
+        "[id]"
+      ]
+    },
+    {
+      "route": "/api/children/[id]/medical-profile",
+      "file": "src/app/api/children/[id]/medical-profile/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET",
+        "POST"
+      ],
+      "isDynamic": true,
+      "dynamicSegments": [
+        "[id]"
+      ]
+    },
+    {
+      "route": "/api/dashboard",
+      "file": "src/app/api/dashboard/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/emergency-contacts/[id]",
+      "file": "src/app/api/emergency-contacts/[id]/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "isDynamic": true,
+      "dynamicSegments": [
+        "[id]"
+      ]
+    },
+    {
+      "route": "/api/onboarding-status",
+      "file": "src/app/api/onboarding-status/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET",
+        "PATCH"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/reservations",
+      "file": "src/app/api/reservations/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET",
+        "DELETE"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/reservations/[id]/events",
+      "file": "src/app/api/reservations/[id]/events/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET"
+      ],
+      "isDynamic": true,
+      "dynamicSegments": [
+        "[id]"
+      ]
+    },
+    {
+      "route": "/api/reservations/detail",
+      "file": "src/app/api/reservations/detail/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET",
+        "PATCH"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/settings",
+      "file": "src/app/api/settings/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "GET",
+        "PATCH"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/stripe",
+      "file": "src/app/api/stripe/route.ts",
+      "fileType": "route",
+      "routeType": "parent_api",
+      "httpMethods": [
+        "POST"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/stripe/webhook",
+      "file": "src/app/api/stripe/webhook/route.ts",
+      "fileType": "route",
+      "routeType": "public_api",
+      "httpMethods": [
+        "POST"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/dashboard",
+      "file": "src/app/dashboard/page.tsx",
+      "fileType": "page",
+      "routeType": "parent_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/dashboard",
+      "file": "src/app/dashboard/layout.tsx",
+      "fileType": "layout",
+      "routeType": "parent_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/dashboard/children",
+      "file": "src/app/dashboard/children/page.tsx",
+      "fileType": "page",
+      "routeType": "parent_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/dashboard/payments",
+      "file": "src/app/dashboard/payments/page.tsx",
+      "fileType": "page",
+      "routeType": "parent_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/dashboard/reservations",
+      "file": "src/app/dashboard/reservations/page.tsx",
+      "fileType": "page",
+      "routeType": "parent_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/dashboard/reservations/[blockId]",
+      "file": "src/app/dashboard/reservations/[blockId]/page.tsx",
+      "fileType": "page",
+      "routeType": "parent_page",
+      "httpMethods": [],
+      "isDynamic": true,
+      "dynamicSegments": [
+        "[blockId]"
+      ]
+    },
+    {
+      "route": "/dashboard/settings",
+      "file": "src/app/dashboard/settings/page.tsx",
+      "fileType": "page",
+      "routeType": "parent_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/login",
+      "file": "src/app/login/page.tsx",
+      "fileType": "page",
+      "routeType": "public_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/policies",
+      "file": "src/app/policies/page.tsx",
+      "fileType": "page",
+      "routeType": "public_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/pricing",
+      "file": "src/app/pricing/page.tsx",
+      "fileType": "page",
+      "routeType": "public_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/schedule",
+      "file": "src/app/schedule/page.tsx",
+      "fileType": "page",
+      "routeType": "parent_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/signup",
+      "file": "src/app/signup/page.tsx",
+      "fileType": "page",
+      "routeType": "public_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    }
+  ],
+  "findings": [
+    {
+      "route": "/api/admin/attendance/check-in",
+      "file": "src/app/api/admin/attendance/check-in/route.ts",
+      "routeType": "admin_api",
+      "severity": "warning",
+      "issueType": "missing_center_scoping",
+      "summary": "Admin route operates on center-scoped data but no center/program scoping detected.",
+      "evidence": [
+        "No center_id, program_id, or programId reference found"
+      ],
+      "recommendedFix": "Add center_id/program_id scoping when multi-center support is needed."
+    },
+    {
+      "route": "/api/admin/attendance/check-out",
+      "file": "src/app/api/admin/attendance/check-out/route.ts",
+      "routeType": "admin_api",
+      "severity": "warning",
+      "issueType": "missing_center_scoping",
+      "summary": "Admin route operates on center-scoped data but no center/program scoping detected.",
+      "evidence": [
+        "No center_id, program_id, or programId reference found"
+      ],
+      "recommendedFix": "Add center_id/program_id scoping when multi-center support is needed."
+    },
+    {
+      "route": "/api/admin/attendance/correct",
+      "file": "src/app/api/admin/attendance/correct/route.ts",
+      "routeType": "admin_api",
+      "severity": "warning",
+      "issueType": "missing_center_scoping",
+      "summary": "Admin route operates on center-scoped data but no center/program scoping detected.",
+      "evidence": [
+        "No center_id, program_id, or programId reference found"
+      ],
+      "recommendedFix": "Add center_id/program_id scoping when multi-center support is needed."
+    },
+    {
+      "route": "/api/admin/attendance/no-show",
+      "file": "src/app/api/admin/attendance/no-show/route.ts",
+      "routeType": "admin_api",
+      "severity": "warning",
+      "issueType": "missing_center_scoping",
+      "summary": "Admin route operates on center-scoped data but no center/program scoping detected.",
+      "evidence": [
+        "No center_id, program_id, or programId reference found"
+      ],
+      "recommendedFix": "Add center_id/program_id scoping when multi-center support is needed."
+    },
+    {
+      "route": "/api/admin/attendance/tonight",
+      "file": "src/app/api/admin/attendance/tonight/route.ts",
+      "routeType": "admin_api",
+      "severity": "warning",
+      "issueType": "missing_center_scoping",
+      "summary": "Admin route operates on center-scoped data but no center/program scoping detected.",
+      "evidence": [
+        "No center_id, program_id, or programId reference found"
+      ],
+      "recommendedFix": "Add center_id/program_id scoping when multi-center support is needed."
+    },
+    {
+      "route": "/api/admin/pickup-verification",
+      "file": "src/app/api/admin/pickup-verification/route.ts",
+      "routeType": "admin_api",
+      "severity": "warning",
+      "issueType": "inline_admin_auth",
+      "summary": "Admin API uses inline auth check instead of shared checkAdmin() helper.",
+      "evidence": [
+        "Inline role/is_admin verification found",
+        "checkAdmin() import not detected"
+      ],
+      "recommendedFix": "Refactor to use the shared checkAdmin() helper from @/lib/admin-auth for consistency."
+    },
+    {
+      "route": "/api/admin/pickup-verification",
+      "file": "src/app/api/admin/pickup-verification/route.ts",
+      "routeType": "admin_api",
+      "severity": "info",
+      "issueType": "sensitive_field_exposure",
+      "summary": "Possible sensitive field exposure detected (likely false positive — field appears used for validation/verification, not in API response).",
+      "evidence": [
+        "Pattern matched: select\\s*\\([^)]*pin_hash"
+      ],
+      "recommendedFix": "Verify sensitive fields are not included in API responses. Use .select() to exclude them."
+    },
+    {
+      "route": "/api/admin/waitlist-promote",
+      "file": "src/app/api/admin/waitlist-promote/route.ts",
+      "routeType": "admin_api",
+      "severity": "warning",
+      "issueType": "inline_admin_auth",
+      "summary": "Admin API uses inline auth check instead of shared checkAdmin() helper.",
+      "evidence": [
+        "Inline role/is_admin verification found",
+        "checkAdmin() import not detected"
+      ],
+      "recommendedFix": "Refactor to use the shared checkAdmin() helper from @/lib/admin-auth for consistency."
+    },
+    {
+      "route": "/api/admin/waitlist-promote",
+      "file": "src/app/api/admin/waitlist-promote/route.ts",
+      "routeType": "admin_api",
+      "severity": "warning",
+      "issueType": "missing_center_scoping",
+      "summary": "Admin route operates on center-scoped data but no center/program scoping detected.",
+      "evidence": [
+        "No center_id, program_id, or programId reference found"
+      ],
+      "recommendedFix": "Add center_id/program_id scoping when multi-center support is needed."
+    },
+    {
+      "route": "/api/children",
+      "file": "src/app/api/children/route.ts",
+      "routeType": "parent_api",
+      "severity": "warning",
+      "issueType": "missing_audit_logging",
+      "summary": "Mutation route has no detectable audit/event logging.",
+      "evidence": [
+        "HTTP methods with mutations: POST, DELETE",
+        "No logAuditEvent, audit_log, or event table insert found"
+      ],
+      "recommendedFix": "Consider adding audit logging for important mutations."
+    },
+    {
+      "route": "/api/children/[id]/medical-profile",
+      "file": "src/app/api/children/[id]/medical-profile/route.ts",
+      "routeType": "parent_api",
+      "severity": "warning",
+      "issueType": "missing_audit_logging",
+      "summary": "Mutation route has no detectable audit/event logging.",
+      "evidence": [
+        "HTTP methods with mutations: POST",
+        "No logAuditEvent, audit_log, or event table insert found"
+      ],
+      "recommendedFix": "Consider adding audit logging for important mutations."
+    },
+    {
+      "route": "/api/onboarding-status",
+      "file": "src/app/api/onboarding-status/route.ts",
+      "routeType": "parent_api",
+      "severity": "warning",
+      "issueType": "missing_audit_logging",
+      "summary": "Mutation route has no detectable audit/event logging.",
+      "evidence": [
+        "HTTP methods with mutations: PATCH",
+        "No logAuditEvent, audit_log, or event table insert found"
+      ],
+      "recommendedFix": "Consider adding audit logging for important mutations."
+    },
+    {
+      "route": "/api/settings",
+      "file": "src/app/api/settings/route.ts",
+      "routeType": "parent_api",
+      "severity": "info",
+      "issueType": "sensitive_field_exposure",
+      "summary": "Possible sensitive field exposure detected (likely false positive — field appears used for validation/verification, not in API response).",
+      "evidence": [
+        "Pattern matched: ['\"]password['\"]"
+      ],
+      "recommendedFix": "Verify sensitive fields are not included in API responses. Use .select() to exclude them."
+    },
+    {
+      "route": "/api/stripe",
+      "file": "src/app/api/stripe/route.ts",
+      "routeType": "parent_api",
+      "severity": "warning",
+      "issueType": "missing_audit_logging",
+      "summary": "Mutation route has no detectable audit/event logging.",
+      "evidence": [
+        "HTTP methods with mutations: POST",
+        "No logAuditEvent, audit_log, or event table insert found"
+      ],
+      "recommendedFix": "Consider adding audit logging for important mutations."
+    },
+    {
+      "route": "/dashboard/reservations/[blockId]",
+      "file": "src/app/dashboard/reservations/[blockId]/page.tsx",
+      "routeType": "parent_page",
+      "severity": "warning",
+      "issueType": "missing_ownership_validation",
+      "summary": "Dynamic parent page with no detectable ownership check (may be handled by API).",
+      "evidence": [
+        "Dynamic segments: [blockId]",
+        "No ownership pattern detected in page component"
+      ],
+      "recommendedFix": "Verify that the underlying API enforces ownership validation."
+    }
+  ]
+}

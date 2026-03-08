@@ -20,7 +20,8 @@
     "prisma:pull": "prisma db pull",
     "prisma:studio": "prisma studio",
     "prisma:validate": "prisma validate",
-    "test": "NODE_ENV=test jest --forceExit --detectOpenHandles"
+    "test": "NODE_ENV=test jest --forceExit --detectOpenHandles",
+    "audit:routes": "npx tsx scripts/audit-route-hardening.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
