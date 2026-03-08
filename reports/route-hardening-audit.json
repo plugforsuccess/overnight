@@ -1,7 +1,7 @@
 {
   "summary": {
-    "generatedAt": "2026-03-08T23:11:39.168Z",
-    "totalRoutes": 61,
+    "generatedAt": "2026-03-08T23:20:16.234Z",
+    "totalRoutes": 62,
     "totalFindings": 15,
     "bySeverity": {
       "critical": 0,
@@ -11,7 +11,7 @@
     "byRouteType": {
       "public_page": 5,
       "admin_page": 12,
-      "admin_api": 12,
+      "admin_api": 13,
       "parent_api": 20,
       "public_api": 4,
       "parent_page": 8
@@ -217,6 +217,17 @@
       "httpMethods": [
         "GET",
         "POST"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/admin/health/bootstrap",
+      "file": "src/app/api/admin/health/bootstrap/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "GET"
       ],
       "isDynamic": false,
       "dynamicSegments": []

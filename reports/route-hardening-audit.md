@@ -1,12 +1,12 @@
 # Route Hardening Audit Report
 
-Generated: 2026-03-08T23:11:39.169Z
+Generated: 2026-03-08T23:20:16.236Z
 
 ## Summary
 
 | Metric | Count |
 |--------|-------|
-| Total routes scanned | 61 |
+| Total routes scanned | 62 |
 | Total findings | 15 |
 | Critical | 0 |
 | Warning | 13 |
@@ -18,7 +18,7 @@ Generated: 2026-03-08T23:11:39.169Z
 |------------|-------|
 | public_page | 5 |
 | admin_page | 12 |
-| admin_api | 12 |
+| admin_api | 13 |
 | parent_api | 20 |
 | public_api | 4 |
 | parent_page | 8 |
@@ -250,6 +250,7 @@ None — all critical checks passed.
 | `/api/admin/attendance/no-show` | admin_api | src/app/api/admin/attendance/no-show/route.ts | - | POST |
 | `/api/admin/attendance/tonight` | admin_api | src/app/api/admin/attendance/tonight/route.ts | - | GET |
 | `/api/admin/closures` | admin_api | src/app/api/admin/closures/route.ts | - | GET, POST |
+| `/api/admin/health/bootstrap` | admin_api | src/app/api/admin/health/bootstrap/route.ts | - | GET |
 | `/api/admin/health/issues` | admin_api | src/app/api/admin/health/issues/route.ts | - | GET, POST |
 | `/api/admin/health/run` | admin_api | src/app/api/admin/health/run/route.ts | - | POST |
 | `/api/admin/health/runs` | admin_api | src/app/api/admin/health/runs/route.ts | - | GET |
