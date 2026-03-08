@@ -97,6 +97,9 @@ const DEFAULT_STATUS: StatusConfig = {
 };
 
 export function getStatusConfig(status: string): StatusConfig {
+  if (!STATUS_MAP[status] && typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    console.warn(`[StatusBadge] Unmapped status: "${status}". Add it to STATUS_MAP in StatusBadge.tsx.`);
+  }
   return STATUS_MAP[status] || DEFAULT_STATUS;
 }
 

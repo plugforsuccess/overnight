@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, unauthorized } from '@/lib/api-auth';
+import { authenticateRequest, unauthorized, logAuditEvent } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase-server';
 
 /**
@@ -132,15 +132,43 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Notes must be a string, max 500 characters' }, { status: 400 });
   }
 
+  // Fetch current notes for diff in audit log
+  const { data: currentBlock } = await supabaseAdmin
+    .from('overnight_blocks')
+    .select('caregiver_notes, child_id')
+    .eq('id', blockId)
+    .eq('parent_id', parentId)
+    .single();
+
+  if (!currentBlock) {
+    return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
+  }
+
+  const trimmedNotes = caregiver_notes.trim();
+
   const { error } = await supabaseAdmin
     .from('overnight_blocks')
-    .update({ caregiver_notes: caregiver_notes.trim() })
+    .update({ caregiver_notes: trimmedNotes })
     .eq('id', blockId)
     .eq('parent_id', parentId);
 
   if (error) {
     return NextResponse.json({ error: 'Failed to update notes' }, { status: 500 });
   }
+
+  // Audit trail for notes changes
+  await logAuditEvent(
+    supabaseAdmin,
+    parentId,
+    'caregiver_notes.updated',
+    'overnight_block',
+    blockId,
+    {
+      child_id: currentBlock.child_id,
+      had_previous_notes: !!(currentBlock.caregiver_notes),
+      notes_length: trimmedNotes.length,
+    }
+  );
 
   return NextResponse.json({ success: true });
 }

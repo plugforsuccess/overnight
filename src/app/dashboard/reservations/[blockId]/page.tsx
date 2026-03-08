@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
-  ArrowLeft, AlertCircle, Clock, Moon, MessageSquare, ExternalLink,
+  ArrowLeft, AlertCircle, Clock,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { format, parseISO } from 'date-fns';
@@ -50,9 +49,12 @@ interface DetailData {
   events: TimelineEvent[];
 }
 
-export default function ReservationDetailPage() {
-  const searchParams = useSearchParams();
-  const blockId = searchParams.get('blockId');
+export default function ReservationDetailPage({
+  params,
+}: {
+  params: { blockId: string };
+}) {
+  const blockId = params.blockId;
 
   const [data, setData] = useState<DetailData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -140,7 +142,7 @@ export default function ReservationDetailPage() {
     return (
       <div className="py-12">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg flex items-start gap-2">
+          <div className="bg-red-50 text-red-700 px-4 py-3 rounded-xl flex items-start gap-2">
             <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
             <div>
               <p>{error || 'Booking not found'}</p>

@@ -54,7 +54,7 @@ export function SafetyChipRow({
   const hiddenCount = chips.length - maxVisible;
 
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-1.5 overflow-hidden max-h-20 sm:max-h-none">
       {allReady && (
         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-200">
           <CheckCircle className="h-3 w-3" />
