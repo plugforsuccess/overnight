@@ -92,8 +92,8 @@ export async function POST(
       allergyId = data.id;
     }
 
-    // Upsert action plan if provided
-    if (allergy.action_plan) {
+    // Upsert action plan (required for every allergy)
+    {
       const plan = allergy.action_plan;
       const { data: existingPlan } = await auth.supabase
         .from('child_allergy_action_plans')
