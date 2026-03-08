@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Moon, Menu, X, User, LogOut, Users, CreditCard, ChevronDown,
-  CalendarCheck, Phone, Shield, Settings,
+  Moon, Menu, X, LogOut, Users, ChevronDown,
+  CalendarCheck, Settings, ShieldAlert,
 } from 'lucide-react';
 import { APP_NAME } from '@/lib/constants';
 import { supabase } from '@/lib/supabase-client';
@@ -13,6 +13,8 @@ interface UserProfile {
   first_name: string;
   last_name: string;
   email: string;
+  role?: string;
+  is_admin?: boolean;
 }
 
 export function Navbar() {
@@ -26,7 +28,7 @@ export function Navbar() {
   const loadProfile = useCallback(async (userId: string) => {
     const { data } = await supabase
       .from('parents')
-      .select('first_name, last_name, email')
+      .select('first_name, last_name, email, role, is_admin')
       .eq('id', userId)
       .single();
     if (data) setProfile(data);
@@ -83,6 +85,7 @@ export function Navbar() {
   }
 
   const isAuthenticated = !!user && !!profile;
+  const isAdmin = profile?.role === 'admin' || profile?.is_admin === true;
 
   const initials = profile
     ? `${profile.first_name.charAt(0)}${profile.last_name.charAt(0)}`.toUpperCase()
@@ -122,6 +125,12 @@ export function Navbar() {
                 <Link href="/dashboard/payments" className="text-gray-600 hover:text-navy-700 font-medium transition-colors">
                   Billing
                 </Link>
+                {isAdmin && (
+                  <Link href="/admin" className="text-navy-700 hover:text-navy-900 font-semibold transition-colors flex items-center gap-1">
+                    <ShieldAlert className="h-4 w-4" />
+                    Admin
+                  </Link>
+                )}
               </>
             ) : !authLoading ? (
               <>
@@ -178,22 +187,6 @@ export function Navbar() {
                       Reservations
                     </Link>
                     <Link
-                      href="/dashboard/emergency-contacts"
-                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                      onClick={() => setMenuOpen(false)}
-                    >
-                      <Phone className="h-4 w-4 text-gray-400" />
-                      Emergency Contacts
-                    </Link>
-                    <Link
-                      href="/dashboard/authorized-pickups"
-                      className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                      onClick={() => setMenuOpen(false)}
-                    >
-                      <Shield className="h-4 w-4 text-gray-400" />
-                      Authorized Pickups
-                    </Link>
-                    <Link
                       href="/dashboard/settings"
                       className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                       onClick={() => setMenuOpen(false)}
@@ -201,6 +194,16 @@ export function Navbar() {
                       <Settings className="h-4 w-4 text-gray-400" />
                       Profile / Settings
                     </Link>
+                    {isAdmin && (
+                      <Link
+                        href="/admin"
+                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-navy-700 hover:bg-navy-50 transition-colors"
+                        onClick={() => setMenuOpen(false)}
+                      >
+                        <ShieldAlert className="h-4 w-4 text-navy-500" />
+                        Admin Panel
+                      </Link>
+                    )}
                     <div className="border-t border-[#E2E8F0] mt-1">
                       <button
                         onClick={handleLogout}
@@ -276,16 +279,19 @@ export function Navbar() {
                   <Link href="/dashboard/reservations" className="block py-2 text-gray-700 font-medium" onClick={() => setMobileOpen(false)}>
                     Reservations
                   </Link>
-                  <Link href="/dashboard/emergency-contacts" className="block py-2 text-gray-700 font-medium" onClick={() => setMobileOpen(false)}>
-                    Emergency Contacts
-                  </Link>
-                  <Link href="/dashboard/authorized-pickups" className="block py-2 text-gray-700 font-medium" onClick={() => setMobileOpen(false)}>
-                    Authorized Pickups
-                  </Link>
                   <Link href="/dashboard/settings" className="block py-2 text-gray-700 font-medium" onClick={() => setMobileOpen(false)}>
                     Profile / Settings
                   </Link>
                 </div>
+
+                {/* Admin link */}
+                {isAdmin && (
+                  <div className="border-t border-[#E2E8F0] pt-2 mt-2">
+                    <Link href="/admin" className="block py-2 text-navy-700 font-semibold" onClick={() => setMobileOpen(false)}>
+                      Admin Panel
+                    </Link>
+                  </div>
+                )}
 
                 <div className="border-t border-[#E2E8F0] pt-2 mt-2">
                   <button
