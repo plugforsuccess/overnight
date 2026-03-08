@@ -1,4 +1,256 @@
-# Architecture Reference
+# Overnight Platform — System Architecture
+
+> Canonical reference for the Overnight daycare platform. Covers data model, system layers,
+> request flows, concurrency controls, and operational architecture.
+
+## Platform Overview
+
+Overnight is a Next.js 14 (App Router) application for licensed overnight childcare centers.
+Parents reserve nightly care slots (Sun–Thu, 9 PM – 7 AM), manage child profiles, and track
+attendance. Staff manage capacity, process check-ins/outs, handle waitlists, and monitor
+system health.
+
+**Stack**: Next.js App Router · Supabase (Postgres + Auth + RLS) · Prisma (schema management) ·
+Stripe (billing) · Zod (validation)
+
+---
+
+## Data Architecture
+
+### Layer Model
+
+The data model is organized into five functional layers:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  IDENTITY LAYER                                     │
+│  parents · children · child_medical_profiles        │
+│  child_allergies · child_emergency_contacts         │
+│  child_authorized_pickups · parent_settings         │
+└────────────────┬────────────────────────────────────┘
+                 │ parent_id / child_id
+┌────────────────▼────────────────────────────────────┐
+│  INVENTORY LAYER  (supply of capacity)              │
+│  centers · programs · program_capacity              │
+│  capacity_overrides · admin_settings                │
+│  nightly_capacity (legacy)                          │
+└────────────────┬────────────────────────────────────┘
+                 │ program_capacity_id
+┌────────────────▼────────────────────────────────────┐
+│  RESERVATION LAYER  (demand / bookings)             │
+│  plans · overnight_blocks · reservations            │
+│  reservation_nights · waitlist                      │
+│  idempotency_keys                                   │
+└────────────────┬────────────────────────────────────┘
+                 │ reservation_night_id
+┌────────────────▼────────────────────────────────────┐
+│  ATTENDANCE LAYER  (operational reality)            │
+│  attendance_records · child_attendance_sessions     │
+│  pickup_verifications · incident_reports            │
+└────────────────┬────────────────────────────────────┘
+                 │ event FKs
+┌────────────────▼────────────────────────────────────┐
+│  EVENT LAYER  (immutable audit trails)              │
+│  reservation_events · attendance_events             │
+│  capacity_override_events · child_events            │
+│  pickup_events · billing_events · audit_log         │
+└─────────────────────────────────────────────────────┘
+```
+
+### Inventory Layer
+
+**`program_capacity`** is the source of truth for per-night availability:
+
+| Column | Purpose |
+|--------|---------|
+| `capacity_total` | Maximum beds available (from `admin_settings.max_capacity`) |
+| `capacity_reserved` | Counter of confirmed `reservation_nights` (atomically maintained) |
+| `capacity_waitlisted` | Counter of waitlisted `reservation_nights` |
+| `status` | `open` / `full` / `closed` — derived from counters + overrides |
+
+**`capacity_overrides`** represent operator intent (closures, reductions):
+- Partial unique index: one active override per `(program_id, care_date)`
+- Types: `closed` (capacity→0), `reduced_capacity` (capacity→N), `reopened`
+- Each override emits an immutable `capacity_override_event`
+
+**Effective capacity resolution**: `program_capacity.capacity_total` is mutated directly
+when overrides are applied, so booking reads stay simple — no override join needed.
+
+### Reservation Layer
+
+**Booking flow**: Parent → select nights → `POST /api/bookings` → creates `overnight_block` +
+`reservations` → calls `atomic_book_nights()` RPC → creates `reservation_nights` + updates
+capacity counters.
+
+**`reservation_nights`** status lifecycle:
+`pending` → `confirmed` | `waitlisted` → `cancelled` | `completed` | `no_show`
+
+- Unique constraint on `(child_id, care_date)` prevents duplicate bookings
+- Links to `program_capacity` for counter management
+
+### Attendance Layer
+
+**`attendance_records`** tracks real-world state of each reserved night:
+- 1:1 with `reservation_nights` (unique on `reservation_night_id`)
+- Status lifecycle: `expected` → `checked_in` → `checked_out` | `no_show`
+- Lazily initialized via `ensureAttendanceRecord()` on first access
+- All status transitions use **optimistic locking** (WHERE includes current status)
+
+### Event Layer
+
+All event tables are **append-only** — never update or delete rows.
+
+| Event Table | Tracks |
+|-------------|--------|
+| `reservation_events` | Booking lifecycle (created, confirmed, cancelled) |
+| `attendance_events` | Check-in, check-out, no-show, corrections |
+| `capacity_override_events` | Closures, reductions, reopenings |
+| `child_events` | Child safety events, pickup verifications |
+| `pickup_events` | Every pickup verification for legal record |
+| `billing_events` | Stripe webhook processing (idempotent) |
+| `audit_log` | General-purpose admin action log |
+
+---
+
+## Concurrency Control
+
+### Atomic Database Functions (PL/pgSQL RPCs)
+
+| RPC | Purpose | Lock Target |
+|-----|---------|-------------|
+| `atomic_book_nights(reservation_id, child_id, dates[], capacity)` | Book nights atomically | `program_capacity` rows (FOR UPDATE) |
+| `atomic_cancel_night(reservation_night_id)` | Cancel and decrement counters | `program_capacity` row (FOR UPDATE) |
+| `promote_waitlist(care_date)` | Promote next FIFO waitlist entry | `program_capacity` row (FOR UPDATE) |
+
+### Optimistic Locking (Application Layer)
+
+Attendance status transitions include the current status in the UPDATE WHERE clause:
+
+```sql
+UPDATE attendance_records SET attendance_status = 'checked_in'
+WHERE id = $1 AND attendance_status = 'expected'
+```
+
+Prevents: double check-in, double check-out, no-show/check-in races.
+
+### Unique Constraints as Guards
+
+- `reservation_nights(child_id, care_date)` — no duplicate child bookings
+- `attendance_records(reservation_night_id)` — no duplicate attendance records
+- `capacity_overrides` partial unique — no duplicate active overrides
+- `ensureAttendanceRecord()` handles 23505 (unique violation) by re-reading
+
+---
+
+## Auth & Access Control
+
+### Three-Layer Protection
+
+```
+Middleware (all routes)
+  └── JWT validation via getUser()
+  └── Redirect unauthenticated to /login
+
+Server Layout (nested routes)
+  └── dashboard/layout.tsx: verify parent profile exists
+  └── admin/layout.tsx: verify admin role or is_admin flag
+
+API Routes (data access)
+  └── authenticateRequest(): Bearer token → parentId
+  └── checkAdmin(): Bearer token → admin role check
+  └── Ownership: WHERE parent_id = auth.parentId
+```
+
+### Route Protection Matrix
+
+| Route Pattern | Middleware | Layout | API |
+|---|---|---|---|
+| Public (`/`, `/pricing`) | Headers only | — | — |
+| Auth (`/login`, `/signup`) | Redirect if auth'd | — | — |
+| Parent (`/dashboard/*`) | JWT required | Parent profile required | `authenticateRequest()` + ownership |
+| Admin (`/admin/*`) | JWT required | Admin role required | `checkAdmin()` |
+| Parent API (`/api/children/*`) | — | — | `authenticateRequest()` + `parent_id` filter |
+| Admin API (`/api/admin/*`) | — | — | `checkAdmin()` |
+
+---
+
+## Admin Operations
+
+### Tonight Dashboard (`/admin/tonight`)
+Real-time attendance. `ensureAttendanceForDate(today)` lazily creates records.
+Staff actions: check-in, check-out, mark no-show, correct status.
+
+### Waitlist Queue (`/admin/waitlist-ops`)
+FIFO waitlist grouped by date. Promote via `promote_waitlist()` RPC.
+
+### Capacity Planner (`/admin/capacity`)
+4-week forward view of utilization: confirmed vs. waitlisted vs. available.
+
+### Closures (`/admin/closures`)
+30-day calendar. Preview-before-apply. Close, reduce, or reopen nights.
+
+### System Health (`/admin/health`)
+Reconciliation engine: `checkCapacity()` + `checkAttendance()` + `checkWaitlist()`.
+Issues are persisted with severity and resolvable via admin UI.
+
+---
+
+## Request Flow Examples
+
+### Parent Books a Night
+
+```
+POST /api/bookings
+  ├── authenticateRequest() → verify JWT, get parentId
+  ├── Validate: idempotency key, child ownership, profile completeness
+  ├── Create overnight_block + reservation
+  ├── Call atomic_book_nights() RPC
+  │     ├── SELECT ... FOR UPDATE on program_capacity
+  │     ├── IF available → INSERT reservation_night (confirmed), INCREMENT reserved
+  │     └── ELSE → INSERT reservation_night (waitlisted), INCREMENT waitlisted
+  ├── Insert reservation_events
+  └── Return { block, nights: { confirmed, waitlisted } }
+```
+
+### Staff Checks In a Child
+
+```
+POST /api/admin/attendance/check-in
+  ├── checkAdmin()
+  ├── ensureAttendanceRecord(nightId) → create if not exists (idempotent)
+  ├── UPDATE SET status='checked_in' WHERE status='expected' ← optimistic lock
+  ├── Insert attendance_event (child_checked_in)
+  └── Return updated record
+```
+
+### Admin Closes a Night
+
+```
+POST /api/admin/closures { action: 'apply' }
+  ├── checkAdmin()
+  ├── For each date:
+  │     ├── Deactivate existing active override + emit deactivation event
+  │     ├── Insert new capacity_override (is_active=true)
+  │     ├── Update program_capacity (capacity_total=0, status='closed')
+  │     └── Emit capacity_override_applied event
+  └── Return { overrides, events }
+```
+
+---
+
+## Health Monitoring
+
+```
+runHealthChecks()
+  ├── checkCapacity()    → counter drift, over-capacity, closed+open conflicts
+  ├── checkAttendance()  → missing records, invalid states, child mismatches
+  └── checkWaitlist()    → entries on closed nights, stale waitlist
+```
+
+Each run creates a `health_check_runs` record. Issues persisted to `health_issues`
+with severity (critical/warning/info). Resolvable via admin health dashboard.
+
+---
 
 ## Schema Authority
 
@@ -80,7 +332,71 @@ auth.users.id = parents.id  (1:1, set by handle_new_user() trigger)
 
 ---
 
-## Tables (20 total)
+## Directory Structure
+
+```
+src/
+├── app/
+│   ├── layout.tsx              Root layout (Navbar + Footer)
+│   ├── page.tsx                Landing page (public)
+│   ├── login/ signup/          Auth pages
+│   ├── pricing/ policies/      Public pages
+│   ├── schedule/               Booking flow (parent)
+│   ├── dashboard/
+│   │   ├── layout.tsx          Server-side parent auth gate
+│   │   ├── page.tsx            Parent dashboard
+│   │   ├── children/           Child profile management
+│   │   ├── reservations/       Reservation list + [blockId] detail
+│   │   ├── payments/           Payment history
+│   │   └── settings/           Profile & preferences
+│   ├── admin/
+│   │   ├── layout.tsx          Server-side admin auth gate + sidebar
+│   │   ├── page.tsx            Admin dashboard
+│   │   ├── tonight/            Real-time attendance
+│   │   ├── waitlist-ops/       Waitlist queue management
+│   │   ├── capacity/           4-week capacity planner
+│   │   ├── closures/           Closure & override management
+│   │   ├── health/             System health dashboard
+│   │   ├── roster/             Weekly roster view
+│   │   ├── plans/              Plan management
+│   │   ├── waitlist/           Waitlist family management
+│   │   ├── pickup-verification/ Pickup PIN verification
+│   │   └── settings/           System settings
+│   └── api/
+│       ├── auth/               Login + signup endpoints
+│       ├── admin/              All admin-only APIs (checkAdmin)
+│       │   ├── attendance/     Check-in, check-out, no-show, correct, tonight
+│       │   ├── closures/       Override CRUD
+│       │   ├── health/         Health run, issues, run history
+│       │   ├── waitlist-promote/ Waitlist promotion
+│       │   └── pickup-verification/
+│       ├── children/           Child CRUD + sub-resources
+│       ├── bookings/           Booking CRUD + atomic RPCs
+│       ├── reservations/       Reservation queries + events
+│       ├── stripe/             Stripe + webhooks
+│       └── ...                 Settings, capacity, onboarding
+├── components/
+│   ├── navbar.tsx              Role-aware top navigation
+│   ├── footer.tsx              Public footer
+│   └── admin-sidebar.tsx       Admin sidebar navigation
+├── lib/
+│   ├── api-auth.ts             authenticateRequest() + helpers
+│   ├── admin-auth.ts           checkAdmin()
+│   ├── supabase-*.ts           Client variants (browser, server, SSR, middleware)
+│   ├── attendance/             Check-in, check-out, no-show, correct, ensure
+│   ├── closures/               Preview, apply, reopen, list
+│   ├── health/                 Check-capacity, check-attendance, check-waitlist, run
+│   ├── rate-limit.ts           Token bucket rate limiter
+│   ├── idempotency.ts          Idempotency key handling
+│   └── pin-hash.ts             Pickup PIN hashing (bcrypt)
+└── middleware.ts               Route protection + security headers
+
+tests/chaos/                    Concurrency & race condition tests
+```
+
+---
+
+## Tables (30+ total)
 
 ### Core Domain
 | Table | Purpose |

@@ -23,6 +23,10 @@ export async function GET(
 
   if (!reservation) return badRequest('Reservation not found');
 
+  if ((reservation as any).children?.parent_id !== auth.parentId) {
+    return unauthorized();
+  }
+
   const url = new URL(req.url);
   const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 100);
   const offset = parseInt(url.searchParams.get('offset') || '0');
