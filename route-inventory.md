@@ -145,12 +145,22 @@
 | Navbar linked to `/dashboard/authorized-pickups` — page doesn't exist | Removed orphaned link (managed within `/dashboard/children`) |
 | Navbar didn't detect admin role — no admin link shown | Added role/is_admin fetch; shows Admin link in nav + dropdown for admins |
 
-### Low (No Fix Needed)
+### Security Hardening (Second Pass)
+
+| Issue | Fix |
+|-------|-----|
+| `/api/attendance/[id]/pickup-verification` — no parent ownership check | Added `children!inner(parent_id)` join + parent_id validation |
+| `/api/reservations/[id]/events` — parent_id fetched but never validated | Added explicit `auth.parentId` comparison |
+| Admin attendance routes — no UUID validation on IDs | Added Zod schemas with `.uuid()` for all 4 attendance routes |
+| `/api/admin/closures` POST — no format validation on dates/enums | Added Zod schemas for preview/apply/reopen with date regex + enum validation |
+
+### Known Limitations
 
 | Issue | Notes |
 |-------|-------|
 | Admin pages retain client-side role check | Kept as defense-in-depth alongside server-side layout check |
 | `/schedule` accessible before onboarding complete | Booking API validates profile completeness; page-level check is optional |
+| Admin routes assume single-center deployment | Queries resolve "first active program" without center_id scoping. Add `center_staff_memberships` filtering when multi-center support is needed |
 
 ## Final Route Access Matrix
 
