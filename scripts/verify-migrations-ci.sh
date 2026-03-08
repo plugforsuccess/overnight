@@ -326,6 +326,11 @@ MIGRATION_TABLES["20260307000002_enterprise_hardening"]="child_events child_atte
 MIGRATION_TABLES["20260307000003_operational_hardening"]="reservation_events incident_reports center_staff_memberships pickup_verifications"
 MIGRATION_TABLES["20260307000004_sprint_hardening"]="idempotency_keys"
 
+declare -A MIGRATION_FUNCTIONS
+MIGRATION_FUNCTIONS["20260307000002_enterprise_hardening"]="update_timestamp"
+MIGRATION_FUNCTIONS["20260307000003_operational_hardening"]="enforce_attendance_transition"
+MIGRATION_FUNCTIONS["20260307000004_sprint_hardening"]="enforce_incident_transition prevent_hard_delete cleanup_expired_idempotency_keys"
+
 DRIFT_FOUND=false
 
 for migration in "${!MIGRATION_TABLES[@]}"; do
@@ -355,6 +360,23 @@ for migration in "${!MIGRATION_TABLES[@]}"; do
       DRIFT_FOUND=true
     fi
   done
+
+  if [ -n "${MIGRATION_FUNCTIONS[$migration]:-}" ]; then
+    for func in ${MIGRATION_FUNCTIONS[$migration]}; do
+      FUNC_EXISTS=$(psql "$DB_URL" -tAc "
+        SELECT EXISTS (
+          SELECT 1 FROM pg_proc p
+          JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public' AND p.proname = '$func'
+        );
+      " 2>/dev/null || echo "error")
+
+      if [ "$FUNC_EXISTS" = "f" ]; then
+        fail "DRIFT: $migration marked APPLIED but $func() is missing"
+        DRIFT_FOUND=true
+      fi
+    done
+  fi
 done
 
 if [ "$DRIFT_FOUND" = "false" ]; then
