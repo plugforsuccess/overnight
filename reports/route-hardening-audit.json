@@ -1,7 +1,7 @@
 {
   "summary": {
-    "generatedAt": "2026-03-08T23:20:16.234Z",
-    "totalRoutes": 62,
+    "generatedAt": "2026-03-08T23:45:27.320Z",
+    "totalRoutes": 68,
     "totalFindings": 15,
     "bySeverity": {
       "critical": 0,
@@ -10,8 +10,8 @@
     },
     "byRouteType": {
       "public_page": 5,
-      "admin_page": 12,
-      "admin_api": 13,
+      "admin_page": 15,
+      "admin_api": 16,
       "parent_api": 20,
       "public_api": 4,
       "parent_page": 8
@@ -80,6 +80,15 @@
       "dynamicSegments": []
     },
     {
+      "route": "/admin/incidents",
+      "file": "src/app/admin/incidents/page.tsx",
+      "fileType": "page",
+      "routeType": "admin_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
       "route": "/admin/pickup-verification",
       "file": "src/app/admin/pickup-verification/page.tsx",
       "fileType": "page",
@@ -98,8 +107,26 @@
       "dynamicSegments": []
     },
     {
+      "route": "/admin/revenue",
+      "file": "src/app/admin/revenue/page.tsx",
+      "fileType": "page",
+      "routeType": "admin_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
       "route": "/admin/roster",
       "file": "src/app/admin/roster/page.tsx",
+      "fileType": "page",
+      "routeType": "admin_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/admin/safety",
+      "file": "src/app/admin/safety/page.tsx",
       "fileType": "page",
       "routeType": "admin_page",
       "httpMethods": [],
@@ -267,6 +294,17 @@
       "dynamicSegments": []
     },
     {
+      "route": "/api/admin/incidents",
+      "file": "src/app/api/admin/incidents/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "GET"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
       "route": "/api/admin/pickup-verification",
       "file": "src/app/api/admin/pickup-verification/route.ts",
       "fileType": "route",
@@ -274,6 +312,28 @@
       "httpMethods": [
         "GET",
         "POST"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/admin/revenue",
+      "file": "src/app/api/admin/revenue/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "GET"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/admin/safety",
+      "file": "src/app/api/admin/safety/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "GET"
       ],
       "isDynamic": false,
       "dynamicSegments": []

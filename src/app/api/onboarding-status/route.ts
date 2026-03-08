@@ -65,7 +65,7 @@ export async function PATCH(req: NextRequest) {
         .from('children')
         .select('id', { count: 'exact', head: true })
         .eq('parent_id', auth.parentId),
-      supabaseAdmin.rpc('count_emergency_contacts_for_parent', { p_parent_id: auth.parentId }).catch(() => null),
+      Promise.resolve(supabaseAdmin.rpc('count_emergency_contacts_for_parent', { p_parent_id: auth.parentId })).catch(() => null),
       supabaseAdmin
         .from('children')
         .select('id, child_medical_profiles(id)')

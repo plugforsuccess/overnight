@@ -52,7 +52,7 @@ export default function WaitlistOpsPage() {
       setEntries(waitlistData);
 
       // Fetch confirmed reservation counts for the dates in the waitlist
-      const dates = [...new Set(waitlistData.map((e: WaitlistEntry) => e.date))];
+      const dates = Array.from(new Set(waitlistData.map((e: WaitlistEntry) => e.date)));
       if (dates.length > 0) {
         const { data: reservations } = await supabase
           .from('reservations')

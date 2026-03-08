@@ -1,12 +1,12 @@
 # Route Hardening Audit Report
 
-Generated: 2026-03-08T23:20:16.236Z
+Generated: 2026-03-08T23:45:27.321Z
 
 ## Summary
 
 | Metric | Count |
 |--------|-------|
-| Total routes scanned | 62 |
+| Total routes scanned | 68 |
 | Total findings | 15 |
 | Critical | 0 |
 | Warning | 13 |
@@ -17,8 +17,8 @@ Generated: 2026-03-08T23:20:16.236Z
 | Route Type | Count |
 |------------|-------|
 | public_page | 5 |
-| admin_page | 12 |
-| admin_api | 13 |
+| admin_page | 15 |
+| admin_api | 16 |
 | parent_api | 20 |
 | public_api | 4 |
 | parent_page | 8 |
@@ -236,9 +236,12 @@ None — all critical checks passed.
 | `/admin/capacity` | admin_page | src/app/admin/capacity/page.tsx | - | - |
 | `/admin/closures` | admin_page | src/app/admin/closures/page.tsx | - | - |
 | `/admin/health` | admin_page | src/app/admin/health/page.tsx | - | - |
+| `/admin/incidents` | admin_page | src/app/admin/incidents/page.tsx | - | - |
 | `/admin/pickup-verification` | admin_page | src/app/admin/pickup-verification/page.tsx | - | - |
 | `/admin/plans` | admin_page | src/app/admin/plans/page.tsx | - | - |
+| `/admin/revenue` | admin_page | src/app/admin/revenue/page.tsx | - | - |
 | `/admin/roster` | admin_page | src/app/admin/roster/page.tsx | - | - |
+| `/admin/safety` | admin_page | src/app/admin/safety/page.tsx | - | - |
 | `/admin/settings` | admin_page | src/app/admin/settings/page.tsx | - | - |
 | `/admin/tonight` | admin_page | src/app/admin/tonight/page.tsx | - | - |
 | `/admin/waitlist` | admin_page | src/app/admin/waitlist/page.tsx | - | - |
@@ -254,7 +257,10 @@ None — all critical checks passed.
 | `/api/admin/health/issues` | admin_api | src/app/api/admin/health/issues/route.ts | - | GET, POST |
 | `/api/admin/health/run` | admin_api | src/app/api/admin/health/run/route.ts | - | POST |
 | `/api/admin/health/runs` | admin_api | src/app/api/admin/health/runs/route.ts | - | GET |
+| `/api/admin/incidents` | admin_api | src/app/api/admin/incidents/route.ts | - | GET |
 | `/api/admin/pickup-verification` | admin_api | src/app/api/admin/pickup-verification/route.ts | - | GET, POST |
+| `/api/admin/revenue` | admin_api | src/app/api/admin/revenue/route.ts | - | GET |
+| `/api/admin/safety` | admin_api | src/app/api/admin/safety/route.ts | - | GET |
 | `/api/admin/waitlist-promote` | admin_api | src/app/api/admin/waitlist-promote/route.ts | - | POST |
 | `/api/attendance/[id]/pickup-verification` | parent_api | src/app/api/attendance/[id]/pickup-verification/route.ts | [id] | GET, POST |
 | `/api/auth/me` | public_api | src/app/api/auth/me/route.ts | - | POST |

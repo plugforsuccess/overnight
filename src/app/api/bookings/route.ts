@@ -538,7 +538,7 @@ export async function DELETE(req: NextRequest) {
       .eq('reservation_id', reservationId)
       .eq('status', 'cancelled');
 
-    const freedDates = [...new Set((cancelledNightDetails ?? []).map((n: { care_date: string }) => n.care_date))];
+    const freedDates = Array.from(new Set((cancelledNightDetails ?? []).map((n: { care_date: string }) => n.care_date)));
     for (const careDate of freedDates) {
       const { data: promotedId, error: promoteError } = await supabaseAdmin.rpc('promote_waitlist', {
         p_care_date: careDate,

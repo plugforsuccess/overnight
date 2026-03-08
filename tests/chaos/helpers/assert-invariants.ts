@@ -183,7 +183,7 @@ export async function assertSystemInvariants(
 
   // We check this at a broader level - events with no matching record
   if (orphanedEvents && orphanedEvents.length > 0) {
-    const eventRecordIds = [...new Set(orphanedEvents.map(e => e.attendance_record_id))];
+    const eventRecordIds = Array.from(new Set(orphanedEvents.map(e => e.attendance_record_id)));
     const { data: validRecords } = await supabase
       .from('attendance_records')
       .select('id')

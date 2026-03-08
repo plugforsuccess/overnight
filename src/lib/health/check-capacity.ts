@@ -65,7 +65,7 @@ export async function checkCapacity(
       unlinkedByDate.set(r.care_date, (unlinkedByDate.get(r.care_date) || 0) + 1);
     }
   });
-  for (const [date, count] of unlinkedByDate) {
+  for (const [date, count] of Array.from(unlinkedByDate.entries())) {
     issues.push({
       issueType: 'reservation_night_missing_capacity',
       severity: 'warning',

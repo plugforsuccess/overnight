@@ -194,6 +194,7 @@ model Parent {
   pickup_verifications PickupEvent[] @relation("pickup_verifier")
   settings        ParentSettings?
   staff_memberships CenterStaffMembership[]
+  billing_ledger    BillingLedger[]
 
   @@map("parents")
 }
@@ -234,6 +235,7 @@ model Child {
   attendance_sessions   ChildAttendanceSession[]
   incident_reports      IncidentReport[]
   reservation_nights    ReservationNight[]
+  billing_ledger        BillingLedger[]
 
   @@index([parent_id], map: "idx_children_parent_id")
   @@map("children")
@@ -678,6 +680,34 @@ model Payment {
   @@map("payments")
 }
 
+// ─── billing_ledger ──────────────────────────────────────────────────────────
+// Canonical per-night billing line items for revenue tracking.
+model BillingLedger {
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parent_id                String    @db.Uuid
+  reservation_night_id     String?   @db.Uuid
+  child_id                 String?   @db.Uuid
+  amount_cents             Int       @default(0)
+  status                   String    @default("pending") // pending, paid, failed, refunded, comped
+  payment_provider         String?   @default("stripe")
+  stripe_payment_intent_id String?
+  description              String?
+  care_date                DateTime? @db.Date
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  parent           Parent           @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+  reservation_night ReservationNight? @relation(fields: [reservation_night_id], references: [id], onDelete: SetNull)
+  child            Child?           @relation(fields: [child_id], references: [id], onDelete: SetNull)
+
+  @@index([parent_id], map: "idx_billing_ledger_parent")
+  @@index([status], map: "idx_billing_ledger_status")
+  @@index([care_date], map: "idx_billing_ledger_care_date")
+  @@index([reservation_night_id], map: "idx_billing_ledger_night")
+  @@map("billing_ledger")
+}
+
 // ─── admin_settings ──────────────────────────────────────────────────────────
 // Global admin configuration. Single row expected.
 model AdminSettings {
@@ -898,6 +928,7 @@ model ReservationNight {
   child            Child            @relation(fields: [child_id], references: [id], onDelete: Cascade)
   program_capacity ProgramCapacity? @relation(fields: [program_capacity_id], references: [id], onDelete: SetNull)
   attendance_record AttendanceRecord?
+  billing_ledger    BillingLedger[]
 
   @@unique([reservation_id, care_date], map: "reservation_nights_reservation_date_unique")
   @@unique([child_id, care_date], map: "reservation_nights_child_date_unique")
