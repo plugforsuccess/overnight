@@ -1,43 +1,67 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Moon, CheckCircle, Clock, AlertTriangle, Phone,
-  UserCheck, XCircle, Users, ShieldCheck,
+  UserCheck, XCircle, Users, ShieldCheck, LogOut,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { DEFAULT_CAPACITY, OVERNIGHT_START, OVERNIGHT_END } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { AdminSettings, Child, OvernightBlock, Profile } from '@/types/database';
+import { AdminSettings } from '@/types/database';
 
-interface RosterChild {
-  reservationId: string;
-  child: Child;
-  parent: Profile | null;
-  status: string;
+type AttendanceStatus = 'expected' | 'checked_in' | 'checked_out' | 'no_show' | 'cancelled';
+type FilterTab = 'all' | 'expected' | 'checked-in' | 'checked-out' | 'no-show' | 'alerts';
+
+interface AttendanceChild {
+  id: string;
+  reservationNightId: string;
+  child: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    date_of_birth: string;
+    medical_notes: string | null;
+  };
+  parent: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string | null;
+  } | null;
+  attendanceStatus: AttendanceStatus;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  lateArrivalMinutes: number | null;
+  pickupVerificationStatus: string | null;
+  pickedUpByName: string | null;
+  notes: string | null;
   allergies: { allergen: string; severity: string; custom_label?: string }[];
   emergencyContacts: { first_name: string; last_name: string; phone: string; relationship: string }[];
   authorizedPickups: { first_name: string; last_name: string; relationship: string; id_verified: boolean }[];
-  checkedIn: boolean;
-  caregiverNotes: string;
 }
-
-type FilterTab = 'all' | 'expected' | 'checked-in' | 'no-show' | 'alerts';
 
 export default function TonightPage() {
   const router = useRouter();
-  const [roster, setRoster] = useState<RosterChild[]>([]);
+  const [roster, setRoster] = useState<AttendanceChild[]>([]);
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
-  const [checkedIn, setCheckedIn] = useState<Set<string>>(new Set());
-  const [noShows, setNoShows] = useState<Set<string>>(new Set());
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const today = format(new Date(), 'yyyy-MM-dd');
   const capacity = settings?.max_capacity ?? DEFAULT_CAPACITY;
+
+  const getAuthHeaders = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return {
+      'Authorization': `Bearer ${session?.access_token || ''}`,
+      'Content-Type': 'application/json',
+    };
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -50,77 +74,155 @@ export default function TonightPage() {
       const { data: s } = await supabase.from('admin_settings').select('*').limit(1).single();
       if (s) setSettings(s as AdminSettings);
 
-      // Fetch tonight's confirmed reservations with child details
-      const { data: reservations } = await supabase
-        .from('reservations')
-        .select(`
-          id, date, status,
-          child:children(
-            id, first_name, last_name, date_of_birth, medical_notes,
-            child_allergies(allergen, severity, custom_label),
-            child_emergency_contacts(first_name, last_name, phone, relationship),
-            child_authorized_pickups(first_name, last_name, relationship, id_verified)
-          ),
-          overnight_block:overnight_blocks(
-            id, caregiver_notes,
-            parent:parents(id, first_name, last_name, email, phone)
-          )
-        `)
-        .eq('date', today)
-        .in('status', ['confirmed', 'locked']);
-
-      const items: RosterChild[] = (reservations || []).map((r: any) => {
-        const child = r.child;
-        const block = r.overnight_block;
-        const parent = block?.parent || null;
-        return {
-          reservationId: r.id,
-          child: child,
-          parent: parent,
-          status: r.status,
-          allergies: child?.child_allergies || [],
-          emergencyContacts: child?.child_emergency_contacts || [],
-          authorizedPickups: child?.child_authorized_pickups || [],
-          checkedIn: false,
-          caregiverNotes: block?.caregiver_notes || '',
-        };
+      // Fetch attendance data from the tonight API
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/admin/attendance/tonight', {
+        headers: { 'Authorization': `Bearer ${session?.access_token || ''}` },
       });
 
-      setRoster(items);
+      if (res.ok) {
+        const { records } = await res.json();
+        const items: AttendanceChild[] = (records || []).map((r: any) => ({
+          id: r.id,
+          reservationNightId: r.reservation_night_id,
+          child: r.child || { id: r.child_id, first_name: '?', last_name: '?', date_of_birth: '', medical_notes: null },
+          parent: r.parent || null,
+          attendanceStatus: r.attendance_status,
+          checkInTime: r.check_in_time,
+          checkOutTime: r.check_out_time,
+          lateArrivalMinutes: r.late_arrival_minutes,
+          pickupVerificationStatus: r.pickup_verification_status,
+          pickedUpByName: r.picked_up_by_name,
+          notes: r.notes,
+          allergies: r.child?.child_allergies || [],
+          emergencyContacts: r.child?.child_emergency_contacts || [],
+          authorizedPickups: r.child?.child_authorized_pickups || [],
+        }));
+        setRoster(items);
+      }
+
       setLoading(false);
     }
     load();
-  }, [router, today]);
+  }, [router, getAuthHeaders]);
 
-  function handleCheckIn(reservationId: string) {
-    setCheckedIn((prev: Set<string>) => new Set(prev).add(reservationId));
-    setNoShows((prev: Set<string>) => {
-      const next = new Set(prev);
-      next.delete(reservationId);
-      return next;
-    });
+  async function handleCheckIn(item: AttendanceChild) {
+    setActionLoading(item.id);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/admin/attendance/check-in', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ reservationNightId: item.reservationNightId }),
+      });
+      if (res.ok) {
+        const { record } = await res.json();
+        setRoster(prev => prev.map(r =>
+          r.id === item.id
+            ? { ...r, attendanceStatus: 'checked_in' as AttendanceStatus, checkInTime: record.check_in_time, lateArrivalMinutes: record.late_arrival_minutes }
+            : r
+        ));
+      } else {
+        const { error } = await res.json();
+        alert(`Check-in failed: ${error}`);
+      }
+    } finally {
+      setActionLoading(null);
+    }
   }
 
-  function handleNoShow(reservationId: string) {
-    setNoShows((prev: Set<string>) => new Set(prev).add(reservationId));
-    setCheckedIn((prev: Set<string>) => {
-      const next = new Set(prev);
-      next.delete(reservationId);
-      return next;
-    });
+  async function handleCheckOut(item: AttendanceChild) {
+    setActionLoading(item.id);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/admin/attendance/check-out', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ reservationNightId: item.reservationNightId }),
+      });
+      if (res.ok) {
+        const { record } = await res.json();
+        setRoster(prev => prev.map(r =>
+          r.id === item.id
+            ? { ...r, attendanceStatus: 'checked_out' as AttendanceStatus, checkOutTime: record.check_out_time, pickedUpByName: record.picked_up_by_name }
+            : r
+        ));
+      } else {
+        const { error } = await res.json();
+        alert(`Check-out failed: ${error}`);
+      }
+    } finally {
+      setActionLoading(null);
+    }
   }
 
-  const checkedInCount = checkedIn.size;
-  const noShowCount = noShows.size;
-  const expectedCount = roster.length - checkedInCount - noShowCount;
+  async function handleNoShow(item: AttendanceChild) {
+    setActionLoading(item.id);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/admin/attendance/no-show', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ reservationNightId: item.reservationNightId }),
+      });
+      if (res.ok) {
+        setRoster(prev => prev.map(r =>
+          r.id === item.id ? { ...r, attendanceStatus: 'no_show' as AttendanceStatus } : r
+        ));
+      } else {
+        const { error } = await res.json();
+        alert(`No-show failed: ${error}`);
+      }
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleCorrect(item: AttendanceChild, newStatus: AttendanceStatus) {
+    const reason = prompt('Reason for correction:');
+    if (!reason) return;
+
+    setActionLoading(item.id);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/admin/attendance/correct', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          attendanceRecordId: item.id,
+          newStatus,
+          reason,
+        }),
+      });
+      if (res.ok) {
+        const { record } = await res.json();
+        setRoster(prev => prev.map(r =>
+          r.id === item.id
+            ? { ...r, attendanceStatus: record.attendance_status, checkInTime: record.check_in_time, checkOutTime: record.check_out_time }
+            : r
+        ));
+      } else {
+        const { error } = await res.json();
+        alert(`Correction failed: ${error}`);
+      }
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  const checkedInCount = roster.filter(r => r.attendanceStatus === 'checked_in').length;
+  const checkedOutCount = roster.filter(r => r.attendanceStatus === 'checked_out').length;
+  const noShowCount = roster.filter(r => r.attendanceStatus === 'no_show').length;
+  const expectedCount = roster.filter(r => r.attendanceStatus === 'expected').length;
   const alertCount = roster.filter(r =>
     r.allergies.some(a => a.severity === 'SEVERE') || r.emergencyContacts.length === 0
   ).length;
 
   const filteredRoster = roster.filter(r => {
-    if (activeTab === 'checked-in') return checkedIn.has(r.reservationId);
-    if (activeTab === 'no-show') return noShows.has(r.reservationId);
-    if (activeTab === 'expected') return !checkedIn.has(r.reservationId) && !noShows.has(r.reservationId);
+    if (activeTab === 'checked-in') return r.attendanceStatus === 'checked_in';
+    if (activeTab === 'checked-out') return r.attendanceStatus === 'checked_out';
+    if (activeTab === 'no-show') return r.attendanceStatus === 'no_show';
+    if (activeTab === 'expected') return r.attendanceStatus === 'expected';
     if (activeTab === 'alerts') return r.allergies.some(a => a.severity === 'SEVERE') || r.emergencyContacts.length === 0;
     return true;
   });
@@ -131,6 +233,7 @@ export default function TonightPage() {
     { key: 'all', label: 'All', count: roster.length },
     { key: 'expected', label: 'Expected', count: expectedCount },
     { key: 'checked-in', label: 'Checked In', count: checkedInCount },
+    { key: 'checked-out', label: 'Checked Out', count: checkedOutCount },
     { key: 'no-show', label: 'No-Show', count: noShowCount },
     { key: 'alerts', label: 'Alerts', count: alertCount },
   ];
@@ -148,11 +251,16 @@ export default function TonightPage() {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
           <div className="card text-center">
             <Users className="h-6 w-6 text-navy-600 mx-auto mb-1" />
             <div className="text-2xl font-bold text-navy-800">{roster.length}</div>
-            <div className="text-xs text-gray-500">Expected tonight</div>
+            <div className="text-xs text-gray-500">Total tonight</div>
+          </div>
+          <div className="card text-center">
+            <Clock className="h-6 w-6 text-amber-500 mx-auto mb-1" />
+            <div className="text-2xl font-bold text-amber-600">{expectedCount}</div>
+            <div className="text-xs text-gray-500">Expected</div>
           </div>
           <div className="card text-center">
             <CheckCircle className="h-6 w-6 text-green-600 mx-auto mb-1" />
@@ -160,9 +268,9 @@ export default function TonightPage() {
             <div className="text-xs text-gray-500">Checked in</div>
           </div>
           <div className="card text-center">
-            <XCircle className="h-6 w-6 text-red-500 mx-auto mb-1" />
-            <div className="text-2xl font-bold text-red-600">{noShowCount}</div>
-            <div className="text-xs text-gray-500">No-shows</div>
+            <LogOut className="h-6 w-6 text-blue-600 mx-auto mb-1" />
+            <div className="text-2xl font-bold text-blue-700">{checkedOutCount}</div>
+            <div className="text-xs text-gray-500">Checked out</div>
           </div>
           <div className="card text-center">
             <Moon className="h-6 w-6 text-navy-600 mx-auto mb-1" />
@@ -205,18 +313,18 @@ export default function TonightPage() {
         ) : (
           <div className="space-y-3">
             {filteredRoster.map(item => {
-              const isCheckedIn = checkedIn.has(item.reservationId);
-              const isNoShow = noShows.has(item.reservationId);
               const hasSevereAllergy = item.allergies.some(a => a.severity === 'SEVERE');
               const hasNoEmergencyContacts = item.emergencyContacts.length === 0;
+              const isLoading = actionLoading === item.id;
 
               return (
                 <div
-                  key={item.reservationId}
+                  key={item.id}
                   className={cn(
                     'card border-l-4 transition-colors',
-                    isCheckedIn ? 'border-l-green-500 bg-green-50/30' :
-                    isNoShow ? 'border-l-red-400 bg-red-50/30 opacity-60' :
+                    item.attendanceStatus === 'checked_in' ? 'border-l-green-500 bg-green-50/30' :
+                    item.attendanceStatus === 'checked_out' ? 'border-l-blue-500 bg-blue-50/30' :
+                    item.attendanceStatus === 'no_show' ? 'border-l-red-400 bg-red-50/30 opacity-60' :
                     hasSevereAllergy ? 'border-l-red-500' :
                     'border-l-navy-300',
                   )}
@@ -228,14 +336,26 @@ export default function TonightPage() {
                         <h3 className="text-lg font-semibold text-gray-900">
                           {item.child?.first_name} {item.child?.last_name}
                         </h3>
-                        {isCheckedIn && (
+                        {item.attendanceStatus === 'checked_in' && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 border border-green-200">
                             <CheckCircle className="h-3 w-3" /> Checked in
+                            {item.checkInTime && ` at ${format(new Date(item.checkInTime), 'h:mm a')}`}
                           </span>
                         )}
-                        {isNoShow && (
+                        {item.attendanceStatus === 'checked_out' && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
+                            <LogOut className="h-3 w-3" /> Checked out
+                            {item.checkOutTime && ` at ${format(new Date(item.checkOutTime), 'h:mm a')}`}
+                          </span>
+                        )}
+                        {item.attendanceStatus === 'no_show' && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600 border border-red-200">
                             <XCircle className="h-3 w-3" /> No-show
+                          </span>
+                        )}
+                        {item.lateArrivalMinutes != null && item.lateArrivalMinutes > 0 && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 border border-amber-200">
+                            <Clock className="h-3 w-3" /> {item.lateArrivalMinutes}min late
                           </span>
                         )}
                       </div>
@@ -249,6 +369,17 @@ export default function TonightPage() {
                           </span>
                         )}
                       </div>
+
+                      {/* Pickup info for checked-out children */}
+                      {item.attendanceStatus === 'checked_out' && item.pickedUpByName && (
+                        <div className="mt-1 text-sm text-blue-600">
+                          <UserCheck className="h-3 w-3 inline mr-1" />
+                          Picked up by: {item.pickedUpByName}
+                          {item.pickupVerificationStatus === 'verified' && (
+                            <span className="ml-1 text-green-600">(verified)</span>
+                          )}
+                        </div>
+                      )}
 
                       {/* Alerts */}
                       <div className="flex flex-wrap gap-1.5 mt-2">
@@ -291,13 +422,6 @@ export default function TonightPage() {
                         </div>
                       )}
 
-                      {/* Caregiver notes */}
-                      {item.caregiverNotes && (
-                        <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
-                          <span className="font-medium">Caregiver notes:</span> {item.caregiverNotes}
-                        </div>
-                      )}
-
                       {/* Authorized pickups */}
                       {item.authorizedPickups.length > 0 && (
                         <div className="mt-2 text-xs text-gray-500">
@@ -311,40 +435,69 @@ export default function TonightPage() {
                           ))}
                         </div>
                       )}
+
+                      {/* Notes */}
+                      {item.notes && (
+                        <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
+                          <span className="font-medium">Notes:</span> {item.notes}
+                        </div>
+                      )}
                     </div>
 
                     {/* Action buttons */}
                     <div className="flex flex-col gap-2 flex-shrink-0">
-                      {!isCheckedIn && !isNoShow && (
+                      {item.attendanceStatus === 'expected' && (
                         <>
                           <button
-                            onClick={() => handleCheckIn(item.reservationId)}
-                            className="btn-primary text-sm px-3 py-1.5 flex items-center gap-1.5"
+                            onClick={() => handleCheckIn(item)}
+                            disabled={isLoading}
+                            className="btn-primary text-sm px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-50"
                           >
                             <CheckCircle className="h-4 w-4" /> Check In
                           </button>
                           <button
-                            onClick={() => handleNoShow(item.reservationId)}
-                            className="btn-secondary text-sm px-3 py-1.5 flex items-center gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
+                            onClick={() => handleNoShow(item)}
+                            disabled={isLoading}
+                            className="btn-secondary text-sm px-3 py-1.5 flex items-center gap-1.5 text-red-600 border-red-200 hover:bg-red-50 disabled:opacity-50"
                           >
                             <XCircle className="h-4 w-4" /> No-Show
                           </button>
                         </>
                       )}
-                      {isCheckedIn && (
+                      {item.attendanceStatus === 'checked_in' && (
+                        <>
+                          <button
+                            onClick={() => handleCheckOut(item)}
+                            disabled={isLoading}
+                            className="btn-primary text-sm px-3 py-1.5 flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            <LogOut className="h-4 w-4" /> Check Out
+                          </button>
+                          <button
+                            onClick={() => handleCorrect(item, 'expected')}
+                            disabled={isLoading}
+                            className="btn-secondary text-sm px-3 py-1.5 disabled:opacity-50"
+                          >
+                            Undo Check-In
+                          </button>
+                        </>
+                      )}
+                      {item.attendanceStatus === 'no_show' && (
                         <button
-                          onClick={() => setCheckedIn((prev: Set<string>) => { const s = new Set(prev); s.delete(item.reservationId); return s; })}
-                          className="btn-secondary text-sm px-3 py-1.5"
+                          onClick={() => handleCorrect(item, 'expected')}
+                          disabled={isLoading}
+                          className="btn-secondary text-sm px-3 py-1.5 disabled:opacity-50"
                         >
-                          Undo
+                          Undo No-Show
                         </button>
                       )}
-                      {isNoShow && (
+                      {item.attendanceStatus === 'checked_out' && (
                         <button
-                          onClick={() => setNoShows((prev: Set<string>) => { const s = new Set(prev); s.delete(item.reservationId); return s; })}
-                          className="btn-secondary text-sm px-3 py-1.5"
+                          onClick={() => handleCorrect(item, 'checked_in')}
+                          disabled={isLoading}
+                          className="btn-secondary text-sm px-3 py-1.5 disabled:opacity-50"
                         >
-                          Undo
+                          Undo Check-Out
                         </button>
                       )}
                     </div>

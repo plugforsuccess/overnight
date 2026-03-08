@@ -839,6 +839,7 @@ model ReservationNight {
   reservation      Reservation      @relation(fields: [reservation_id], references: [id], onDelete: Cascade)
   child            Child            @relation(fields: [child_id], references: [id], onDelete: Cascade)
   program_capacity ProgramCapacity? @relation(fields: [program_capacity_id], references: [id], onDelete: SetNull)
+  attendance_record AttendanceRecord?
 
   @@unique([reservation_id, care_date], map: "reservation_nights_reservation_date_unique")
   @@unique([child_id, care_date], map: "reservation_nights_child_date_unique")
@@ -864,4 +865,85 @@ model IdempotencyKey {
   @@index([expires_at], map: "idx_idempotency_keys_expires")
   @@index([user_id], map: "idx_idempotency_keys_user")
   @@map("idempotency_keys")
+}
+
+// ─── attendance_records ─────────────────────────────────────────────────────
+// Canonical attendance state for a single child on a single reserved night.
+// One-to-one with reservation_nights. Tracks check-in, check-out, pickup
+// verification, no-show, and late arrival. All mutations emit attendance_events.
+model AttendanceRecord {
+  id                         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_night_id       String    @unique @db.Uuid
+  center_id                  String?   @db.Uuid
+  child_id                   String    @db.Uuid
+  parent_id                  String    @db.Uuid
+  care_date                  DateTime  @db.Date
+
+  // CHECK: expected | checked_in | checked_out | no_show | cancelled
+  attendance_status          String    @default("expected")
+
+  // Check-in fields
+  expected_arrival_at        DateTime? @db.Timestamptz(6)
+  checked_in_at              DateTime? @db.Timestamptz(6)
+  checked_in_by_user_id      String?   @db.Uuid
+  check_in_method            String?   // staff_manual | parent_acknowledged | system | override
+  arrival_notes              String?
+
+  // Check-out / pickup fields
+  expected_departure_at      DateTime? @db.Timestamptz(6)
+  checked_out_at             DateTime? @db.Timestamptz(6)
+  checked_out_by_user_id     String?   @db.Uuid
+  check_out_method           String?   // staff_manual | parent_acknowledged | system | override
+  checked_out_to_pickup_id   String?   @db.Uuid
+  pickup_verification_status String?   // not_applicable | pending | verified | failed | manual_override
+  departure_notes            String?
+
+  // No-show fields
+  no_show_marked_at          DateTime? @db.Timestamptz(6)
+  no_show_marked_by_user_id  String?   @db.Uuid
+
+  // Exception tracking
+  cancellation_after_cutoff  Boolean   @default(false)
+  late_arrival_minutes       Int       @default(0)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  reservation_night ReservationNight @relation(fields: [reservation_night_id], references: [id], onDelete: Cascade)
+  events            AttendanceEvent[]
+
+  @@index([center_id, care_date], map: "idx_attendance_records_center_date")
+  @@index([child_id, care_date], map: "idx_attendance_records_child_date")
+  @@index([attendance_status, care_date], map: "idx_attendance_records_status_date")
+  @@index([parent_id], map: "idx_attendance_records_parent")
+  @@map("attendance_records")
+}
+
+// ─── attendance_events ──────────────────────────────────────────────────────
+// Immutable event log for attendance actions. Never update or delete rows.
+// Provides full audit trail for check-in, check-out, no-show, corrections.
+model AttendanceEvent {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  attendance_record_id String   @db.Uuid
+  reservation_night_id String   @db.Uuid
+  center_id            String?  @db.Uuid
+  child_id             String   @db.Uuid
+  actor_user_id        String?  @db.Uuid
+
+  // Event types: attendance_record_created | child_checked_in | late_arrival_recorded
+  //   | child_checked_out | pickup_verified | pickup_verification_failed
+  //   | no_show_marked | attendance_status_corrected | attendance_cancelled
+  event_type           String
+  event_at             DateTime @default(now()) @db.Timestamptz(6)
+  metadata             Json     @default("{}") @db.JsonB
+
+  // Relations
+  attendance_record AttendanceRecord @relation(fields: [attendance_record_id], references: [id], onDelete: Cascade)
+
+  @@index([attendance_record_id, event_at], map: "idx_attendance_events_record")
+  @@index([reservation_night_id, event_at], map: "idx_attendance_events_night")
+  @@index([center_id, event_at], map: "idx_attendance_events_center")
+  @@index([event_type, event_at], map: "idx_attendance_events_type")
+  @@map("attendance_events")
 }
