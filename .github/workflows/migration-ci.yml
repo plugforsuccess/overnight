@@ -58,11 +58,9 @@ jobs:
       - name: Bootstrap Supabase auth stubs and extensions
         run: psql "$DATABASE_URL" -f scripts/ci-bootstrap-supabase.sql
 
-      - name: Deploy all migrations from scratch
-        run: npx prisma migrate deploy
-
-      - name: Verify migration health (diagnostic script)
-        run: ./scripts/check-migration-state.sh
-
-      - name: Verify all schema objects exist
+      - name: Deploy migrations and verify all schema objects
         run: ./scripts/verify-migrations-ci.sh
+
+      - name: Run migration health diagnostic
+        if: always()
+        run: ./scripts/check-migration-state.sh
