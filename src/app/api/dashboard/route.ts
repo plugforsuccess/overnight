@@ -200,7 +200,7 @@ export async function GET(req: NextRequest) {
     const { data: recentPromotions } = await supabase
       .from('reservation_events')
       .select('id, event_type, event_data, created_at, reservation:reservations(date, child:children(first_name))')
-      .eq('event_type', 'night_promoted')
+      .eq('event_type', 'waitlist_promoted')
       .gte('created_at', threeDaysAgo.toISOString())
       .order('created_at', { ascending: false })
       .limit(5);

@@ -45,6 +45,16 @@ const EVENT_CONFIG: Record<string, {
     icon: <Clock className="h-3.5 w-3.5" />,
     dotClass: 'bg-amber-500',
   },
+  reservation_night_waitlisted: {
+    label: 'Waitlisted',
+    icon: <Clock className="h-3.5 w-3.5" />,
+    dotClass: 'bg-amber-500',
+  },
+  waitlist_promoted: {
+    label: 'Promoted from waitlist',
+    icon: <ArrowUpCircle className="h-3.5 w-3.5" />,
+    dotClass: 'bg-green-500',
+  },
   night_promoted: {
     label: 'Promoted from waitlist',
     icon: <ArrowUpCircle className="h-3.5 w-3.5" />,
