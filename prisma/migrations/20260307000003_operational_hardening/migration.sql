@@ -1,5 +1,12 @@
 -- Operational Hardening: reservation events, incident reports, staff membership,
 -- attendance state machine, pickup verifications.
+--
+-- Depends on: 20260307000002_enterprise_hardening (creates child_attendance_sessions,
+-- update_timestamp() function).
+-- All DDL is idempotent (IF NOT EXISTS / OR REPLACE). If this migration fails
+-- partway, resolve and re-run:
+--   npx prisma migrate resolve --rolled-back 20260307000003_operational_hardening
+--   npx prisma migrate deploy
 
 -- ============================================================
 -- 1. Reservation Events — Append-Only Ledger

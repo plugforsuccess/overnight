@@ -1,0 +1,68 @@
+name: Migration Verification
+
+on:
+  push:
+    paths:
+      - 'prisma/**'
+      - 'scripts/check-migration-state.sh'
+      - 'scripts/verify-migrations-ci.sh'
+      - '.github/workflows/migration-ci.yml'
+  pull_request:
+    paths:
+      - 'prisma/**'
+      - 'scripts/check-migration-state.sh'
+      - 'scripts/verify-migrations-ci.sh'
+      - '.github/workflows/migration-ci.yml'
+
+jobs:
+  verify-migrations:
+    name: Verify migrations from scratch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: overnight_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/overnight_ci
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/overnight_ci
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Bootstrap Supabase auth stubs and extensions
+        run: psql "$DATABASE_URL" -f scripts/ci-bootstrap-supabase.sql
+
+      - name: Deploy all migrations from scratch
+        run: npx prisma migrate deploy
+
+      - name: Verify migration health (diagnostic script)
+        run: ./scripts/check-migration-state.sh
+
+      - name: Verify all schema objects exist
+        run: ./scripts/verify-migrations-ci.sh

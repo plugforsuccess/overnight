@@ -16,7 +16,8 @@ inconsistent Prisma migrations against Supabase Postgres.
 | Check migration health | `./scripts/check-migration-state.sh` |
 | Check Prisma status only | `npx prisma migrate status` |
 | Schema already applied, metadata stuck | `npx prisma migrate resolve --applied <name>` |
-| Schema NOT applied, metadata stuck | `npx prisma migrate resolve --rolled-back <name>` then fix + re-deploy |
+| Schema NOT applied, metadata failed | `npx prisma migrate resolve --rolled-back <name>` then `deploy` |
+| Metadata drift (marked applied, schema missing) | See [Scenario D](#scenario-d-metadata-drift) |
 | Apply pending migrations | `npx prisma migrate deploy` |
 
 ---
@@ -67,13 +68,11 @@ A migration in the **Failed** state blocks all subsequent migrations.
 ## 2. Compare — Schema Reality vs Prisma Metadata
 
 Before resolving, determine whether the migration's SQL was partially or fully
-applied to the actual database. This decides whether you use `--applied` or
-`--rolled-back`.
+applied to the actual database. This decides which recovery strategy to use.
 
 ### Check tables
 
 ```bash
-# Check if a specific table exists
 psql $DATABASE_URL -c "
   SELECT table_name FROM information_schema.tables
   WHERE table_schema = 'public'
@@ -123,56 +122,29 @@ The migration SQL ran completely but Prisma recorded a failure (e.g., a
 post-migration hook or timeout caused the "failed" state).
 
 ```bash
-npx prisma migrate resolve --applied 20260307000002_enterprise_hardening
-```
-
-This tells Prisma: "the database already has this migration's changes — mark
-it as applied."
-
-Then verify:
-
-```bash
+npx prisma migrate resolve --applied <migration_name>
+npx prisma migrate deploy
 npx prisma migrate status
-npx prisma migrate deploy   # should proceed to next migration
 ```
 
 ### Scenario B: Schema is NOT fully present (partial failure)
 
-The migration failed partway through — some tables/columns exist, others don't.
-
-**Option 1 — Roll back and re-deploy (preferred)**
+The migration failed partway through — some tables/columns exist, others
+don't. The migration itself is marked **failed** (not applied).
 
 ```bash
-# Mark as rolled back
-npx prisma migrate resolve --rolled-back 20260307000002_enterprise_hardening
+# Mark as rolled back so Prisma will re-run it
+npx prisma migrate resolve --rolled-back <migration_name>
 
-# Fix the migration SQL if needed (make it idempotent)
-# Then re-apply all pending migrations
+# Re-apply (works because our migrations use idempotent DDL)
 npx prisma migrate deploy
-```
-
-This works when the migration SQL uses idempotent DDL (`CREATE TABLE IF NOT
-EXISTS`, `DROP TRIGGER IF EXISTS`, etc.) — which all our migrations do.
-
-**Option 2 — Complete the migration manually, then mark as applied**
-
-If the migration is not idempotent and cannot be re-run:
-
-```bash
-# 1. Manually apply the missing parts
-psql $DATABASE_URL -f <partial-fix.sql>
-
-# 2. Mark as applied
-npx prisma migrate resolve --applied <migration_name>
-
-# 3. Verify
 npx prisma migrate status
 ```
 
 ### Scenario C: Migration needs to be rewritten
 
-If the migration SQL itself is wrong (references non-existent tables, has
-syntax errors, etc.):
+The migration SQL itself is wrong (references non-existent tables, syntax
+errors, etc.):
 
 ```bash
 # 1. Roll back the failed migration metadata
@@ -181,51 +153,105 @@ npx prisma migrate resolve --rolled-back <migration_name>
 # 2. Fix the migration SQL file in prisma/migrations/<name>/migration.sql
 # 3. Re-deploy
 npx prisma migrate deploy
+npx prisma migrate status
+```
 
-# 4. Verify
+### Scenario D: Metadata drift
+
+**This is the most dangerous scenario.** A migration is marked as **applied**
+in `_prisma_migrations` but its schema objects (tables, functions, triggers)
+do not actually exist in the database. This causes downstream migrations to
+fail because they reference tables they expect to exist.
+
+**Why `--rolled-back` alone doesn't fix this:** `prisma migrate resolve
+--rolled-back` adds a new "rolled back" row but does **not** remove the
+existing "applied" row. Prisma sees the "applied" row and skips re-running
+the migration.
+
+**Recovery requires deleting the stale row** (this is the documented
+exception to the "avoid direct edits" rule):
+
+```bash
+# 1. Confirm the migration is truly drifted (marked applied, tables missing)
+./scripts/check-migration-state.sh
+
+# 2. Delete the stale "applied" row so Prisma will re-run it
+psql $DATABASE_URL -c "
+  DELETE FROM _prisma_migrations
+  WHERE migration_name = '<drifted_migration_name>'
+    AND finished_at IS NOT NULL
+    AND rolled_back_at IS NULL;
+"
+
+# 3. Also resolve any downstream failed migration
+npx prisma migrate resolve --rolled-back <failed_downstream_migration>
+
+# 4. Redeploy — Prisma will re-run the drifted migration + downstream
+npx prisma migrate deploy
+npx prisma migrate status
+```
+
+**Example — the `center_staff_memberships` failure:**
+
+`000004_sprint_hardening` failed because `000003_operational_hardening` was
+marked as applied but `center_staff_memberships` didn't exist:
+
+```bash
+# Delete stale 000003 row
+psql $DATABASE_URL -c "
+  DELETE FROM _prisma_migrations
+  WHERE migration_name = '20260307000003_operational_hardening'
+    AND finished_at IS NOT NULL AND rolled_back_at IS NULL;
+"
+
+# Resolve failed 000004
+npx prisma migrate resolve --rolled-back 20260307000004_sprint_hardening
+
+# Redeploy both
+npx prisma migrate deploy
 npx prisma migrate status
 ```
 
 ---
 
-## 4. When to Use `--applied` vs `--rolled-back`
+## 4. When to Use `--applied` vs `--rolled-back` vs Row Deletion
 
-| Use `--applied` when... | Use `--rolled-back` when... |
-|-------------------------|-----------------------------|
-| All schema objects from the migration exist in the DB | Some or all schema objects are missing |
-| The failure was metadata-only (timeout, hook failure) | The SQL itself failed partway through |
-| You manually completed the remaining DDL | The migration SQL is idempotent and safe to re-run |
-| You want Prisma to skip this migration | You want Prisma to attempt this migration again |
+| Scenario | Metadata | Schema | Action |
+|----------|----------|--------|--------|
+| Timeout / hook failure | Failed | Fully present | `--applied` |
+| SQL error partway | Failed | Partially present | `--rolled-back` + deploy |
+| SQL wrong, needs fix | Failed | Partially present | `--rolled-back` + fix SQL + deploy |
+| Metadata drift | Applied | Missing | Delete row + deploy |
+| Schema present, metadata missing | No row | Fully present | `--applied` |
 
 ---
 
 ## 5. When Manual SQL Is Appropriate
 
-Direct SQL against `_prisma_migrations` should be a **last resort**. Valid
-reasons:
+Direct SQL against `_prisma_migrations` is required for:
 
-- Prisma CLI is unavailable or broken
-- The `_prisma_migrations` table has corruption that `prisma migrate resolve`
-  cannot fix
-- You need to batch-resolve multiple migrations in a single transaction
+- **Metadata drift** (Scenario D above) — `--rolled-back` does not remove
+  the stale "applied" row
+- **Prisma CLI unavailable** — resolve via SQL instead
+- **Batch recovery** — multiple migrations need simultaneous repair
 
 If you must use raw SQL:
 
 ```sql
+-- Delete a stale "applied" row for a drifted migration
+DELETE FROM _prisma_migrations
+  WHERE migration_name = '<name>'
+    AND finished_at IS NOT NULL
+    AND rolled_back_at IS NULL;
+
 -- Mark a failed migration as applied
 UPDATE _prisma_migrations
   SET finished_at = now(), rolled_back_at = NULL,
       logs = 'Manually resolved: <reason>'
   WHERE migration_name = '<name>' AND finished_at IS NULL;
-
--- Mark a failed migration as rolled back
-UPDATE _prisma_migrations
-  SET rolled_back_at = now(),
-      logs = 'Manually rolled back: <reason>'
-  WHERE migration_name = '<name>' AND finished_at IS NULL;
 ```
 
-**Always document the reason** in the `logs` column.
+**Always document the reason** in the `logs` column or in commit messages.
 
 ---
 
@@ -276,45 +302,43 @@ this table for migration tracking.
 
 ---
 
-## 7. Production Recovery Checklist
+## 7. Migration Dependency Chain
+
+Our migrations have explicit ordering dependencies:
+
+```
+0_baseline
+  └→ 20260306000002_create_parent_settings
+  └→ 20260307000001_harden_parent_onboarding (needs set_updated_at())
+       └→ 20260307000002_enterprise_hardening (creates update_timestamp(),
+            child_events, child_attendance_sessions, pickup_events)
+            └→ 20260307000003_operational_hardening (creates reservation_events,
+                 incident_reports, center_staff_memberships, pickup_verifications,
+                 enforce_attendance_transition())
+                 └→ 20260307000004_sprint_hardening (creates idempotency_keys,
+                      adds archived_at columns, enforce_incident_transition(),
+                      prevent_hard_delete())
+```
+
+If a migration fails, **always check whether its predecessors truly applied**
+by verifying their schema objects exist. Use `./scripts/check-migration-state.sh`
+to detect metadata drift.
+
+---
+
+## 8. Production Recovery Checklist
 
 When recovering from a failed migration in production:
 
 - [ ] Run `./scripts/check-migration-state.sh` to capture the current state
 - [ ] Identify which migration failed and at what point
 - [ ] Compare DB reality to expected state (tables, functions, triggers, RLS)
-- [ ] Choose `--applied` or `--rolled-back` based on comparison
-- [ ] Run `npx prisma migrate resolve --applied|--rolled-back <name>`
+- [ ] Check whether predecessor migrations have metadata drift
+- [ ] If metadata drift detected: delete the stale row (Scenario D)
+- [ ] If failed migration: choose `--applied` or `--rolled-back`
+- [ ] Run recovery commands
 - [ ] Run `npx prisma migrate deploy` to apply remaining migrations
 - [ ] Run `npx prisma migrate status` to confirm healthy state
 - [ ] Run `./scripts/check-migration-state.sh` again to verify all objects
 - [ ] Run `./scripts/smoke-test.sh` to verify application functionality
 - [ ] Document what happened and what was done in the deployment log
-
----
-
-## 8. Exact Commands for Current Failed Migration
-
-The `20260307000002_enterprise_hardening` migration failed because it
-referenced `pickup_events` before that table was created. The migration SQL
-has since been fixed to `CREATE TABLE IF NOT EXISTS`.
-
-### If the DB already has all the tables from this migration:
-
-```bash
-npx prisma migrate resolve --applied 20260307000002_enterprise_hardening
-npx prisma migrate deploy
-npx prisma migrate status
-```
-
-### If the DB is missing some tables from this migration:
-
-```bash
-npx prisma migrate resolve --rolled-back 20260307000002_enterprise_hardening
-npx prisma migrate deploy
-npx prisma migrate status
-```
-
-The migration SQL is fully idempotent, so `--rolled-back` + re-deploy is safe
-in either case. When in doubt, use `--rolled-back` — it is the safer option
-because it re-runs the (now-fixed) migration SQL.

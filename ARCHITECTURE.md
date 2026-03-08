@@ -175,12 +175,42 @@ psql $DATABASE_URL -c "SELECT tablename, policyname FROM pg_policies WHERE schem
 # Development: create a new migration after editing prisma/schema.prisma
 npm run migrate:dev -- --name describe_the_change
 
-# Production: deploy pending migrations
+# Production: deploy pending migrations (see Pre-Flight Checklist below)
 npm run migrate
 
 # After any schema change: re-apply security artifacts
 psql $DATABASE_URL < supabase/rls-policies.sql
 ```
+
+### Pre-Flight Checklist (mandatory before `prisma migrate deploy`)
+
+**`./scripts/check-migration-state.sh` MUST be run before every production
+`prisma migrate deploy`.** This is a non-negotiable gate — deploying without
+it risks applying migrations on top of metadata drift, which can silently
+corrupt the schema.
+
+```bash
+# 1. MANDATORY: Run migration health diagnostic
+npm run migrate:check
+#    ↳ Must show: ✓ No metadata drift detected
+#    ↳ Must show: all required tables, functions, RLS as ✓
+#    ↳ If ANY drift or missing objects are detected, STOP and follow
+#      docs/prisma-migration-recovery.md before proceeding.
+
+# 2. Deploy pending migrations
+npm run migrate
+
+# 3. Post-deploy: verify the new state is healthy
+npm run migrate:check
+
+# 4. Re-apply security artifacts if migrations changed schema
+psql $DATABASE_URL < supabase/rls-policies.sql
+```
+
+**Why this matters:** In the 2026-03-07 incident, `000003_operational_hardening`
+was marked as applied in `_prisma_migrations` but its tables were absent
+(metadata drift). Deploying `000004` on top of this caused a cascade failure.
+The pre-flight check would have caught this before deploy.
 
 ### Smoke Test Checklist
 

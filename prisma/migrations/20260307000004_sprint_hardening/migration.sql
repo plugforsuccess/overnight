@@ -1,5 +1,11 @@
 -- Sprint Hardening: idempotency keys, archive semantics, reservation event expansion,
 -- booking deduplication, and operational safety constraints.
+--
+-- Depends on: 20260307000003_operational_hardening (creates reservation_events,
+-- incident_reports, center_staff_memberships, pickup_verifications).
+-- If 000003 is stuck as failed/partially-applied, resolve it first:
+--   npx prisma migrate resolve --rolled-back 20260307000003_operational_hardening
+--   npx prisma migrate deploy
 
 -- ============================================================
 -- 1. Idempotency Keys Table

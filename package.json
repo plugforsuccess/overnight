@@ -13,6 +13,7 @@
     "migrate:status": "prisma migrate status",
     "migrate:resolve": "prisma migrate resolve",
     "migrate:check": "./scripts/check-migration-state.sh",
+    "migrate:verify": "./scripts/verify-migrations-ci.sh",
     "migrate:knex:legacy": "npx knex migrate:latest",
     "migrate:billing:legacy": "ts-node src/db/migrate.ts",
     "prisma:generate": "prisma generate",

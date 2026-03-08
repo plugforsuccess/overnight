@@ -159,6 +159,55 @@ for table in "${RLS_TABLES[@]}"; do
 done
 echo ""
 
+# ── Step 6: Metadata drift detection ─────────────────────────
+echo -e "${YELLOW}6. Metadata drift detection${NC}"
+echo "─────────────────────────────────────────────────────"
+
+# Map migrations to the tables they create
+declare -A MIGRATION_TABLES
+MIGRATION_TABLES["20260307000002_enterprise_hardening"]="child_events child_attendance_sessions pickup_events"
+MIGRATION_TABLES["20260307000003_operational_hardening"]="reservation_events incident_reports center_staff_memberships pickup_verifications"
+MIGRATION_TABLES["20260307000004_sprint_hardening"]="idempotency_keys"
+
+DRIFT_FOUND=false
+
+for migration in "${!MIGRATION_TABLES[@]}"; do
+  # Check if this migration is marked as applied
+  IS_APPLIED=$(psql "$DB_URL" -tAc "
+    SELECT EXISTS (
+      SELECT 1 FROM _prisma_migrations
+      WHERE migration_name = '$migration'
+        AND finished_at IS NOT NULL
+        AND rolled_back_at IS NULL
+    );
+  " 2>/dev/null || echo "error")
+
+  if [ "$IS_APPLIED" != "t" ]; then
+    continue
+  fi
+
+  # Check if its tables actually exist
+  for table in ${MIGRATION_TABLES[$migration]}; do
+    TABLE_EXISTS=$(psql "$DB_URL" -tAc "
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = '$table'
+      );
+    " 2>/dev/null || echo "error")
+
+    if [ "$TABLE_EXISTS" = "f" ]; then
+      echo -e "  ${RED}DRIFT${NC} $migration marked APPLIED but ${RED}$table${NC} is missing"
+      echo -e "        Fix: delete stale row, then redeploy. See docs/prisma-migration-recovery.md Scenario D"
+      DRIFT_FOUND=true
+    fi
+  done
+done
+
+if [ "$DRIFT_FOUND" = "false" ]; then
+  echo -e "  ${GREEN}✓${NC} No metadata drift detected"
+fi
+echo ""
+
 # ── Summary ──────────────────────────────────────────────────
 echo -e "${CYAN}═══════════════════════════════════════════════════${NC}"
 echo -e "${CYAN}  Diagnostic complete.${NC}"
