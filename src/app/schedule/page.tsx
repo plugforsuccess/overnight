@@ -10,7 +10,7 @@ import { DayOfWeek, Child, AdminSettings, PricingTier } from '@/types/database';
 import CalendarSelector from '@/components/schedule/CalendarSelector';
 import SelectedNightsBar from '@/components/schedule/SelectedNightsBar';
 import CalendarView from '@/components/schedule/CalendarView';
-import { format, parseISO, startOfWeek } from 'date-fns';
+import { format, parseISO, startOfWeek, isSameWeek } from 'date-fns';
 
 interface ChildProfile extends Child {
   emergency_contacts_count: number;
@@ -178,6 +178,17 @@ export default function SchedulePage() {
       setErrorCode('INVALID_PLAN_SELECTION');
       return;
     }
+
+    // Enforce all nights must be in the same operational week
+    const sorted = Array.from(selectedNights).sort();
+    const firstDate = parseISO(sorted[0]);
+    const allSameWeek = sorted.every(d => isSameWeek(parseISO(d), firstDate, { weekStartsOn: 0 }));
+    if (!allSameWeek) {
+      setError('All selected nights must be within the same week. Please adjust your selection.');
+      setErrorCode('INVALID_PLAN_SELECTION');
+      return;
+    }
+
     setError('');
     setErrorCode(null);
     setStep('child');
@@ -461,8 +472,15 @@ export default function SchedulePage() {
               <div className="bg-gray-50 rounded-lg p-4">
                 <div className="text-sm text-gray-500 mb-1">Child</div>
                 <div className="font-semibold text-gray-900">
-                  {children.find(c => c.id === selectedChild)?.first_name}{' '}
-                  {children.find(c => c.id === selectedChild)?.last_name}
+                  {children.find((c: ChildProfile) => c.id === selectedChild)?.first_name}{' '}
+                  {children.find((c: ChildProfile) => c.id === selectedChild)?.last_name}
+                </div>
+              </div>
+
+              <div className="bg-navy-50 rounded-lg p-4 border border-navy-200">
+                <div className="text-sm text-navy-600 font-medium mb-1">Week</div>
+                <div className="font-semibold text-navy-900">
+                  {formatWeekRange(weekStartDate)}
                 </div>
               </div>
 

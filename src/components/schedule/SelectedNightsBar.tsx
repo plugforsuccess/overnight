@@ -1,10 +1,10 @@
 'use client';
 
 import { X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, formatWeekRange } from '@/lib/utils';
 import { formatCents } from '@/lib/constants';
 import { PricingTier } from '@/types/database';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, startOfWeek } from 'date-fns';
 
 interface SelectedNightsBarProps {
   selectedNights: Set<string>;
@@ -53,12 +53,17 @@ export default function SelectedNightsBar({
           })}
         </div>
 
-        {/* Plan auto-calculation and continue */}
+        {/* Week label + plan auto-calculation and continue */}
         <div className="flex items-center justify-between">
           <div>
             <span className="text-sm font-semibold text-gray-900">
               {nightCount} night{nightCount !== 1 ? 's' : ''} selected
             </span>
+            {nightCount > 0 && (
+              <span className="text-xs text-gray-400 ml-2">
+                Week of {formatWeekRange(startOfWeek(parseISO(sortedNights[0]), { weekStartsOn: 0 }))}
+              </span>
+            )}
             {matchedPlan ? (
               <span className="text-sm text-gray-500 ml-2">
                 &middot; {formatCents(matchedPlan.price_cents)}/week
