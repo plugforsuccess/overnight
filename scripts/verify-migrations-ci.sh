@@ -2,15 +2,16 @@
 # ─────────────────────────────────────────────────────────────
 # verify-migrations-ci.sh — CI migration verification
 # ─────────────────────────────────────────────────────────────
-# Runs all Prisma migrations from scratch against a clean Postgres
-# instance and verifies that every expected schema object exists.
+# Verifies that Prisma migrations apply cleanly and that every
+# expected schema object exists. Designed to run in CI after
+# `prisma migrate deploy`, or standalone against any database.
 #
 # Usage:
 #   DATABASE_URL="postgresql://..." ./scripts/verify-migrations-ci.sh
 #
 # Exit codes:
 #   0 — all migrations applied, all objects verified
-#   1 — migration failure, missing objects, or metadata drift
+#   non-zero — number of failed checks
 # ─────────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -32,27 +33,41 @@ fi
 pass() { echo -e "  ${GREEN}✓${NC} $1"; }
 fail() { echo -e "  ${RED}✗${NC} $1"; ERRORS=$((ERRORS + 1)); }
 
-# ── Step 1: Deploy all migrations from scratch ─────────────
 echo -e "${CYAN}═══════════════════════════════════════════════════${NC}"
 echo -e "${CYAN}  CI Migration Verification${NC}"
 echo -e "${CYAN}═══════════════════════════════════════════════════${NC}"
 echo ""
-echo -e "${YELLOW}1. Deploying all migrations from scratch${NC}"
+
+# ── Step 1: Attempt deploy (idempotent — no-ops if current) ─
+echo -e "${YELLOW}1. Applying pending migrations${NC}"
 echo "─────────────────────────────────────────────────────"
 
-DEPLOY_OUTPUT=$(npx prisma migrate deploy 2>&1) || {
-  echo -e "${RED}prisma migrate deploy FAILED:${NC}"
-  echo "$DEPLOY_OUTPUT"
-  exit 1
-}
+DEPLOY_OUTPUT=$(npx prisma migrate deploy 2>&1) && DEPLOY_OK=true || DEPLOY_OK=false
 echo "$DEPLOY_OUTPUT"
+
+if [ "$DEPLOY_OK" = "true" ]; then
+  pass "prisma migrate deploy succeeded"
+else
+  # P3009 = failed migrations block deploy; P3018 = migration SQL error
+  # Either way, record the failure and continue to verify what we can.
+  if echo "$DEPLOY_OUTPUT" | grep -q "P3009"; then
+    fail "prisma migrate deploy blocked by stale failed migration (P3009)"
+    echo -e "  ${YELLOW}→ A previously failed migration must be resolved before deploy.${NC}"
+    echo -e "  ${YELLOW}  Run: npx prisma migrate resolve --rolled-back <migration_name>${NC}"
+    echo -e "  ${YELLOW}  See: docs/prisma-migration-recovery.md${NC}"
+  elif echo "$DEPLOY_OUTPUT" | grep -q "P3018"; then
+    fail "prisma migrate deploy failed — migration SQL error (P3018)"
+  else
+    fail "prisma migrate deploy failed — see output above"
+  fi
+fi
 echo ""
 
 # ── Step 2: Verify prisma migrate status is clean ──────────
 echo -e "${YELLOW}2. Prisma migrate status${NC}"
 echo "─────────────────────────────────────────────────────"
 
-STATUS_OUTPUT=$(npx prisma migrate status 2>&1)
+STATUS_OUTPUT=$(npx prisma migrate status 2>&1) || true
 echo "$STATUS_OUTPUT"
 
 if echo "$STATUS_OUTPUT" | grep -q "Database schema is up to date"; then
@@ -66,43 +81,61 @@ echo ""
 echo -e "${YELLOW}3. Migration metadata — no failures or drift${NC}"
 echo "─────────────────────────────────────────────────────"
 
-FAILED_COUNT=$(psql "$DB_URL" -tAc "
-  SELECT COUNT(*) FROM _prisma_migrations
-  WHERE finished_at IS NULL AND rolled_back_at IS NULL;
+# Check if _prisma_migrations exists before querying it
+HAS_TABLE=$(psql "$DB_URL" -tAc "
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = '_prisma_migrations'
+  );
 " 2>/dev/null || echo "error")
 
-if [ "$FAILED_COUNT" = "0" ]; then
-  pass "No failed migrations"
+if [ "$HAS_TABLE" != "t" ]; then
+  fail "_prisma_migrations table does not exist — migrations never ran"
+  echo ""
 else
-  fail "$FAILED_COUNT migration(s) in failed state"
+  FAILED_COUNT=$(psql "$DB_URL" -tAc "
+    SELECT COUNT(*) FROM _prisma_migrations
+    WHERE finished_at IS NULL AND rolled_back_at IS NULL;
+  " 2>/dev/null || echo "error")
+
+  if [ "$FAILED_COUNT" = "0" ]; then
+    pass "No failed migrations"
+  else
+    FAILED_NAMES=$(psql "$DB_URL" -tAc "
+      SELECT migration_name FROM _prisma_migrations
+      WHERE finished_at IS NULL AND rolled_back_at IS NULL
+      ORDER BY started_at;
+    " 2>/dev/null || echo "unknown")
+    fail "$FAILED_COUNT migration(s) in failed state: $(echo "$FAILED_NAMES" | tr '\n' ' ')"
+  fi
+
+  ROLLED_BACK_COUNT=$(psql "$DB_URL" -tAc "
+    SELECT COUNT(*) FROM _prisma_migrations
+    WHERE rolled_back_at IS NOT NULL;
+  " 2>/dev/null || echo "error")
+
+  if [ "$ROLLED_BACK_COUNT" = "0" ]; then
+    pass "No rolled-back migrations"
+  else
+    fail "$ROLLED_BACK_COUNT migration(s) marked as rolled back"
+  fi
+
+  # Check for duplicate applied rows (a sign of prior recovery)
+  DUPLICATE_COUNT=$(psql "$DB_URL" -tAc "
+    SELECT COUNT(*) FROM (
+      SELECT migration_name FROM _prisma_migrations
+      WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
+      GROUP BY migration_name HAVING COUNT(*) > 1
+    ) AS dupes;
+  " 2>/dev/null || echo "error")
+
+  if [ "$DUPLICATE_COUNT" = "0" ]; then
+    pass "No duplicate applied rows"
+  else
+    fail "$DUPLICATE_COUNT migration(s) have duplicate applied rows (metadata drift signal)"
+  fi
+  echo ""
 fi
-
-ROLLED_BACK_COUNT=$(psql "$DB_URL" -tAc "
-  SELECT COUNT(*) FROM _prisma_migrations
-  WHERE rolled_back_at IS NOT NULL;
-" 2>/dev/null || echo "error")
-
-if [ "$ROLLED_BACK_COUNT" = "0" ]; then
-  pass "No rolled-back migrations"
-else
-  fail "$ROLLED_BACK_COUNT migration(s) marked as rolled back"
-fi
-
-# Check for duplicate applied rows (a sign of prior recovery)
-DUPLICATE_COUNT=$(psql "$DB_URL" -tAc "
-  SELECT COUNT(*) FROM (
-    SELECT migration_name FROM _prisma_migrations
-    WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
-    GROUP BY migration_name HAVING COUNT(*) > 1
-  ) AS dupes;
-" 2>/dev/null || echo "error")
-
-if [ "$DUPLICATE_COUNT" = "0" ]; then
-  pass "No duplicate applied rows"
-else
-  fail "$DUPLICATE_COUNT migration(s) have duplicate applied rows (metadata drift signal)"
-fi
-echo ""
 
 # ── Step 4: Verify required tables ────────────────────────
 echo -e "${YELLOW}4. Required tables${NC}"
