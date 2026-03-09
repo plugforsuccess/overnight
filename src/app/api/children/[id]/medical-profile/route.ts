@@ -28,6 +28,7 @@ export async function GET(
     .from('child_medical_profiles')
     .select('*')
     .eq('child_id', childId)
+    .eq('facility_id', auth.activeFacilityId)
     .single();
 
   if (error && error.code !== 'PGRST116') return badRequest('Failed to load medical profile');
@@ -65,6 +66,7 @@ export async function POST(
 
   const profileData = {
     child_id: childId,
+    facility_id: auth.activeFacilityId,
     ...parsed.data,
   };
 
@@ -73,6 +75,7 @@ export async function POST(
     .from('child_medical_profiles')
     .select('id')
     .eq('child_id', childId)
+    .eq('facility_id', auth.activeFacilityId)
     .single();
 
   let result;
@@ -81,6 +84,7 @@ export async function POST(
       .from('child_medical_profiles')
       .update(parsed.data)
       .eq('child_id', childId)
+      .eq('facility_id', auth.activeFacilityId)
       .select()
       .single();
     if (error) return badRequest(error.message);

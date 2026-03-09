@@ -21,6 +21,14 @@ export default function RosterPage() {
   const weekStart = addDays(getCurrentWeekStart(), weekOffset * 7);
   const operatingNights = (settings?.operating_nights ?? DEFAULT_OPERATING_NIGHTS) as DayOfWeek[];
   const capacity = settings?.max_capacity ?? DEFAULT_CAPACITY;
+
+  async function getAuthHeaders() {
+    const { data: { session } } = await supabase.auth.getSession();
+    return {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session?.access_token || ''}` ,
+    };
+  }
   const weekNights = getWeekNights(weekStart, operatingNights);
 
   useEffect(() => {
@@ -41,12 +49,10 @@ export default function RosterPage() {
   useEffect(() => {
     if (!selectedDate) return;
     async function loadRoster() {
-      const { data } = await supabase
-        .from('reservations')
-        .select('*, child:children(*), overnight_block:overnight_blocks(*, parent:parents(*))')
-        .eq('date', selectedDate)
-        .eq('status', 'confirmed');
-      setReservations(data || []);
+      const res = await fetch(`/api/admin?view=roster&date=${selectedDate}`, { headers: await getAuthHeaders() });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || 'Failed to load roster');
+      setReservations(payload.reservations || []);
     }
     loadRoster();
   }, [selectedDate]);
@@ -60,7 +66,11 @@ export default function RosterPage() {
 
   async function cancelReservation(id: string) {
     if (!confirm('Cancel this reservation?')) return;
-    await supabase.from('reservations').update({ status: 'cancelled' }).eq('id', id);
+    await fetch('/api/admin', {
+      method: 'PUT',
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({ action: 'cancel_reservation', reservationId: id }),
+    });
     setReservations(prev => prev.filter(r => r.id !== id));
   }
 

@@ -41,6 +41,7 @@ export async function GET(
     .from('child_events')
     .select('*', { count: 'exact' })
     .eq('child_id', childId)
+    .eq('facility_id', auth.activeFacilityId)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -86,6 +87,7 @@ export async function POST(
   const { data: event, error } = await supabaseAdmin
     .from('child_events')
     .insert({
+      facility_id: auth.activeFacilityId,
       child_id: childId,
       event_type: parsed.data.event_type,
       event_data: parsed.data.event_data,

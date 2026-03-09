@@ -79,8 +79,20 @@ export async function GET(req: NextRequest) {
 
   const { count: totalChildren } = await supabaseAdmin
     .from('children')
-    .select('id', { count: 'exact', head: true })
+    .select('*', { count: 'exact', head: true })
     .eq('facility_id', user.activeFacilityId);
+
+  const { count: waitlistedCount } = await supabaseAdmin
+    .from('waitlist')
+    .select('id', { count: 'exact', head: true })
+    .eq('facility_id', user.activeFacilityId)
+    .in('status', ['waiting', 'offered']);
+
+  const [succeededPayments, pendingPayments, failedPayments] = await Promise.all([
+    supabaseAdmin.from('payments').select('id', { count: 'exact', head: true }).eq('facility_id', user.activeFacilityId).eq('status', 'succeeded'),
+    supabaseAdmin.from('payments').select('id', { count: 'exact', head: true }).eq('facility_id', user.activeFacilityId).eq('status', 'pending'),
+    supabaseAdmin.from('payments').select('id', { count: 'exact', head: true }).eq('facility_id', user.activeFacilityId).eq('status', 'failed'),
+  ]);
 
   const totalRevenue = activePlans?.reduce((sum, p) => sum + p.price_cents, 0) ?? 0;
 
@@ -88,6 +100,12 @@ export async function GET(req: NextRequest) {
     activePlansCount: activePlans?.length ?? 0,
     totalChildren: totalChildren ?? 0,
     weeklyRevenue: totalRevenue,
+    waitlistedCount: waitlistedCount ?? 0,
+    paymentStats: {
+      succeeded: succeededPayments.count ?? 0,
+      pending: pendingPayments.count ?? 0,
+      failed: failedPayments.count ?? 0,
+    },
   });
 }
 

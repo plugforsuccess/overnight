@@ -64,11 +64,13 @@ export async function GET(
       .from('child_medical_profiles')
       .select('*')
       .eq('child_id', childId)
+      .eq('facility_id', auth.activeFacilityId)
       .single(),
     auth.supabase
       .from('child_immunization_records')
       .select('*')
       .eq('child_id', childId)
+      .eq('facility_id', auth.activeFacilityId)
       .single(),
     auth.supabase
       .from('medication_authorizations')
@@ -79,6 +81,7 @@ export async function GET(
       .from('child_documents')
       .select('id, document_type, file_name, file_size, mime_type, expires_at, verified, verified_at, notes, is_active, created_at')
       .eq('child_id', childId)
+      .eq('facility_id', auth.activeFacilityId)
       .eq('is_active', true)
       .order('created_at', { ascending: false }),
   ]);
