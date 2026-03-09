@@ -319,31 +319,10 @@ async function step4_cancelNight(): Promise<boolean> {
     return false;
   }
 
-  // Rebook for check-in/out tests
-  const careDate = today();
-  const { data: night, error: rebookError } = await supabase
-    .from('reservation_nights')
-    .insert({
-      facility_id: activeFacilityId,
-      reservation_id: testReservationId,
-      child_id: testChildId,
-      care_date: careDate,
-      status: 'confirmed',
-      capacity_snapshot: 0,
-    })
-    .select('id')
-    .single();
-
-  if (rebookError || !night) {
-    fail('cancel_night', `Rebook after cancel failed: ${rebookError?.message}`);
-    return false;
-  }
-
-  // Update night ID and track cleanup
-  testNightId = night.id;
-  cleanupItems.push({ table: 'reservation_nights', id: testNightId });
-
-  pass('cancel_night', 'Cancelled night and rebooked successfully');
+  // Do not rebook on the same date: reservation_nights has a unique index on
+  // (child_id, care_date), so a second insert for this child/date would violate
+  // reservation_nights_child_date_unique.
+  pass('cancel_night', `Cancelled reservation night ${testNightId} without rebook`);
   return true;
 }
 
@@ -399,20 +378,34 @@ async function step6_checkOut(): Promise<boolean> {
     return false;
   }
 
-  const { error } = await supabase
-    .from('child_attendance_sessions')
-    .update({
-      status: 'checked_out',
-      check_out_at: new Date().toISOString(),
-    })
-    .eq('id', session.id);
+  const sessionId = session.id;
+  const transitions: Array<'in_care' | 'ready_for_pickup' | 'checked_out'> = [
+    'in_care',
+    'ready_for_pickup',
+    'checked_out',
+  ];
 
-  if (error) {
-    fail('check_out', `Check-out failed: ${error.message}`);
-    return false;
+  for (const status of transitions) {
+    const patch: { status: 'in_care' | 'ready_for_pickup' | 'checked_out'; check_out_at?: string } = {
+      status,
+    };
+
+    if (status === 'checked_out') {
+      patch.check_out_at = new Date().toISOString();
+    }
+
+    const { error } = await supabase
+      .from('child_attendance_sessions')
+      .update(patch)
+      .eq('id', sessionId);
+
+    if (error) {
+      fail('check_out', `Transition to ${status} failed: ${error.message}`);
+      return false;
+    }
   }
 
-  pass('check_out', `Checked out child (session ${session.id})`);
+  pass('check_out', `Advanced session ${sessionId} through in_care -> ready_for_pickup -> checked_out`);
   return true;
 }
 
