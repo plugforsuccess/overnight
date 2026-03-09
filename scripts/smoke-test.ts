@@ -73,10 +73,10 @@ function today(): string {
 
 function weekStartDateISO(reference: Date = new Date()): string {
   const d = new Date(reference);
-  const day = d.getDay(); // 0=Sun ... 6=Sat
+  const day = d.getUTCDay(); // 0=Sun ... 6=Sat
   const deltaToMonday = (day + 6) % 7;
-  d.setDate(d.getDate() - deltaToMonday);
-  d.setHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() - deltaToMonday);
+  d.setUTCHours(0, 0, 0, 0);
   return d.toISOString().split('T')[0];
 }
 
