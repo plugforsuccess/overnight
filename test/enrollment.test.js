@@ -4,6 +4,8 @@ const reservationService = require('../src/services/reservation');
 const enrollmentService = require('../src/services/enrollment');
 const creditService = require('../src/services/credit');
 
+const DEFAULT_FACILITY_ID = '00000000-0000-0000-0000-000000000001';
+
 const WEEK_START = '2026-03-08'; // A Sunday
 
 let parentId, parent2Id, childId, child2Id, child3Id;
@@ -30,8 +32,8 @@ beforeEach(async () => {
   child3Id = crypto.randomUUID();
 
   await db('parents').insert([
-    { id: parentId, name: 'Alice', email: 'alice@test.com', phone: '+1111', is_admin: false },
-    { id: parent2Id, name: 'Bob', email: 'bob@test.com', phone: '+2222', is_admin: false },
+    { id: parentId, name: 'Alice', email: 'alice@test.com', phone: '+1111', is_admin: false, facility_id: DEFAULT_FACILITY_ID },
+    { id: parent2Id, name: 'Bob', email: 'bob@test.com', phone: '+2222', is_admin: false, facility_id: DEFAULT_FACILITY_ID },
   ]);
   await db('children').insert([
     { id: childId, parent_id: parentId, name: 'Charlie' },
