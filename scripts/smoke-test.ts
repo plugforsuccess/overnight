@@ -160,7 +160,6 @@ async function step2_createChild(): Promise<boolean> {
     .from('children')
     .insert({
       facility_id: activeFacilityId,
-      parent_id: testParentId,
       first_name: 'SmokeChild',
       last_name: 'Test',
       date_of_birth: '2020-01-15',
@@ -201,12 +200,10 @@ async function step3_bookNight(): Promise<boolean> {
     .from('reservations')
     .insert({
       facility_id: activeFacilityId,
-      parent_id: testParentId,
       child_id: testChildId,
       program_id: programId,
       status: 'confirmed',
-      booking_type: 'drop_in',
-    })
+      })
     .select('id')
     .single();
 
