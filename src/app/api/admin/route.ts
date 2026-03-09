@@ -79,8 +79,8 @@ export async function GET(req: NextRequest) {
 
   const { count: totalChildren } = await supabaseAdmin
     .from('children')
-    .eq('facility_id', user.activeFacilityId)
-    .select('id', { count: 'exact', head: true });
+    .select('id', { count: 'exact', head: true })
+    .eq('facility_id', user.activeFacilityId);
 
   const totalRevenue = activePlans?.reduce((sum, p) => sum + p.price_cents, 0) ?? 0;
 

@@ -42,6 +42,13 @@
 - Depends on: parents, children, child_attendance_sessions
 - Unsafe assumptions: none
 
+## 20260308000000_create_centers_programs
+
+- Creates: centers, programs
+- Alters: programs
+- Depends on: centers, programs
+- Unsafe assumptions: none
+
 ## 20260308000001_attendance_records
 
 - Creates: attendance_records, attendance_events
@@ -69,3 +76,17 @@
 - Alters: none
 - Depends on: parents, reservation_nights, children, billing_ledger
 - Unsafe assumptions: none
+
+## 20260309000001_child_licensing_compliance
+
+- Creates: child_documents, child_immunization_records, medication_authorizations, medication_administration_logs
+- Alters: child_documents
+- Depends on: children, medication_authorizations, child_documents, medication_administration_logs
+- Unsafe assumptions: none
+
+## 202603090001_daycare_tenancy_merge
+
+- Creates: facilities, facility_memberships, platform_audit_logs, platform_fee_records
+- Alters: facilities, facility_memberships, platform_audit_logs, platform_fee_records
+- Depends on: facilities, auth.users
+- Unsafe assumptions: Supabase auth schema reference: auth.users; Supabase auth schema reference: auth.uid

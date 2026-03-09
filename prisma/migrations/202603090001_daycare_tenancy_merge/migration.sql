@@ -98,7 +98,7 @@ CREATE INDEX IF NOT EXISTS idx_platform_fee_records_facility_settled_created ON 
 CREATE INDEX IF NOT EXISTS idx_platform_fee_records_payment_cycle ON public.platform_fee_records (payment_cycle_id);
 
 INSERT INTO public.facilities (id,name,slug,owner_email,subscription_status,subscription_tier,is_active)
-VALUES ('00000000-0000-0000-0000-000000000001','Overnight Atlanta','overnight-atlanta','owner@example.com','ACTIVE','PROFESSIONAL',true)
+VALUES ('00000000-0000-0000-0000-000000000001','Overnight Atlanta','overnight-atlanta',NULL,'ACTIVE','PROFESSIONAL',true)
 ON CONFLICT (slug) DO NOTHING;
 
 DO $$
@@ -130,8 +130,23 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_facility_created_at ON public.audit_log
 INSERT INTO public.facility_memberships (facility_id, user_id, role, is_active)
 SELECT '00000000-0000-0000-0000-000000000001'::uuid, au.id, 'ADMIN'::facility_role, true
 FROM auth.users au
-WHERE lower(au.email) IN ('owner@example.com')
+JOIN public.parents p ON p.id = au.id
+WHERE COALESCE(p.is_admin, false) = true OR COALESCE(lower(p.role), '') IN ('admin', 'center_admin', 'super_admin')
 ON CONFLICT (facility_id, user_id) DO NOTHING;
+
+UPDATE public.facilities f
+SET owner_email = admin_seed.email
+FROM (
+  SELECT lower(au.email) AS email
+  FROM auth.users au
+  JOIN public.parents p ON p.id = au.id
+  WHERE (COALESCE(p.is_admin, false) = true OR COALESCE(lower(p.role), '') IN ('admin', 'center_admin', 'super_admin'))
+    AND au.email IS NOT NULL
+  ORDER BY au.created_at ASC
+  LIMIT 1
+) AS admin_seed
+WHERE f.id = '00000000-0000-0000-0000-000000000001'::uuid
+  AND (f.owner_email IS NULL OR f.owner_email = '' OR lower(f.owner_email) = 'owner@example.com');
 
 CREATE OR REPLACE FUNCTION public.current_facility_id()
 RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULLIF(current_setting('app.current_facility_id', true), '')::uuid $$;

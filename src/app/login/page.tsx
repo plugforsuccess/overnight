@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Moon } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
@@ -32,7 +32,6 @@ export default function LoginPage() {
         return;
       }
 
-      // Resolve parent profile server-side (bypasses RLS)
       const { data: { session } } = await supabase.auth.getSession();
       console.log(`[login] session after sign-in: exists=${!!session} userId=${session?.user?.id ?? 'null'}`);
 
@@ -54,8 +53,6 @@ export default function LoginPage() {
         const redirectTo = searchParams.get('redirect');
         const destination = role === 'admin' ? '/admin' : (redirectTo || '/dashboard');
 
-        // Use router.replace (not push) so back button doesn't return to login
-        // Then router.refresh() to ensure server components re-evaluate auth
         router.replace(destination);
         router.refresh();
       } else {
@@ -126,5 +123,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-[80vh]" />}>
+      <LoginForm />
+    </Suspense>
   );
 }
