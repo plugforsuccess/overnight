@@ -25,70 +25,53 @@ interface MetricCard {
   key: keyof OpsMetrics;
   label: string;
   icon: React.ElementType;
-  thresholds: { green: number; yellow: number };
-  invertWarning?: boolean;
+  getColor: (value: number) => 'green' | 'yellow' | 'red';
   description: string;
 }
 
+// Thresholds per spec:
+//   Attendance Integrity: green >= 98%, yellow >= 95%, red < 95%
+//   Capacity Utilization: green 40-95%, yellow <40% or >95%
+//   Waitlist Pressure:    green < 30%, yellow 30-50%, red > 50%
+//   Safety Completeness:  green 100%, yellow >= 90%, red < 90%
+//   Revenue Capture:      green >= 95%, yellow >= 85%, red < 85%
 const METRIC_CARDS: MetricCard[] = [
   {
     key: 'attendance_integrity',
     label: 'Attendance Integrity',
     icon: ClipboardCheck,
-    thresholds: { green: 0.98, yellow: 0.90 },
+    getColor: (v) => v >= 0.98 ? 'green' : v >= 0.95 ? 'yellow' : 'red',
     description: 'Reservations matching attendance records',
   },
   {
     key: 'capacity_utilization',
     label: 'Capacity Utilization',
     icon: BarChart3,
-    thresholds: { green: 0.40, yellow: 0.95 },
-    invertWarning: true,
+    getColor: (v) => (v >= 0.40 && v <= 0.95) ? 'green' : 'yellow',
     description: 'Proportion of capacity currently reserved',
   },
   {
     key: 'waitlist_pressure',
     label: 'Waitlist Pressure',
     icon: Users,
-    thresholds: { green: 0.50, yellow: 0.30 },
-    invertWarning: true,
+    getColor: (v) => v <= 0.30 ? 'green' : v <= 0.50 ? 'yellow' : 'red',
     description: 'Families waiting relative to total capacity',
   },
   {
     key: 'safety_completeness',
     label: 'Safety Completeness',
     icon: ShieldCheck,
-    thresholds: { green: 1.0, yellow: 0.90 },
+    getColor: (v) => v >= 1.0 ? 'green' : v >= 0.90 ? 'yellow' : 'red',
     description: 'Child profiles with complete safety info',
   },
   {
     key: 'revenue_capture',
     label: 'Revenue Capture',
     icon: DollarSign,
-    thresholds: { green: 0.95, yellow: 0.85 },
+    getColor: (v) => v >= 0.95 ? 'green' : v >= 0.85 ? 'yellow' : 'red',
     description: 'Booked nights that have been paid',
   },
 ];
-
-function getStatusColor(card: MetricCard, value: number): 'green' | 'yellow' | 'red' {
-  if (card.invertWarning) {
-    // For capacity_utilization: green between yellow..green, yellow/red outside
-    // For waitlist_pressure: green below green threshold, yellow, then red
-    if (card.key === 'capacity_utilization') {
-      if (value >= card.thresholds.green && value <= card.thresholds.yellow) return 'green';
-      if (value < card.thresholds.green || value > card.thresholds.yellow) return 'yellow';
-      return 'red';
-    }
-    // waitlist_pressure: lower is better
-    if (value <= card.thresholds.yellow) return 'green';
-    if (value <= card.thresholds.green) return 'yellow';
-    return 'red';
-  }
-  // Standard: higher is better
-  if (value >= card.thresholds.green) return 'green';
-  if (value >= card.thresholds.yellow) return 'yellow';
-  return 'red';
-}
 
 const COLOR_CLASSES = {
   green: {
@@ -164,7 +147,7 @@ export default function OpsHealthDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {METRIC_CARDS.map((card) => {
               const value = metrics[card.key];
-              const status = getStatusColor(card, value);
+              const status = card.getColor(value);
               const colors = COLOR_CLASSES[status];
               const Icon = card.icon;
               const pct = (value * 100).toFixed(1);
