@@ -49,9 +49,10 @@ model Center {
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  programs          Program[]
+  programs           Program[]
   program_capacities ProgramCapacity[]
   capacity_overrides CapacityOverride[]
+  center_memberships CenterMembership[]
 
   @@map("centers")
 }
@@ -236,6 +237,7 @@ model Child {
   incident_reports      IncidentReport[]
   reservation_nights    ReservationNight[]
   billing_ledger        BillingLedger[]
+  child_guardians       ChildGuardian[]
 
   @@index([parent_id], map: "idx_children_parent_id")
   @@map("children")
@@ -506,6 +508,81 @@ model CenterStaffMembership {
   @@unique([user_id, center_id], map: "center_staff_memberships_user_center_unique")
   @@index([center_id, active], map: "idx_staff_memberships_center_active")
   @@map("center_staff_memberships")
+}
+
+// ─── users (future canonical identity) ────────────────────────────────────
+// Canonical human identity layer for multi-tenant role architecture.
+// Represents the person, not their role, center, or child relationship.
+// Phase A: created alongside existing parents table.
+// Phase D: becomes the canonical identity source of truth.
+model User {
+  id         String  @id @db.Uuid
+  email      String  @unique
+  first_name String?
+  last_name  String?
+  phone      String?
+  status     String  @default("active") // CHECK: active | suspended | deactivated
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  center_memberships CenterMembership[]
+  child_guardians    ChildGuardian[]
+
+  @@map("users")
+}
+
+// ─── center_memberships (future center-scoped roles) ──────────────────────
+// Operational permissions per center. Source of truth for admin/staff access.
+// Replaces parents.role for center-scoped authorization.
+// CHECK: role IN (owner, admin, manager, staff, billing_only, viewer)
+// CHECK: membership_status IN (active, suspended, revoked)
+model CenterMembership {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id            String   @db.Uuid
+  center_id          String   @db.Uuid
+  role               String   // owner | admin | manager | staff | billing_only | viewer
+  membership_status  String   @default("active") // active | suspended | revoked
+  invited_by_user_id String?  @db.Uuid
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  user   User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  center Center @relation(fields: [center_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, center_id], map: "center_memberships_user_center_unique")
+  @@index([center_id, role], map: "idx_center_memberships_center_role")
+  @@map("center_memberships")
+}
+
+// ─── child_guardians (future family/contact relationships) ────────────────
+// Models parent/guardian access to children separately from operational roles.
+// Source of truth for parent-side access to child-linked data.
+// CHECK: guardian_role IN (parent, guardian, emergency_contact, authorized_pickup_only)
+model ChildGuardian {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id              String   @db.Uuid
+  user_id               String   @db.Uuid
+  relationship_to_child String?
+  guardian_role          String   // parent | guardian | emergency_contact | authorized_pickup_only
+  is_primary_guardian    Boolean  @default(false)
+  can_book              Boolean  @default(true)
+  can_view_billing      Boolean  @default(true)
+  can_manage_pickups    Boolean  @default(true)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  child Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([child_id, user_id], map: "child_guardians_child_user_unique")
+  @@index([user_id], map: "idx_child_guardians_user")
+  @@map("child_guardians")
 }
 
 // ─── pickup_verifications ──────────────────────────────────────────────────

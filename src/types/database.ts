@@ -155,6 +155,51 @@ export interface ReservationNight {
   program_capacity?: ProgramCapacity;
 }
 
+// ─── users (future canonical identity) ──────────────────────────────────────
+export interface User {
+  id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  status: 'active' | 'suspended' | 'deactivated';
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── center_memberships (future center-scoped roles) ────────────────────────
+export interface CenterMembership {
+  id: string;
+  user_id: string;
+  center_id: string;
+  role: 'owner' | 'admin' | 'manager' | 'staff' | 'billing_only' | 'viewer';
+  membership_status: 'active' | 'suspended' | 'revoked';
+  invited_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined
+  user?: User;
+  center?: Center;
+}
+
+// ─── child_guardians (future family/contact relationships) ──────────────────
+export interface ChildGuardian {
+  id: string;
+  child_id: string;
+  user_id: string;
+  relationship_to_child: string | null;
+  guardian_role: 'parent' | 'guardian' | 'emergency_contact' | 'authorized_pickup_only';
+  is_primary_guardian: boolean;
+  can_book: boolean;
+  can_view_billing: boolean;
+  can_manage_pickups: boolean;
+  created_at: string;
+  updated_at: string;
+  // Joined
+  child?: Child;
+  user?: User;
+}
+
 export interface PricingTier {
   nights: number;
   price_cents: number;

@@ -319,6 +319,61 @@ export const VALID_ATTENDANCE_TRANSITIONS: Record<string, string[]> = {
   cancelled: [],
 };
 
+// ─── User (future canonical identity) ────────────────────────────────────────
+
+export interface UserRow {
+  id: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  status: 'active' | 'suspended' | 'deactivated';
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Center Membership (future center-scoped roles) ─────────────────────────
+
+export const CENTER_MEMBERSHIP_ROLES = [
+  'owner', 'admin', 'manager', 'staff', 'billing_only', 'viewer',
+] as const;
+export type CenterMembershipRole = typeof CENTER_MEMBERSHIP_ROLES[number];
+
+export const MEMBERSHIP_STATUSES = ['active', 'suspended', 'revoked'] as const;
+export type MembershipStatus = typeof MEMBERSHIP_STATUSES[number];
+
+export interface CenterMembershipRow {
+  id: string;
+  user_id: string;
+  center_id: string;
+  role: CenterMembershipRole;
+  membership_status: MembershipStatus;
+  invited_by_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Child Guardian (future family/contact relationships) ────────────────────
+
+export const GUARDIAN_ROLES = [
+  'parent', 'guardian', 'emergency_contact', 'authorized_pickup_only',
+] as const;
+export type GuardianRole = typeof GUARDIAN_ROLES[number];
+
+export interface ChildGuardianRow {
+  id: string;
+  child_id: string;
+  user_id: string;
+  relationship_to_child: string | null;
+  guardian_role: GuardianRole;
+  is_primary_guardian: boolean;
+  can_book: boolean;
+  can_view_billing: boolean;
+  can_manage_pickups: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // ─── Full child with nested data (for UI) ────────────────────────────────────
 
 export interface ChildWithDetails extends ChildRow {
