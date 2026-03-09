@@ -12,6 +12,9 @@ export interface AuthResult {
   activeFacilityId?: string | null;
   activeFacilitySlug?: string | null;
   activeFacilityRole?: string | null;
+  activeOrganizationId?: string | null;
+  activeOrganizationSlug?: string | null;
+  activeOrganizationRole?: string | null;
 }
 
 /**
@@ -51,6 +54,9 @@ export async function authenticateRequest(req: NextRequest): Promise<AuthResult 
     activeFacilityId: facilitySession?.activeFacilityId,
     activeFacilitySlug: facilitySession?.activeFacilitySlug,
     activeFacilityRole: facilitySession?.activeFacilityRole,
+    activeOrganizationId: facilitySession?.activeOrganizationId,
+    activeOrganizationSlug: facilitySession?.activeOrganizationSlug,
+    activeOrganizationRole: facilitySession?.activeOrganizationRole,
   };
 }
 

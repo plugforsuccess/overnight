@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { authenticateParentForFacility, checkFacilityAdmin, checkPlatformAdmin, checkPlatformSupport } from '@/lib/facility-auth';
+import { authenticateParentForFacility, checkFacilityAdmin, checkOrganizationAdmin, checkPlatformAdmin, checkPlatformSupport } from '@/lib/facility-auth';
 
 /**
  * Verify request has facility admin or platform admin/support access.
@@ -7,7 +7,7 @@ import { authenticateParentForFacility, checkFacilityAdmin, checkPlatformAdmin, 
 export async function checkAdmin(req: NextRequest) {
   const session = await authenticateParentForFacility(req);
   if (!session) return null;
-  if (checkPlatformAdmin(session) || checkPlatformSupport(session) || checkFacilityAdmin(session)) {
+  if (checkPlatformAdmin(session) || checkPlatformSupport(session) || checkFacilityAdmin(session) || checkOrganizationAdmin(session)) {
     return session;
   }
   return null;

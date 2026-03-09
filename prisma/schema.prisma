@@ -75,6 +75,15 @@ enum FacilityRole {
   @@map("facility_role")
 }
 
+enum OrganizationRole {
+  ORG_OWNER
+  ORG_ADMIN
+  ORG_BILLING
+  ORG_SUPPORT
+
+  @@map("organization_role")
+}
+
 enum PlatformAuditAction {
   SUSPEND
   REACTIVATE
@@ -1084,6 +1093,7 @@ model ParentSettings {
 
 model Facility {
   id                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId        String             @map("organization_id") @db.Uuid
   name                  String
   slug                  String             @unique
   ownerEmail            String?            @map("owner_email")
@@ -1110,6 +1120,8 @@ model Facility {
   suspendedReason       String?            @map("suspended_reason")
   createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime           @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   memberships             FacilityMembership[]
   platformAuditLogs       PlatformAuditLog[]
@@ -1149,7 +1161,45 @@ model Facility {
 
   @@index([subscriptionStatus], map: "idx_facilities_subscription_status")
   @@index([isActive], map: "idx_facilities_is_active")
+  @@index([organizationId], map: "idx_facilities_organization_id")
   @@map("facilities")
+}
+
+model Organization {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  slug          String   @unique
+  ownerUserId   String?  @map("owner_user_id") @db.Uuid
+  billingEmail  String?  @map("billing_email")
+  phone         String?
+  status        String   @default("active")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  facilities  Facility[]
+  memberships OrganizationMembership[]
+
+  @@index([status], map: "idx_organizations_status")
+  @@index([ownerUserId], map: "idx_organizations_owner_user_id")
+  @@map("organizations")
+}
+
+model OrganizationMembership {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  role           OrganizationRole
+  isActive       Boolean          @default(true) @map("is_active")
+  invitedBy      String?          @map("invited_by") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId], map: "organization_memberships_unique")
+  @@index([organizationId, role, isActive], map: "idx_org_memberships_org_role_active")
+  @@index([userId, isActive], map: "idx_org_memberships_user_active")
+  @@map("organization_memberships")
 }
 
 model FacilityMembership {
