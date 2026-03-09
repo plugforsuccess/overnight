@@ -45,7 +45,9 @@ let testChildId: string;
 let testReservationId: string;
 let testNightId: string;
 let testOvernightBlockId: string;
+let testPlanId: string;
 let activeFacilityId: string;
+let planResolution: 'resolved' | 'created';
 let cleanupItems: { table: string; id: string }[] = [];
 
 const results: { step: string; status: 'pass' | 'fail'; message: string }[] = [];
@@ -66,6 +68,15 @@ function today(): string {
   // Use tomorrow to avoid conflicts with actual operations
   const d = new Date();
   d.setDate(d.getDate() + 30); // 30 days out to avoid conflicts
+  return d.toISOString().split('T')[0];
+}
+
+function weekStartDateISO(reference: Date = new Date()): string {
+  const d = new Date(reference);
+  const day = d.getUTCDay(); // 0=Sun ... 6=Sat
+  const deltaToMonday = (day + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - deltaToMonday);
+  d.setUTCHours(0, 0, 0, 0);
   return d.toISOString().split('T')[0];
 }
 
@@ -182,20 +193,64 @@ async function step2_createChild(): Promise<boolean> {
 
 async function step3_bookNight(): Promise<boolean> {
   const careDate = today();
+  const weekStart = weekStartDateISO();
+
+  const { data: existingPlan, error: existingPlanError } = await supabase
+    .from('plans')
+    .select('id')
+    .eq('facility_id', activeFacilityId)
+    .eq('active', true)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingPlanError) {
+    fail('book_night', `Plan resolution failed: ${existingPlanError.message}`);
+    return false;
+  }
+
+  if (existingPlan?.id) {
+    testPlanId = existingPlan.id;
+    planResolution = 'resolved';
+  } else {
+    const { data: createdPlan, error: createdPlanError } = await supabase
+      .from('plans')
+      .insert({
+        name: 'Smoke Test Plan',
+        nights_per_week: 1,
+        weekly_price_cents: 10000,
+        active: true,
+        facility_id: activeFacilityId,
+      })
+      .select('id')
+      .single();
+
+    if (createdPlanError || !createdPlan) {
+      fail('book_night', `Plan creation failed: ${createdPlanError?.message}`);
+      return false;
+    }
+
+    testPlanId = createdPlan.id;
+    planResolution = 'created';
+    cleanupItems.push({ table: 'plans', id: testPlanId });
+  }
 
   // Create overnight block required by reservations. For smoke flow,
   // keep values deterministic and aligned to a single-center context.
   const { data: overnightBlock, error: overnightBlockError } = await supabase
     .from('overnight_blocks')
     .insert({
-      facility_id: activeFacilityId,
-      week_start: careDate,
+      week_start: weekStart,
       parent_id: testParentId,
       child_id: testChildId,
+      plan_id: testPlanId,
       nights_per_week: 1,
-      weekly_price_cents: 0,
+      weekly_price_cents: 10000,
+      multi_child_discount_pct: 0,
       status: 'active',
       payment_status: 'confirmed',
+      facility_id: activeFacilityId,
     })
     .select('id')
     .single();
@@ -249,7 +304,7 @@ async function step3_bookNight(): Promise<boolean> {
   testNightId = night.id;
   cleanupItems.push({ table: 'reservation_nights', id: testNightId });
 
-  pass('book_night', `Booked night ${careDate} (${testNightId})`);
+  pass('book_night', `Booked night ${careDate} (${testNightId}); plan ${planResolution} (${testPlanId})`);
   return true;
 }
 
