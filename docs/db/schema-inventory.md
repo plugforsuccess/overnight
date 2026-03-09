@@ -24,6 +24,8 @@
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | center_id | String | NO |  |  |
 | name | String | NO |  |  |
 | care_type | String | NO | "overnight" |  |
@@ -38,11 +40,15 @@
 | program_capacities | ProgramCapacity | NO |  |  |
 | capacity_overrides | CapacityOverride | NO |  |  |
 
+Indexes: (facility_id)
+
 ## ProgramCapacity -> `program_capacity`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | center_id | String | NO |  |  |
 | program_id | String | NO |  |  |
 | care_date | DateTime | NO |  |  |
@@ -58,13 +64,15 @@
 
 Unique: (program_id, care_date)
 
-Indexes: (care_date, status)
+Indexes: (care_date, status), (facility_id)
 
 ## CapacityOverride -> `capacity_overrides`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | center_id | String | NO |  |  |
 | program_id | String | NO |  |  |
 | care_date | DateTime | NO |  |  |
@@ -81,13 +89,15 @@ Indexes: (care_date, status)
 | program | Program | NO |  |  |
 | events | CapacityOverrideEvent | NO |  |  |
 
-Indexes: (center_id, care_date), (program_id, care_date), (is_active, care_date), (created_by_user_id)
+Indexes: (center_id, care_date), (program_id, care_date), (is_active, care_date), (created_by_user_id), (facility_id)
 
 ## CapacityOverrideEvent -> `capacity_override_events`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | capacity_override_id | String | NO |  |  |
 | center_id | String | NO |  |  |
 | program_id | String | NO |  |  |
@@ -98,13 +108,15 @@ Indexes: (center_id, care_date), (program_id, care_date), (is_active, care_date)
 | metadata | Json | NO | "{}" |  |
 | capacity_override | CapacityOverride | NO |  |  |
 
-Indexes: (capacity_override_id, event_at), (center_id, care_date), (event_type, event_at), (actor_user_id)
+Indexes: (capacity_override_id, event_at), (center_id, care_date), (event_type, event_at), (actor_user_id), (facility_id)
 
 ## Parent -> `parents`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO |  | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | first_name | String | NO |  |  |
 | last_name | String | NO |  |  |
 | email | String | NO |  |  |
@@ -130,11 +142,15 @@ Indexes: (capacity_override_id, event_at), (center_id, care_date), (event_type, 
 | staff_memberships | CenterStaffMembership | NO |  |  |
 | billing_ledger | BillingLedger | NO |  |  |
 
+Indexes: (facility_id)
+
 ## Child -> `children`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | parent_id | String | NO |  |  |
 | first_name | String | NO |  |  |
 | last_name | String | NO |  |  |
@@ -166,14 +182,108 @@ Indexes: (capacity_override_id, event_at), (center_id, care_date), (event_type, 
 | incident_reports | IncidentReport | NO |  |  |
 | reservation_nights | ReservationNight | NO |  |  |
 | billing_ledger | BillingLedger | NO |  |  |
+| documents | ChildDocument | NO |  |  |
+| immunization_record | ChildImmunizationRecord | YES |  |  |
+| medication_authorizations | MedicationAuthorization | NO |  |  |
 
-Indexes: (parent_id)
+Indexes: (parent_id), (facility_id)
+
+## ChildDocument -> `child_documents`
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| child_id | String | NO |  |  |
+| center_id | String | YES |  |  |
+| document_type | String | NO |  |  |
+| file_name | String | NO |  |  |
+| file_url | String | NO |  |  |
+| storage_path | String | YES |  |  |
+| file_size | Int | YES |  |  |
+| mime_type | String | YES |  |  |
+| uploaded_by | String | NO |  |  |
+| expires_at | DateTime | YES |  |  |
+| verified | Boolean | NO | false |  |
+| verified_by | String | YES |  |  |
+| verified_at | DateTime | YES |  |  |
+| notes | String | YES |  |  |
+| is_active | Boolean | NO | true |  |
+| created_at | DateTime | NO | now( |  |
+| updated_at | DateTime | NO | now( |  |
+| child | Child | NO |  |  |
+
+Indexes: (child_id, document_type)
+
+## ChildImmunizationRecord -> `child_immunization_records`
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| child_id | String | NO |  |  |
+| center_id | String | YES |  |  |
+| status | String | NO | "missing" |  |
+| document_url | String | YES |  |  |
+| document_path | String | YES |  |  |
+| issued_date | DateTime | YES |  |  |
+| expires_at | DateTime | YES |  |  |
+| exemption_reason | String | YES |  |  |
+| verified_by | String | YES |  |  |
+| verified_at | DateTime | YES |  |  |
+| notes | String | YES |  |  |
+| created_at | DateTime | NO | now( |  |
+| updated_at | DateTime | NO | now( |  |
+| child | Child | NO |  |  |
+
+## MedicationAuthorization -> `medication_authorizations`
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| child_id | String | NO |  |  |
+| center_id | String | YES |  |  |
+| medication_name | String | NO |  |  |
+| dosage | String | NO |  |  |
+| route | String | NO |  |  |
+| frequency | String | NO |  |  |
+| start_date | DateTime | NO |  |  |
+| end_date | DateTime | YES |  |  |
+| special_instructions | String | YES |  |  |
+| prescribing_physician | String | YES |  |  |
+| parent_consent_name | String | YES |  |  |
+| parent_consent_signed_at | DateTime | YES |  |  |
+| document_url | String | YES |  |  |
+| is_active | Boolean | NO | true |  |
+| created_at | DateTime | NO | now( |  |
+| updated_at | DateTime | NO | now( |  |
+| child | Child | NO |  |  |
+| administration_logs | MedicationAdministrationLog | NO |  |  |
+
+Indexes: (child_id, is_active)
+
+## MedicationAdministrationLog -> `medication_administration_logs`
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| medication_authorization_id | String | NO |  |  |
+| child_id | String | NO |  |  |
+| administered_at | DateTime | NO |  |  |
+| administered_by | String | NO |  |  |
+| dose_given | String | NO |  |  |
+| notes | String | YES |  |  |
+| parent_notified | Boolean | NO | false |  |
+| created_at | DateTime | NO | now( |  |
+| authorization | MedicationAuthorization | NO |  |  |
+
+Indexes: (child_id, administered_at)
 
 ## ChildAllergy -> `child_allergies`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | child_id | String | NO |  |  |
 | allergen | String | NO |  |  |
 | custom_label | String | YES |  |  |
@@ -184,6 +294,8 @@ Indexes: (parent_id)
 | action_plan | ChildAllergyActionPlan | YES |  |  |
 
 Unique: (child_id, allergen, custom_label)
+
+Indexes: (facility_id)
 
 ## ChildAllergyActionPlan -> `child_allergy_action_plans`
 
@@ -209,6 +321,8 @@ Unique: (child_id, allergen, custom_label)
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | child_id | String | NO |  |  |
 | center_id | String | YES |  |  |
 | has_allergies | Boolean | NO | false |  |
@@ -225,11 +339,15 @@ Unique: (child_id, allergen, custom_label)
 | updated_at | DateTime | NO | now( |  |
 | child | Child | NO |  |  |
 
+Indexes: (facility_id)
+
 ## ChildEmergencyContact -> `child_emergency_contacts`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | child_id | String | NO |  |  |
 | center_id | String | YES |  |  |
 | first_name | String | NO |  |  |
@@ -248,11 +366,15 @@ Unique: (child_id, allergen, custom_label)
 
 Unique: (child_id, priority), (child_id, phone)
 
+Indexes: (facility_id)
+
 ## ChildAuthorizedPickup -> `child_authorized_pickups`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | child_id | String | NO |  |  |
 | center_id | String | YES |  |  |
 | first_name | String | NO |  |  |
@@ -275,11 +397,15 @@ Unique: (child_id, priority), (child_id, phone)
 | child | Child | NO |  |  |
 | pickup_events | PickupEvent | NO |  |  |
 
+Indexes: (facility_id)
+
 ## ChildEvent -> `child_events`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | child_id | String | NO |  |  |
 | center_id | String | YES |  |  |
 | event_type | String | NO |  |  |
@@ -288,13 +414,15 @@ Unique: (child_id, priority), (child_id, phone)
 | created_at | DateTime | NO | now( |  |
 | child | Child | NO |  |  |
 
-Indexes: (child_id, created_at), (event_type)
+Indexes: (child_id, created_at), (event_type), (facility_id)
 
 ## ChildAttendanceSession -> `child_attendance_sessions`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | child_id | String | NO |  |  |
 | center_id | String | YES |  |  |
 | reservation_id | String | YES |  |  |
@@ -314,13 +442,15 @@ Indexes: (child_id, created_at), (event_type)
 | incident_reports | IncidentReport | NO |  |  |
 | pickup_verification | PickupVerification | YES |  |  |
 
-Indexes: (child_id, created_at), (status)
+Indexes: (child_id, created_at), (status), (facility_id)
 
 ## ReservationEvent -> `reservation_events`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | reservation_id | String | NO |  |  |
 | event_type | String | NO |  |  |
 | event_data | Json | NO | "{}" |  |
@@ -328,13 +458,15 @@ Indexes: (child_id, created_at), (status)
 | created_at | DateTime | NO | now( |  |
 | reservation | Reservation | NO |  |  |
 
-Indexes: (reservation_id, created_at), (event_type)
+Indexes: (reservation_id, created_at), (event_type), (facility_id)
 
 ## IncidentReport -> `incident_reports`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | child_id | String | NO |  |  |
 | attendance_session_id | String | YES |  |  |
 | center_id | String | YES |  |  |
@@ -352,7 +484,7 @@ Indexes: (reservation_id, created_at), (event_type)
 | child | Child | NO |  |  |
 | attendance_session | ChildAttendanceSession | YES |  |  |
 
-Indexes: (child_id, created_at), (status), (severity)
+Indexes: (child_id, created_at), (status), (severity), (facility_id)
 
 ## CenterStaffMembership -> `center_staff_memberships`
 
@@ -377,6 +509,8 @@ Indexes: (center_id, active)
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | attendance_session_id | String | NO |  |  |
 | authorized_pickup_id | String | YES |  |  |
 | verified_name | String | NO |  |  |
@@ -388,13 +522,15 @@ Indexes: (center_id, active)
 | created_at | DateTime | NO | now( |  |
 | attendance_session | ChildAttendanceSession | NO |  |  |
 
-Indexes: (verified_at)
+Indexes: (verified_at), (facility_id)
 
 ## Plan -> `plans`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | name | String | NO |  |  |
 | nights_per_week | Int | NO |  |  |
 | weekly_price_cents | Int | NO |  |  |
@@ -405,11 +541,15 @@ Indexes: (verified_at)
 
 Unique: (nights_per_week)
 
+Indexes: (facility_id)
+
 ## OvernightBlock -> `overnight_blocks`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | week_start | DateTime | NO |  |  |
 | parent_id | String | NO |  |  |
 | child_id | String | NO |  |  |
@@ -432,13 +572,15 @@ Unique: (nights_per_week)
 | credits | Credit | NO |  |  |
 | payments | Payment | NO |  |  |
 
-Indexes: (week_start), (parent_id, week_start), (child_id, week_start)
+Indexes: (week_start), (parent_id, week_start), (child_id, week_start), (facility_id)
 
 ## Reservation -> `reservations`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | child_id | String | NO |  |  |
 | date | DateTime | NO |  |  |
 | overnight_block_id | String | NO |  |  |
@@ -452,7 +594,7 @@ Indexes: (week_start), (parent_id, week_start), (child_id, week_start)
 | reservation_events | ReservationEvent | NO |  |  |
 | reservation_nights | ReservationNight | NO |  |  |
 
-Indexes: (date), (overnight_block_id)
+Indexes: (date), (overnight_block_id), (facility_id)
 
 ## NightlyCapacity -> `nightly_capacity`
 
@@ -472,6 +614,8 @@ Indexes: (date), (overnight_block_id)
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | date | DateTime | NO |  |  |
 | child_id | String | NO |  |  |
 | parent_id | String | NO |  |  |
@@ -483,7 +627,7 @@ Indexes: (date), (overnight_block_id)
 | child | Child | NO |  |  |
 | parent | Parent | NO |  |  |
 
-Indexes: (date, status, created_at), (parent_id)
+Indexes: (date, status, created_at), (parent_id), (facility_id)
 
 ## Payment -> `payments`
 
@@ -531,6 +675,8 @@ Indexes: (parent_id), (status), (care_date), (reservation_night_id)
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | max_capacity | Int | NO | 6 |  |
 | min_enrollment | Int | NO | 4 |  |
 | pricing_tiers | Json | NO | "[{\"nights\":3,\"price_cents\":30000},{\"nights\":4,\"price_cents\":36000},{\"nights\":5,\"price_cents\":42500}]" |  |
@@ -542,6 +688,8 @@ Indexes: (parent_id), (status), (care_date), (reservation_night_id)
 | overnight_end_time | String | NO | "07:00" |  |
 | created_at | DateTime | NO | now( |  |
 | updated_at | DateTime | NO | now( |  |
+
+Indexes: (facility_id)
 
 ## Credit -> `credits`
 
@@ -569,6 +717,8 @@ Indexes: (parent_id, applied), (related_date)
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | actor_id | String | YES |  |  |
 | action | String | NO |  |  |
 | entity_type | String | NO |  |  |
@@ -577,13 +727,15 @@ Indexes: (parent_id, applied), (related_date)
 | created_at | DateTime | NO | now( |  |
 | actor | Parent | YES |  |  |
 
-Indexes: (entity_type, entity_id), (created_at)
+Indexes: (entity_type, entity_id), (created_at), (facility_id)
 
 ## PickupEvent -> `pickup_events`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("uuid_generate_v4( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | child_id | String | NO |  |  |
 | pickup_person_id | String | YES |  |  |
 | verified_by_staff_id | String | YES |  |  |
@@ -594,13 +746,15 @@ Indexes: (entity_type, entity_id), (created_at)
 | pickup_person | ChildAuthorizedPickup | YES |  |  |
 | verified_by | Parent | YES |  |  |
 
-Indexes: (child_id, created_at)
+Indexes: (child_id, created_at), (facility_id)
 
 ## ParentSettings -> `parent_settings`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("uuid_generate_v4( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | parent_id | String | NO |  |  |
 | email_notifications | Boolean | NO | true |  |
 | sms_notifications | Boolean | NO | false |  |
@@ -618,6 +772,132 @@ Indexes: (child_id, created_at)
 | created_at | DateTime | NO | now( |  |
 | updated_at | DateTime | NO | now( |  |
 | parent | Parent | NO |  |  |
+
+Indexes: (facility_id)
+
+## Facility -> `facilities`
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| name | String | NO |  |  |
+| slug | String | NO |  |  |
+| owner_email | String | YES |  |  |
+| owner_name | String | YES |  |  |
+| owner_phone | String | YES |  |  |
+| address_line_1 | String | YES |  |  |
+| address_line_2 | String | YES |  |  |
+| city | String | YES |  |  |
+| state | String | YES |  |  |
+| postal_code | String | YES |  |  |
+| timezone | String | NO | "America/New_York" |  |
+| stripe_customer_id | String | YES |  |  |
+| stripe_subscription_id | String | YES |  |  |
+| subscription_status | SubscriptionStatus | NO | TRIALING |  |
+| subscription_tier | SubscriptionTier | NO | STARTER |  |
+| platform_fee_enabled | Boolean | NO | false |  |
+| platform_fee_type | PlatformFeeType | YES |  |  |
+| platform_fee_percentage | Int | YES |  |  |
+| platform_fee_flat_cents | Int | YES |  |  |
+| platform_fee_min_cents | Int | YES |  |  |
+| platform_fee_max_cents | Int | YES |  |  |
+| is_active | Boolean | NO | true |  |
+| suspended_at | DateTime | YES |  |  |
+| suspended_reason | String | YES |  |  |
+| created_at | DateTime | NO | now( |  |
+| updated_at | DateTime | NO | now( |  |
+| memberships | FacilityMembership | NO |  |  |
+| platformAuditLogs | PlatformAuditLog | NO |  |  |
+| platformFeeRecords | PlatformFeeRecord | NO |  |  |
+| programs | Program | NO |  |  |
+| programCapacities | ProgramCapacity | NO |  |  |
+| capacityOverrides | CapacityOverride | NO |  |  |
+| capacityOverrideEvents | CapacityOverrideEvent | NO |  |  |
+| parents | Parent | NO |  |  |
+| children | Child | NO |  |  |
+| childAllergies | ChildAllergy | NO |  |  |
+| childMedicalProfiles | ChildMedicalProfile | NO |  |  |
+| childEmergencyContacts | ChildEmergencyContact | NO |  |  |
+| childAuthorizedPickups | ChildAuthorizedPickup | NO |  |  |
+| childEvents | ChildEvent | NO |  |  |
+| childAttendanceSessions | ChildAttendanceSession | NO |  |  |
+| reservationEvents | ReservationEvent | NO |  |  |
+| incidentReports | IncidentReport | NO |  |  |
+| pickupVerifications | PickupVerification | NO |  |  |
+| plans | Plan | NO |  |  |
+| overnightBlocks | OvernightBlock | NO |  |  |
+| reservations | Reservation | NO |  |  |
+| waitlistEntries | WaitlistEntry | NO |  |  |
+| adminSettings | AdminSettings | NO |  |  |
+| auditLogs | AuditLog | NO |  |  |
+| pickupEvents | PickupEvent | NO |  |  |
+| parentSettings | ParentSettings | NO |  |  |
+| billingEvents | BillingEvent | NO |  |  |
+| reservationNights | ReservationNight | NO |  |  |
+| idempotencyKeys | IdempotencyKey | NO |  |  |
+| attendanceRecords | AttendanceRecord | NO |  |  |
+| attendanceEvents | AttendanceEvent | NO |  |  |
+| healthCheckRuns | HealthCheckRun | NO |  |  |
+| healthIssues | HealthIssue | NO |  |  |
+
+Indexes: (subscriptionStatus), (isActive)
+
+## FacilityMembership -> `facility_memberships`
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| user_id | String | NO |  |  |
+| role | FacilityRole | NO |  |  |
+| is_active | Boolean | NO | true |  |
+| invited_by | String | YES |  |  |
+| created_at | DateTime | NO | now( |  |
+| updated_at | DateTime | NO | now( |  |
+| facility | Facility | NO |  |  |
+
+Unique: (facilityId, userId)
+
+Indexes: (userId, isActive), (facilityId, role, isActive)
+
+## PlatformAuditLog -> `platform_audit_logs`
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| actor_user_id | String | YES |  |  |
+| actor_email | String | YES |  |  |
+| actor_platform_role | PlatformRole | NO |  |  |
+| action | PlatformAuditAction | NO |  |  |
+| resource_type | PlatformResourceType | NO |  |  |
+| resource_id | String | YES |  |  |
+| facility_id | String | YES |  |  |
+| metadata | Json | NO | "{}" |  |
+| ip_masked | String | YES |  |  |
+| user_agent_truncated | String | YES |  |  |
+| created_at | DateTime | NO | now( |  |
+| facility | Facility | YES |  |  |
+
+Indexes: (facilityId, createdAt(sort: Desc)), (action, createdAt(sort: Desc)), (actorUserId, createdAt(sort: Desc))
+
+## PlatformFeeRecord -> `platform_fee_records`
+
+| Column | Type | Nullable | Default | Notes |
+|---|---|---|---|---|
+| id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| payment_cycle_id | String | YES |  |  |
+| parent_payment_amount_cents | Int | NO |  |  |
+| fee_type | PlatformFeeType | NO |  |  |
+| fee_amount_cents | Int | NO |  |  |
+| stripe_transfer_id | String | YES |  |  |
+| stripe_payment_intent_id | String | YES |  |  |
+| settled | Boolean | NO | false |  |
+| settled_at | DateTime | YES |  |  |
+| created_at | DateTime | NO | now( |  |
+| facility | Facility | NO |  |  |
+
+Indexes: (facilityId, settled, createdAt(sort: Desc)), (paymentCycleId)
 
 ## Config -> `config`
 
@@ -672,6 +952,8 @@ Unique: (tier, mode)
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | stripe_event_id | String | NO |  |  |
 | event_type | String | NO |  |  |
 | subscription_id | String | YES |  |  |
@@ -684,11 +966,15 @@ Unique: (tier, mode)
 | created_at | DateTime | NO | now( |  |
 | subscription | Subscription | YES |  |  |
 
+Indexes: (facility_id)
+
 ## ReservationNight -> `reservation_nights`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | reservation_id | String | NO |  |  |
 | child_id | String | NO |  |  |
 | program_capacity_id | String | YES |  |  |
@@ -705,13 +991,15 @@ Unique: (tier, mode)
 
 Unique: (reservation_id, care_date), (child_id, care_date)
 
-Indexes: (reservation_id), (care_date)
+Indexes: (reservation_id), (care_date), (facility_id)
 
 ## IdempotencyKey -> `idempotency_keys`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | key | String | NO |  | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | user_id | String | YES |  |  |
 | request_path | String | NO |  |  |
 | response_status | Int | NO |  |  |
@@ -719,13 +1007,15 @@ Indexes: (reservation_id), (care_date)
 | created_at | DateTime | NO | now( |  |
 | expires_at | DateTime | NO | dbgenerated("(now( |  |
 
-Indexes: (expires_at), (user_id)
+Indexes: (expires_at), (user_id), (facility_id)
 
 ## AttendanceRecord -> `attendance_records`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | reservation_night_id | String | NO |  |  |
 | center_id | String | YES |  |  |
 | child_id | String | NO |  |  |
@@ -753,13 +1043,15 @@ Indexes: (expires_at), (user_id)
 | reservation_night | ReservationNight | NO |  |  |
 | events | AttendanceEvent | NO |  |  |
 
-Indexes: (center_id, care_date), (child_id, care_date), (attendance_status, care_date), (parent_id)
+Indexes: (center_id, care_date), (child_id, care_date), (attendance_status, care_date), (parent_id), (facility_id)
 
 ## AttendanceEvent -> `attendance_events`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | attendance_record_id | String | NO |  |  |
 | reservation_night_id | String | NO |  |  |
 | center_id | String | YES |  |  |
@@ -770,13 +1062,15 @@ Indexes: (center_id, care_date), (child_id, care_date), (attendance_status, care
 | metadata | Json | NO | "{}" |  |
 | attendance_record | AttendanceRecord | NO |  |  |
 
-Indexes: (attendance_record_id, event_at), (reservation_night_id, event_at), (center_id, event_at), (event_type, event_at)
+Indexes: (attendance_record_id, event_at), (reservation_night_id, event_at), (center_id, event_at), (event_type, event_at), (facility_id)
 
 ## HealthCheckRun -> `health_check_runs`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | run_type | String | NO |  |  |
 | started_at | DateTime | NO | now( |  |
 | completed_at | DateTime | YES |  |  |
@@ -786,13 +1080,15 @@ Indexes: (attendance_record_id, event_at), (reservation_night_id, event_at), (ce
 | created_at | DateTime | NO | now( |  |
 | issues | HealthIssue | NO |  |  |
 
-Indexes: (status, started_at), (triggered_by_user_id)
+Indexes: (status, started_at), (triggered_by_user_id), (facility_id)
 
 ## HealthIssue -> `health_issues`
 
 | Column | Type | Nullable | Default | Notes |
 |---|---|---|---|---|
 | id | String | NO | dbgenerated("gen_random_uuid( | PK |
+| facility_id | String | NO |  |  |
+| facility | Facility | NO |  |  |
 | health_check_run_id | String | NO |  |  |
 | issue_type | String | NO |  |  |
 | severity | String | NO |  |  |
@@ -810,4 +1106,4 @@ Indexes: (status, started_at), (triggered_by_user_id)
 | resolution_notes | String | YES |  |  |
 | health_check_run | HealthCheckRun | NO |  |  |
 
-Indexes: (health_check_run_id), (severity, status), (issue_type, status), (care_date)
+Indexes: (health_check_run_id), (severity, status), (issue_type, status), (care_date), (facility_id)

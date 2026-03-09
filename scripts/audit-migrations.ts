@@ -140,7 +140,7 @@ function parseMigration(name: string, sql: string): MigrationSummary {
     unsafeAssumptions.push(`Supabase auth schema reference: ${authRef[0]}`);
   }
 
-  return { name, creates, alters, dependsOn: [...dependsOn], unsafeAssumptions: [...new Set(unsafeAssumptions)], createdColumns };
+  return { name, creates, alters, dependsOn: Array.from(dependsOn), unsafeAssumptions: Array.from(new Set(unsafeAssumptions)), createdColumns };
 }
 
 async function introspectDatabase() {

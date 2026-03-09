@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-09T00:47:07.114Z",
+  "generatedAt": "2026-03-09T06:27:13.986Z",
   "issues": [
     {
       "severity": "warning",
@@ -34,30 +34,26 @@
     {
       "severity": "critical",
       "code": "MIGRATION_TABLE_ORDER",
-      "message": "20260308000002_capacity_overrides depends on table centers before creation",
-      "source": "20260308000002_capacity_overrides"
-    },
-    {
-      "severity": "critical",
-      "code": "MIGRATION_TABLE_ORDER",
-      "message": "20260308000002_capacity_overrides depends on table programs before creation",
-      "source": "20260308000002_capacity_overrides"
-    },
-    {
-      "severity": "critical",
-      "code": "MIGRATION_TABLE_ORDER",
       "message": "20260308000004_billing_ledger depends on table reservation_nights before creation",
       "source": "20260308000004_billing_ledger"
     },
     {
       "severity": "critical",
-      "code": "SCHEMA_TABLE_MISSING_FROM_MIGRATIONS",
-      "message": "Table centers present in schema but never created in migrations"
+      "code": "MIGRATION_TABLE_ORDER",
+      "message": "202603090001_daycare_tenancy_merge depends on table auth.users before creation",
+      "source": "202603090001_daycare_tenancy_merge"
     },
     {
-      "severity": "critical",
-      "code": "SCHEMA_TABLE_MISSING_FROM_MIGRATIONS",
-      "message": "Table programs present in schema but never created in migrations"
+      "severity": "warning",
+      "code": "SHADOW_AUTH",
+      "message": "Supabase auth schema reference: auth.users",
+      "source": "202603090001_daycare_tenancy_merge"
+    },
+    {
+      "severity": "warning",
+      "code": "SHADOW_AUTH",
+      "message": "Supabase auth schema reference: auth.uid",
+      "source": "202603090001_daycare_tenancy_merge"
     },
     {
       "severity": "critical",
@@ -696,6 +692,49 @@
       }
     },
     {
+      "name": "20260308000000_create_centers_programs",
+      "creates": [
+        "centers",
+        "programs"
+      ],
+      "alters": [
+        "programs"
+      ],
+      "dependsOn": [
+        "centers",
+        "programs"
+      ],
+      "unsafeAssumptions": [],
+      "createdColumns": {
+        "centers": [
+          "id",
+          "name",
+          "slug",
+          "timezone",
+          "address_line_1",
+          "city",
+          "state",
+          "postal_code",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "programs": [
+          "id",
+          "center_id",
+          "name",
+          "care_type",
+          "start_time",
+          "end_time",
+          "age_min_months",
+          "age_max_months",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ]
+      }
+    },
+    {
       "name": "20260308000001_attendance_records",
       "creates": [
         "attendance_records",
@@ -879,6 +918,188 @@
           "care_date",
           "created_at",
           "updated_at"
+        ]
+      }
+    },
+    {
+      "name": "20260309000001_child_licensing_compliance",
+      "creates": [
+        "child_documents",
+        "child_immunization_records",
+        "medication_authorizations",
+        "medication_administration_logs"
+      ],
+      "alters": [
+        "child_documents"
+      ],
+      "dependsOn": [
+        "children",
+        "medication_authorizations",
+        "child_documents",
+        "medication_administration_logs"
+      ],
+      "unsafeAssumptions": [],
+      "createdColumns": {
+        "child_documents": [
+          "id",
+          "child_id",
+          "center_id",
+          "document_type",
+          "file_name",
+          "file_url",
+          "file_size",
+          "mime_type",
+          "uploaded_by",
+          "expires_at",
+          "verified",
+          "verified_by",
+          "verified_at",
+          "notes",
+          "is_active",
+          "created_at",
+          "updated_at",
+          "FOREIGN",
+          "storage_path"
+        ],
+        "child_immunization_records": [
+          "id",
+          "child_id",
+          "center_id",
+          "status",
+          "document_url",
+          "document_path",
+          "issued_date",
+          "expires_at",
+          "exemption_reason",
+          "verified_by",
+          "verified_at",
+          "notes",
+          "created_at",
+          "updated_at",
+          "FOREIGN"
+        ],
+        "medication_authorizations": [
+          "id",
+          "child_id",
+          "center_id",
+          "medication_name",
+          "dosage",
+          "route",
+          "frequency",
+          "start_date",
+          "end_date",
+          "special_instructions",
+          "prescribing_physician",
+          "parent_consent_name",
+          "parent_consent_signed_at",
+          "document_url",
+          "is_active",
+          "created_at",
+          "updated_at",
+          "FOREIGN"
+        ],
+        "medication_administration_logs": [
+          "id",
+          "medication_authorization_id",
+          "child_id",
+          "administered_at",
+          "administered_by",
+          "dose_given",
+          "notes",
+          "parent_notified",
+          "created_at",
+          "FOREIGN"
+        ]
+      }
+    },
+    {
+      "name": "202603090001_daycare_tenancy_merge",
+      "creates": [
+        "facilities",
+        "facility_memberships",
+        "platform_audit_logs",
+        "platform_fee_records"
+      ],
+      "alters": [
+        "facilities",
+        "facility_memberships",
+        "platform_audit_logs",
+        "platform_fee_records"
+      ],
+      "dependsOn": [
+        "facilities",
+        "auth.users"
+      ],
+      "unsafeAssumptions": [
+        "Supabase auth schema reference: auth.users",
+        "Supabase auth schema reference: auth.uid"
+      ],
+      "createdColumns": {
+        "facilities": [
+          "id",
+          "name",
+          "slug",
+          "owner_email",
+          "owner_name",
+          "owner_phone",
+          "address_line_1",
+          "address_line_2",
+          "city",
+          "state",
+          "postal_code",
+          "timezone",
+          "stripe_customer_id",
+          "stripe_subscription_id",
+          "subscription_status",
+          "subscription_tier",
+          "platform_fee_enabled",
+          "platform_fee_type",
+          "platform_fee_percentage",
+          "platform_fee_flat_cents",
+          "platform_fee_min_cents",
+          "platform_fee_max_cents",
+          "is_active",
+          "suspended_at",
+          "suspended_reason",
+          "created_at",
+          "updated_at"
+        ],
+        "facility_memberships": [
+          "id",
+          "facility_id",
+          "user_id",
+          "role",
+          "is_active",
+          "invited_by",
+          "created_at",
+          "updated_at"
+        ],
+        "platform_audit_logs": [
+          "id",
+          "actor_user_id",
+          "actor_email",
+          "actor_platform_role",
+          "action",
+          "resource_type",
+          "resource_id",
+          "facility_id",
+          "metadata",
+          "ip_masked",
+          "user_agent_truncated",
+          "created_at"
+        ],
+        "platform_fee_records": [
+          "id",
+          "facility_id",
+          "payment_cycle_id",
+          "parent_payment_amount_cents",
+          "fee_type",
+          "fee_amount_cents",
+          "stripe_transfer_id",
+          "stripe_payment_intent_id",
+          "settled",
+          "settled_at",
+          "created_at"
         ]
       }
     }
