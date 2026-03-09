@@ -21,6 +21,14 @@ export default function AdminPage() {
   const capacity = settings?.max_capacity ?? DEFAULT_CAPACITY;
   const operatingNights = (settings?.operating_nights ?? DEFAULT_OPERATING_NIGHTS) as DayOfWeek[];
 
+  async function getAuthHeaders() {
+    const { data: { session } } = await supabase.auth.getSession();
+    return {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session?.access_token || ''}`,
+    };
+  }
+
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser();
@@ -37,7 +45,7 @@ export default function AdminPage() {
       const currentNights = (s?.operating_nights ?? DEFAULT_OPERATING_NIGHTS) as DayOfWeek[];
 
       // Fetch scoped summary stats from admin API
-      const summaryRes = await fetch('/api/admin');
+      const summaryRes = await fetch('/api/admin', { headers: await getAuthHeaders() });
       const summary = await summaryRes.json();
       if (!summaryRes.ok) throw new Error(summary.error || 'Failed to load admin summary');
 
