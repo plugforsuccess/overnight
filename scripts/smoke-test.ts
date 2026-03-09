@@ -44,7 +44,7 @@ let testParentId: string;
 let testChildId: string;
 let testReservationId: string;
 let testNightId: string;
-let programId: string;
+let testOvernightBlockId: string;
 let activeFacilityId: string;
 let cleanupItems: { table: string; id: string }[] = [];
 
@@ -181,20 +181,31 @@ async function step2_createChild(): Promise<boolean> {
 }
 
 async function step3_bookNight(): Promise<boolean> {
-  // Get program
-  const { data: program } = await supabase
-    .from('programs')
+  const careDate = today();
+
+  // Create overnight block required by reservations. For smoke flow,
+  // keep values deterministic and aligned to a single-center context.
+  const { data: overnightBlock, error: overnightBlockError } = await supabase
+    .from('overnight_blocks')
+    .insert({
+      facility_id: activeFacilityId,
+      week_start: careDate,
+      parent_id: testParentId,
+      child_id: testChildId,
+      nights_per_week: 1,
+      weekly_price_cents: 0,
+      status: 'active',
+      payment_status: 'confirmed',
+    })
     .select('id')
-    .eq('facility_id', activeFacilityId)
-    .eq('is_active', true)
-    .limit(1)
     .single();
 
-  if (!program) {
-    fail('book_night', 'No active program found');
+  if (overnightBlockError || !overnightBlock) {
+    fail('book_night', `Overnight block creation failed: ${overnightBlockError?.message}`);
     return false;
   }
-  programId = program.id;
+  testOvernightBlockId = overnightBlock.id;
+  cleanupItems.push({ table: 'overnight_blocks', id: testOvernightBlockId });
 
   // Create reservation
   const { data: reservation, error: resError } = await supabase
@@ -202,9 +213,11 @@ async function step3_bookNight(): Promise<boolean> {
     .insert({
       facility_id: activeFacilityId,
       child_id: testChildId,
-      program_id: programId,
+      date: careDate,
+      overnight_block_id: testOvernightBlockId,
       status: 'confirmed',
-      })
+      admin_override: false,
+    })
     .select('id')
     .single();
 
@@ -215,14 +228,6 @@ async function step3_bookNight(): Promise<boolean> {
   testReservationId = reservation.id;
   cleanupItems.push({ table: 'reservations', id: testReservationId });
 
-  const careDate = today();
-
-  // Ensure capacity row exists
-  await supabase.rpc('ensure_capacity_rows', {
-    p_dates: [careDate],
-    p_default_capacity: 6,
-  });
-
   // Create reservation night
   const { data: night, error: nightError } = await supabase
     .from('reservation_nights')
@@ -232,6 +237,7 @@ async function step3_bookNight(): Promise<boolean> {
       child_id: testChildId,
       care_date: careDate,
       status: 'confirmed',
+      capacity_snapshot: 0,
     })
     .select('id')
     .single();
@@ -268,6 +274,7 @@ async function step4_cancelNight(): Promise<boolean> {
       child_id: testChildId,
       care_date: careDate,
       status: 'confirmed',
+      capacity_snapshot: 0,
     })
     .select('id')
     .single();
@@ -287,15 +294,13 @@ async function step4_cancelNight(): Promise<boolean> {
 
 async function step5_checkIn(): Promise<boolean> {
   // Create attendance record
-  const careDate = today();
   const { data: session, error: sessionError } = await supabase
     .from('child_attendance_sessions')
     .insert({
       facility_id: activeFacilityId,
-      reservation_night_id: testNightId,
+      reservation_id: testReservationId,
       child_id: testChildId,
-      session_date: careDate,
-      status: 'expected',
+      status: 'scheduled',
     })
     .select('id')
     .single();
