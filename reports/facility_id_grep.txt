@@ -1,0 +1,320 @@
+src/app/api/bookings/route.ts:77:    .eq('facility_id', facilitySession.activeFacilityId)
+src/app/api/bookings/route.ts:90:    .eq('facility_id', facilitySession.activeFacilityId);
+src/app/api/bookings/route.ts:113:    .eq('facility_id', facilitySession.activeFacilityId)
+src/app/api/bookings/route.ts:165:    .eq('facility_id', facilitySession.activeFacilityId)
+src/app/api/bookings/route.ts:376:      .eq('facility_id', facilitySession.activeFacilityId)
+src/app/api/bookings/route.ts:387:        facility_id: facilitySession.activeFacilityId,
+src/app/api/bookings/route.ts:411:            facility_id: facilitySession.activeFacilityId,
+src/app/api/bookings/route.ts:484:    .eq('facility_id', facilitySession.activeFacilityId)
+src/app/api/bookings/route.ts:581:    .eq('facility_id', facilitySession.activeFacilityId)
+src/app/api/admin/route.ts:31:      .eq('facility_id', user.activeFacilityId)
+src/app/api/admin/route.ts:41:      .eq('facility_id', user.activeFacilityId)
+src/app/api/admin/route.ts:54:      .eq('facility_id', user.activeFacilityId)
+src/app/api/admin/route.ts:66:      .eq('facility_id', user.activeFacilityId)
+src/app/api/admin/route.ts:77:    .eq('facility_id', user.activeFacilityId)
+src/app/api/admin/route.ts:83:    .eq('facility_id', user.activeFacilityId);
+src/app/api/admin/route.ts:88:    .eq('facility_id', user.activeFacilityId)
+src/app/api/admin/route.ts:92:    supabaseAdmin.from('payments').select('id', { count: 'exact', head: true }).eq('facility_id', user.activeFacilityId).eq('status', 'succeeded'),
+src/app/api/admin/route.ts:93:    supabaseAdmin.from('payments').select('id', { count: 'exact', head: true }).eq('facility_id', user.activeFacilityId).eq('status', 'pending'),
+src/app/api/admin/route.ts:94:    supabaseAdmin.from('payments').select('id', { count: 'exact', head: true }).eq('facility_id', user.activeFacilityId).eq('status', 'failed'),
+src/app/api/admin/route.ts:139:      .eq('facility_id', user.activeFacilityId)
+src/app/api/admin/route.ts:156:      .eq('facility_id', user.activeFacilityId);
+src/app/api/admin/route.ts:173:        facility_id: user.activeFacilityId,
+src/app/api/admin/route.ts:194:      .eq('facility_id', user.activeFacilityId)
+src/app/api/admin/route.ts:203:      .eq('facility_id', user.activeFacilityId);
+src/app/api/admin/route.ts:209:      .eq('facility_id', user.activeFacilityId)
+src/app/api/admin/route.ts:220:        facility_id: user.activeFacilityId,
+src/app/api/admin/route.ts:232:      facility_id: user.activeFacilityId,
+src/app/api/admin/pickup-verification/route.ts:29:      .eq('facility_id', admin.activeFacilityId)
+src/app/api/admin/pickup-verification/route.ts:40:      .eq('facility_id', admin.activeFacilityId)
+src/app/api/admin/pickup-verification/route.ts:50:    .eq('facility_id', admin.activeFacilityId)
+src/app/api/admin/pickup-verification/route.ts:91:    .eq('facility_id', admin.activeFacilityId)
+src/app/api/admin/compliance/route.ts:15:    .eq('facility_id', admin.activeFacilityId)
+src/app/api/admin/safety/route.ts:20:      .eq('facility_id', admin.activeFacilityId)
+src/app/api/admin/safety/route.ts:31:      .eq('facility_id', admin.activeFacilityId)
+src/app/api/admin/safety/route.ts:38:      .eq('facility_id', admin.activeFacilityId)
+src/app/api/admin/safety/route.ts:45:      .eq('facility_id', admin.activeFacilityId);
+src/app/api/admin/safety/route.ts:51:      .eq('facility_id', admin.activeFacilityId);
+src/app/api/admin/safety/route.ts:57:      .eq('facility_id', admin.activeFacilityId)
+src/app/api/admin/safety/route.ts:64:      .eq('facility_id', admin.activeFacilityId)
+src/app/api/admin/waitlist-promote/route.ts:54:    .eq('facility_id', user.activeFacilityId)
+src/app/api/admin/waitlist-promote/route.ts:64:    facility_id: user.activeFacilityId,
+src/app/api/child-documents/[id]/route.ts:13:    .select('id, child_id, facility_id, storage_path')
+src/app/api/child-documents/[id]/route.ts:15:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/child-documents/[id]/route.ts:31:    facility_id: doc.facility_id,
+src/app/api/onboarding-status/route.ts:82:    .eq('facility_id', auth.activeFacilityId),
+src/app/api/onboarding-status/route.ts:87:    .eq('facility_id', auth.activeFacilityId),
+src/app/api/children/route.ts:15:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/route.ts:16:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/route.ts:45:      facility_id: auth.activeFacilityId,
+src/app/api/children/route.ts:81:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/route.ts:82:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/route.ts:105:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/route.ts:106:    .eq('facility_id', auth.activeFacilityId);
+src/app/api/children/[id]/export/route.ts:26:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/export/route.ts:67:      .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/export/route.ts:73:      .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/export/route.ts:84:      .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/attendance/route.ts:46:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/attendance/route.ts:59:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/attendance/route.ts:98:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/attendance/route.ts:115:      facility_id: auth.activeFacilityId,
+src/app/api/children/[id]/attendance/route.ts:127:    facility_id: auth.activeFacilityId,
+src/app/api/children/[id]/attendance/route.ts:164:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/attendance/route.ts:184:      .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/attendance/route.ts:209:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/attendance/route.ts:218:      facility_id: auth.activeFacilityId,
+src/app/api/children/[id]/details/route.ts:25:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/details/route.ts:51:      .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/details/route.ts:57:      .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/details/route.ts:68:      .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/medications/route.ts:12:  const { data: child } = await auth.supabase.from('children').select('id').eq('id', childId).eq('parent_id', auth.parentId).eq('facility_id', auth.activeFacilityId).single();
+src/app/api/children/[id]/medications/route.ts:37:  const { data: child } = await supabaseAdmin.from('children').select('id, facility_id, parent_id').eq('id', childId).single();
+src/app/api/children/[id]/medications/route.ts:38:  if (!child || child.parent_id !== auth.parentId || child.facility_id !== auth.activeFacilityId) return badRequest('Child not found');
+src/app/api/children/[id]/medications/route.ts:47:    .insert({ child_id: childId, facility_id: child.facility_id, ...parsed.data, parent_consent_signed_at: new Date().toISOString() })
+src/app/api/children/[id]/medications/route.ts:54:    facility_id: child.facility_id,
+src/app/api/children/[id]/compliance/route.ts:16:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/authorized-pickups/route.ts:24:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/authorized-pickups/route.ts:58:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/allergies/route.ts:16:    .select('id, facility_id')
+src/app/api/children/[id]/allergies/route.ts:19:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/allergies/route.ts:76:        facility_id: child.facility_id,
+src/app/api/children/[id]/allergies/route.ts:113:      facility_id: child.facility_id,
+src/app/api/children/[id]/emergency-contacts/route.ts:25:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/emergency-contacts/route.ts:62:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/medical-profile/route.ts:20:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/medical-profile/route.ts:29:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/medical-profile/route.ts:48:    .select('id, facility_id, parent_id')
+src/app/api/children/[id]/medical-profile/route.ts:51:  if (!child || child.parent_id !== auth.parentId || child.facility_id !== auth.activeFacilityId) {
+src/app/api/children/[id]/medical-profile/route.ts:68:    facility_id: child.facility_id,
+src/app/api/children/[id]/medical-profile/route.ts:74:    .upsert(profileData, { onConflict: 'child_id,facility_id' })
+src/app/api/children/[id]/medical-profile/route.ts:84:    facility_id: child.facility_id,
+src/app/api/children/[id]/immunization/route.ts:23:  const { data: child } = await auth.supabase.from('children').select('id').eq('id', childId).eq('parent_id', auth.parentId).eq('facility_id', auth.activeFacilityId).single();
+src/app/api/children/[id]/immunization/route.ts:28:    .eq('child_id', childId).eq('facility_id', auth.activeFacilityId).single();
+src/app/api/children/[id]/immunization/route.ts:40:    .from('children').select('id, facility_id, parent_id')
+src/app/api/children/[id]/immunization/route.ts:42:  if (!child || child.parent_id !== auth.parentId || child.facility_id !== auth.activeFacilityId) return badRequest('Child not found');
+src/app/api/children/[id]/immunization/route.ts:51:    .upsert({ child_id: childId, facility_id: child.facility_id, ...parsed.data }, { onConflict: 'child_id,facility_id' })
+src/app/api/children/[id]/immunization/route.ts:56:    facility_id: child.facility_id,
+src/app/api/children/[id]/documents/route.ts:31:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/documents/route.ts:40:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/documents/route.ts:61:    .select('id, facility_id')
+src/app/api/children/[id]/documents/route.ts:64:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/documents/route.ts:105:  const facilityId = child.facility_id || auth.activeFacilityId;
+src/app/api/children/[id]/documents/route.ts:134:      facility_id: facilityId,
+src/app/api/children/[id]/documents/route.ts:156:    facility_id: facilityId,
+src/app/api/children/[id]/incidents/route.ts:35:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/incidents/route.ts:49:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/incidents/route.ts:87:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/incidents/route.ts:105:      facility_id: auth.activeFacilityId,
+src/app/api/children/[id]/incidents/route.ts:119:    facility_id: auth.activeFacilityId,
+src/app/api/children/[id]/events/route.ts:31:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/events/route.ts:44:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/events/route.ts:74:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/children/[id]/events/route.ts:90:      facility_id: auth.activeFacilityId,
+src/app/api/medications/[id]/route.ts:30:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/medications/[id]/route.ts:81:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/stripe/route.ts:51:    .eq('facility_id', facilitySession.activeFacilityId)
+src/app/api/stripe/route.ts:66:    .eq('facility_id', facilitySession.activeFacilityId)
+src/app/api/stripe/route.ts:126:        facility_id: facilitySession.activeFacilityId,
+src/app/api/reservations/route.ts:23:    .eq('facility_id', auth.activeFacilityId);
+src/app/api/reservations/route.ts:49:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/reservations/route.ts:67:      .eq('facility_id', auth.activeFacilityId)
+src/app/api/reservations/route.ts:142:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/reservations/route.ts:155:    .eq('facility_id', auth.activeFacilityId)
+src/app/api/reservations/route.ts:170:    .eq('facility_id', auth.activeFacilityId);
+src/app/api/auth/signup/route.ts:82:      facility_id: facilityId,
+src/app/api/capacity/route.ts:50:    .eq('facility_id', facilitySession.activeFacilityId)
+src/app/api/capacity/route.ts:59:    .eq('facility_id', facilitySession.activeFacilityId)
+src/app/api/capacity/route.ts:70:      .eq('facility_id', facilitySession.activeFacilityId)
+src/app/api/capacity/route.ts:83:        facility_id: facilitySession.activeFacilityId,
+src/app/api/capacity/route.ts:98:    .eq('facility_id', facilitySession.activeFacilityId)
+src/types/children.ts:67:  facility_id: string | null;
+src/types/children.ts:102:  facility_id: string | null;
+src/types/children.ts:120:  facility_id: string | null;
+src/types/children.ts:143:  facility_id: string | null;
+src/types/children.ts:183:  facility_id: string | null;
+src/types/children.ts:205:  facility_id: string | null;
+src/types/children.ts:254:  facility_id: string | null;
+src/types/children.ts:338:  facility_id: string | null;
+src/types/children.ts:368:  facility_id: string | null;
+src/types/children.ts:403:  facility_id: string | null;
+src/lib/children/compliance.ts:21:    supabaseAdmin.from('children').select('id, first_name, last_name, date_of_birth').eq('id', childId).eq('facility_id', facilityId).single(),
+src/lib/children/compliance.ts:22:    supabaseAdmin.from('child_emergency_contacts').select('id', { count: 'exact', head: true }).eq('child_id', childId).eq('facility_id', facilityId),
+src/lib/children/compliance.ts:23:    supabaseAdmin.from('child_authorized_pickups').select('id', { count: 'exact', head: true }).eq('child_id', childId).eq('facility_id', facilityId).is('archived_at', null).eq('is_active', true),
+src/lib/children/compliance.ts:24:    supabaseAdmin.from('child_medical_profiles').select('*').eq('child_id', childId).eq('facility_id', facilityId).maybeSingle(),
+src/lib/children/compliance.ts:25:    supabaseAdmin.from('child_immunization_records').select('status, expires_at').eq('child_id', childId).eq('facility_id', facilityId).maybeSingle(),
+src/lib/children/compliance.ts:28:    supabaseAdmin.from('child_documents').select('id, verified, expires_at').eq('child_id', childId).eq('facility_id', facilityId).eq('is_active', true),
+src/lib/facility-auth.ts:42:    .select('facility_id, facilities!inner(slug)')
+src/lib/facility-auth.ts:49:    facilityId: membership?.facility_id ?? null,
+src/lib/facility-auth.ts:55:  return { facility_id: facilityId };
+src/lib/facility-auth.ts:58:export function assertFacilityScope(record: { facility_id?: string | null }, facilityId: string, entityName: string) {
+src/lib/facility-auth.ts:59:  if (!record?.facility_id || record.facility_id !== facilityId) {
+src/lib/facility-auth.ts:73:    .select('facility_id, role, is_active, facilities!inner(slug)')
+src/lib/facility-auth.ts:75:    .eq('facility_id', facilityId)
+src/lib/facility-auth.ts:82:    facilityId: data.facility_id,
+src/lib/facility-auth.ts:106:    .select('facility_id, role, is_active, facilities!inner(slug)')
+src/lib/facility-auth.ts:111:  const activeMembership = memberships?.find((m) => m.facility_id === activeFacility.facilityId);
+src/lib/facility-auth.ts:117:    facilityMemberships: (memberships || []).map((m: any) => ({ facilityId: m.facility_id, facilitySlug: m.facilities.slug, role: m.role, isActive: m.is_active })),
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:3:-- child_documents: add facility_id, backfill from children, enforce FK + NOT NULL
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:5:  ADD COLUMN IF NOT EXISTS facility_id uuid;
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:8:SET facility_id = c.facility_id
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:11:  AND d.facility_id IS NULL;
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:15:  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'child_documents_facility_id_fkey') THEN
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:17:      ADD CONSTRAINT child_documents_facility_id_fkey
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:18:      FOREIGN KEY (facility_id) REFERENCES public.facilities(id) ON DELETE RESTRICT;
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:22:CREATE INDEX IF NOT EXISTS idx_child_documents_facility_id
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:23:  ON public.child_documents (facility_id);
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:26:  ALTER COLUMN facility_id SET NOT NULL;
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:28:-- child_immunization_records: add facility_id, backfill from children, enforce FK + NOT NULL
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:30:  ADD COLUMN IF NOT EXISTS facility_id uuid;
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:33:SET facility_id = c.facility_id
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:36:  AND r.facility_id IS NULL;
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:40:  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'child_immunization_records_facility_id_fkey') THEN
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:42:      ADD CONSTRAINT child_immunization_records_facility_id_fkey
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:43:      FOREIGN KEY (facility_id) REFERENCES public.facilities(id) ON DELETE RESTRICT;
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:47:CREATE INDEX IF NOT EXISTS idx_child_immunization_records_facility_id
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:48:  ON public.child_immunization_records (facility_id);
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:51:  ALTER COLUMN facility_id SET NOT NULL;
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:53:-- child_medical_profiles: ensure backfill + constraint hardening on facility_id
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:55:SET facility_id = c.facility_id
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:58:  AND m.facility_id IS NULL;
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:61:  ALTER COLUMN facility_id SET NOT NULL;
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:63:-- child_events: ensure backfill + constraint hardening on facility_id
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:65:SET facility_id = c.facility_id
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:68:  AND e.facility_id IS NULL;
+prisma/migrations/202603090002_child_facility_normalization/migration.sql:71:  ALTER COLUMN facility_id SET NOT NULL;
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:52:  facility_id uuid NOT NULL REFERENCES public.facilities(id) ON DELETE CASCADE,
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:59:  CONSTRAINT facility_memberships_unique UNIQUE (facility_id, user_id)
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:62:CREATE INDEX IF NOT EXISTS idx_facility_memberships_facility_role_active ON public.facility_memberships (facility_id, role, is_active);
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:74:  facility_id uuid REFERENCES public.facilities(id) ON DELETE SET NULL,
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:80:CREATE INDEX IF NOT EXISTS idx_platform_audit_logs_facility_created ON public.platform_audit_logs (facility_id, created_at DESC);
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:86:  facility_id uuid NOT NULL REFERENCES public.facilities(id) ON DELETE CASCADE,
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:97:CREATE INDEX IF NOT EXISTS idx_platform_fee_records_facility_settled_created ON public.platform_fee_records (facility_id, settled, created_at DESC);
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:116:      EXECUTE format('ALTER TABLE public.%I ADD COLUMN IF NOT EXISTS facility_id uuid', t);
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:117:      EXECUTE format('UPDATE public.%I SET facility_id = %L::uuid WHERE facility_id IS NULL', t, '00000000-0000-0000-0000-000000000001');
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:118:      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = t || '_facility_id_fkey') THEN
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:119:        EXECUTE format('ALTER TABLE public.%I ADD CONSTRAINT %I FOREIGN KEY (facility_id) REFERENCES public.facilities(id) ON DELETE RESTRICT', t, t || '_facility_id_fkey');
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:121:      EXECUTE format('ALTER TABLE public.%I ALTER COLUMN facility_id SET NOT NULL', t);
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:122:      EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON public.%I (facility_id)', 'idx_' || t || '_facility_id', t);
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:127:CREATE INDEX IF NOT EXISTS idx_reservation_nights_facility_care_date ON public.reservation_nights (facility_id, care_date);
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:128:CREATE INDEX IF NOT EXISTS idx_audit_log_facility_created_at ON public.audit_log (facility_id, created_at DESC);
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:130:INSERT INTO public.facility_memberships (facility_id, user_id, role, is_active)
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:135:ON CONFLICT (facility_id, user_id) DO NOTHING;
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:151:CREATE OR REPLACE FUNCTION public.current_facility_id()
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:152:RETURNS uuid LANGUAGE sql STABLE AS $$ SELECT NULLIF(current_setting('app.current_facility_id', true), '')::uuid $$;
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:157:CREATE OR REPLACE FUNCTION public.has_facility_role(target_facility_id uuid, roles facility_role[])
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:159:  SELECT EXISTS (SELECT 1 FROM public.facility_memberships fm WHERE fm.facility_id = target_facility_id AND fm.user_id = auth.uid() AND fm.is_active = true AND fm.role = ANY (roles))
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:170:  OR EXISTS (SELECT 1 FROM public.facility_memberships fm WHERE fm.facility_id = facilities.id AND fm.user_id = auth.uid() AND fm.is_active = true)
+prisma/migrations/202603090001_daycare_tenancy_merge/migration.sql:179:  OR public.has_facility_role(facility_id, ARRAY['ADMIN']::facility_role[])
+prisma/migrations/20260309_facility_id_child_compliance/migration.sql:1:-- Normalize child compliance tables on facility_id
+prisma/migrations/20260309_facility_id_child_compliance/migration.sql:2:ALTER TABLE child_documents ADD COLUMN IF NOT EXISTS facility_id uuid;
+prisma/migrations/20260309_facility_id_child_compliance/migration.sql:4:SET facility_id = c.facility_id
+prisma/migrations/20260309_facility_id_child_compliance/migration.sql:6:WHERE cd.child_id = c.id AND cd.facility_id IS NULL;
+prisma/migrations/20260309_facility_id_child_compliance/migration.sql:7:ALTER TABLE child_documents ALTER COLUMN facility_id SET NOT NULL;
+prisma/migrations/20260309_facility_id_child_compliance/migration.sql:9:ALTER TABLE child_immunization_records ADD COLUMN IF NOT EXISTS facility_id uuid;
+prisma/migrations/20260309_facility_id_child_compliance/migration.sql:11:SET facility_id = c.facility_id
+prisma/migrations/20260309_facility_id_child_compliance/migration.sql:13:WHERE ir.child_id = c.id AND ir.facility_id IS NULL;
+prisma/migrations/20260309_facility_id_child_compliance/migration.sql:14:ALTER TABLE child_immunization_records ALTER COLUMN facility_id SET NOT NULL;
+prisma/migrations/20260309_facility_id_child_compliance/migration.sql:16:ALTER TABLE child_events ALTER COLUMN facility_id SET NOT NULL;
+prisma/migrations/20260309_facility_id_child_compliance/migration.sql:17:ALTER TABLE child_medical_profiles ALTER COLUMN facility_id SET NOT NULL;
+prisma/migrations/20260309_facility_id_child_compliance/migration.sql:20:  ALTER TABLE child_documents ADD CONSTRAINT child_documents_facility_id_fkey FOREIGN KEY (facility_id) REFERENCES facilities(id);
+prisma/migrations/20260309_facility_id_child_compliance/migration.sql:23:  ALTER TABLE child_immunization_records ADD CONSTRAINT child_immunization_records_facility_id_fkey FOREIGN KEY (facility_id) REFERENCES facilities(id);
+prisma/schema.prisma:133:  facility_id    String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:134:  facility       Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:152:  @@index([facility_id], map: "idx_programs_facility_id")
+prisma/schema.prisma:161:  facility_id         String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:162:  facility            Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:181:  @@index([facility_id], map: "idx_program_capacity_facility_id")
+prisma/schema.prisma:192:  facility_id        String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:193:  facility           Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:217:  @@index([facility_id], map: "idx_capacity_overrides_facility_id")
+prisma/schema.prisma:225:  facility_id          String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:226:  facility             Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:243:  @@index([facility_id], map: "idx_capacity_override_events_facility_id")
+prisma/schema.prisma:252:  facility_id        String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:253:  facility           Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:282:  @@index([facility_id], map: "idx_parents_facility_id")
+prisma/schema.prisma:289:  facility_id    String    @map("facility_id") @db.Uuid
+prisma/schema.prisma:290:  facility       Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:330:  @@index([facility_id], map: "idx_children_facility_id")
+prisma/schema.prisma:341:  facility_id   String    @map("facility_id") @db.Uuid
+prisma/schema.prisma:342:  facility      Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:364:  @@index([facility_id], map: "idx_child_documents_facility_id")
+prisma/schema.prisma:375:  facility_id      String    @map("facility_id") @db.Uuid
+prisma/schema.prisma:376:  facility          Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:393:  @@index([facility_id], map: "idx_child_immunization_records_facility_id")
+prisma/schema.prisma:457:  facility_id  String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:458:  facility     Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:472:  @@index([facility_id], map: "idx_child_allergies_facility_id")
+prisma/schema.prisma:504:  facility_id String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:505:  facility    Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:528:  @@index([facility_id], map: "idx_child_medical_profiles_facility_id")
+prisma/schema.prisma:536:  facility_id           String    @map("facility_id") @db.Uuid
+prisma/schema.prisma:537:  facility              Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:559:  @@index([facility_id], map: "idx_child_emergency_contacts_facility_id")
+prisma/schema.prisma:566:  facility_id          String    @map("facility_id") @db.Uuid
+prisma/schema.prisma:567:  facility             Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:593:  @@index([facility_id], map: "idx_child_authorized_pickups_facility_id")
+prisma/schema.prisma:602:  facility_id String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:603:  facility    Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:615:  @@index([facility_id], map: "idx_child_events_facility_id")
+prisma/schema.prisma:625:  facility_id    String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:626:  facility       Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:654:  @@index([facility_id], map: "idx_child_attendance_sessions_facility_id")
+prisma/schema.prisma:663:  facility_id    String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:664:  facility       Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:676:  @@index([facility_id], map: "idx_reservation_events_facility_id")
+prisma/schema.prisma:687:  facility_id           String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:688:  facility              Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:714:  @@index([facility_id], map: "idx_incident_reports_facility_id")
+prisma/schema.prisma:747:  facility_id           String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:748:  facility              Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:763:  @@index([facility_id], map: "idx_pickup_verifications_facility_id")
+prisma/schema.prisma:772:  facility_id        String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:773:  facility           Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:786:  @@index([facility_id], map: "idx_plans_facility_id")
+prisma/schema.prisma:796:  facility_id              String    @map("facility_id") @db.Uuid
+prisma/schema.prisma:797:  facility                 Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:826:  @@index([facility_id], map: "idx_overnight_blocks_facility_id")
+prisma/schema.prisma:837:  facility_id        String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:838:  facility           Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:857:  @@index([facility_id], map: "idx_reservations_facility_id")
+prisma/schema.prisma:882:  facility_id String    @map("facility_id") @db.Uuid
+prisma/schema.prisma:883:  facility    Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:900:  @@index([facility_id], map: "idx_waitlist_entries_facility_id")
+prisma/schema.prisma:960:  facility_id            String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:961:  facility               Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:975:  @@index([facility_id], map: "idx_admin_settings_facility_id")
+prisma/schema.prisma:1008:  facility_id String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:1009:  facility    Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:1023:  @@index([facility_id], map: "idx_audit_log_facility_id")
+prisma/schema.prisma:1032:  facility_id          String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:1033:  facility             Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:1047:  @@index([facility_id], map: "idx_pickup_events_facility_id")
+prisma/schema.prisma:1055:  facility_id                String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:1056:  facility                   Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:1078:  @@index([facility_id], map: "idx_parent_settings_facility_id")
+prisma/schema.prisma:1157:  facilityId String       @map("facility_id") @db.Uuid
+prisma/schema.prisma:1181:  facilityId         String?              @map("facility_id") @db.Uuid
+prisma/schema.prisma:1197:  facilityId               String          @map("facility_id") @db.Uuid
+prisma/schema.prisma:1280:  facility_id       String    @map("facility_id") @db.Uuid
+prisma/schema.prisma:1281:  facility          Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:1297:  @@index([facility_id], map: "idx_billing_events_facility_id")
+prisma/schema.prisma:1307:  facility_id         String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:1308:  facility            Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:1330:  @@index([facility_id], map: "idx_reservation_nights_facility_id")
+prisma/schema.prisma:1341:  facility_id     String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:1342:  facility        Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:1352:  @@index([facility_id], map: "idx_idempotency_keys_facility_id")
+prisma/schema.prisma:1362:  facility_id          String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:1363:  facility             Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:1408:  @@index([facility_id], map: "idx_attendance_records_facility_id")
+prisma/schema.prisma:1417:  facility_id          String   @map("facility_id") @db.Uuid
+prisma/schema.prisma:1418:  facility             Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:1439:  @@index([facility_id], map: "idx_attendance_events_facility_id")
+prisma/schema.prisma:1449:  facility_id          String    @map("facility_id") @db.Uuid
+prisma/schema.prisma:1450:  facility             Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:1465:  @@index([facility_id], map: "idx_health_check_runs_facility_id")
+prisma/schema.prisma:1475:  facility_id          String    @map("facility_id") @db.Uuid
+prisma/schema.prisma:1476:  facility             Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+prisma/schema.prisma:1500:  @@index([facility_id], map: "idx_health_issues_facility_id")

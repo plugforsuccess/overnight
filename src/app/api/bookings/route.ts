@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
+import { getChildComplianceStatus } from '@/lib/children/compliance';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { DEFAULT_PRICING_TIERS, BOOKING_WINDOW_DAYS } from '@/lib/constants';
@@ -178,32 +179,12 @@ export async function POST(req: NextRequest) {
   }
   console.log(`[bookings POST] child ownership valid: childId=${childId} name=${child.first_name} ${child.last_name}`);
 
-  // Check profile completeness: emergency contact + medical acknowledgement required.
-  // Authorized pickups are optional — the parent is implicitly authorized.
-  const [ecRes, medRes] = await Promise.all([
-    supabaseAdmin
-      .from('child_emergency_contacts')
-      .select('id', { count: 'exact', head: true })
-      .eq('child_id', childId),
-    supabaseAdmin
-      .from('child_medical_profiles')
-      .select('id', { count: 'exact', head: true })
-      .eq('child_id', childId),
-  ]);
-
-  const ecCount = ecRes.count ?? 0;
-  const medCount = medRes.count ?? 0;
-
-  console.log(`[bookings POST] profile check: emergencyContacts=${ecCount} medicalProfiles=${medCount}`);
-
-  const missing: string[] = [];
-  if (ecCount < 1) missing.push('at least 1 emergency contact');
-  if (medCount < 1) missing.push('medical safety acknowledgement');
-
-  if (missing.length > 0) {
+  const compliance = await getChildComplianceStatus(childId, facilitySession.activeFacilityId);
+  console.log(`[bookings POST] profile check: eligible=${compliance.eligibleToBook} blockers=${compliance.blockers.join('; ')}`);
+  if (!compliance.eligibleToBook) {
     return errorResponse(
       'PROFILE_INCOMPLETE',
-      `Complete ${child.first_name} ${child.last_name}'s profile before booking: ${missing.join(' and ')}.`,
+      `Complete ${child.first_name} ${child.last_name}'s profile before booking: ${compliance.blockers.join('; ')}.`,
       400,
     );
   }

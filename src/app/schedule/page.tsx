@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase-client';
 import { DEFAULT_PRICING_TIERS, DEFAULT_OPERATING_NIGHTS, formatCents, DEFAULT_CAPACITY, BOOKING_WINDOW_DAYS } from '@/lib/constants';
 import { getWeekNights, cn, getUpcomingWeeks } from '@/lib/utils';
 import { DayOfWeek, Child, AdminSettings, PricingTier } from '@/types/database';
+import type { ComplianceStatus } from '@/types/compliance';
 import CalendarSelector from '@/components/schedule/CalendarSelector';
 import SelectedNightsBar from '@/components/schedule/SelectedNightsBar';
 import { ReservationConfirmationCard } from '@/components/schedule/ReservationConfirmationCard';
@@ -56,6 +57,7 @@ export default function SchedulePage() {
   const [error, setError] = useState('');
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [complianceByChild, setComplianceByChild] = useState<Record<string, ComplianceStatus>>({});
 
   const pricingTiers = settings?.pricing_tiers ?? DEFAULT_PRICING_TIERS;
   const operatingNights = (settings?.operating_nights ?? DEFAULT_OPERATING_NIGHTS) as DayOfWeek[];
@@ -149,6 +151,18 @@ export default function SchedulePage() {
             : [],
         })) as ChildProfile[];
         setChildren(enriched);
+
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          const complianceEntries = await Promise.all(enriched.map(async (child) => {
+            const res = await fetch(`/api/children/${child.id}/compliance`, {
+              headers: { Authorization: `Bearer ${session.access_token}` },
+            });
+            const data = await res.json();
+            return [child.id, data.status] as const;
+          }));
+          setComplianceByChild(Object.fromEntries(complianceEntries));
+        }
       }
 
       const resolvedSettings = settingsRes.data as AdminSettings | null;
@@ -179,14 +193,14 @@ export default function SchedulePage() {
   }
 
   function isChildProfileComplete(child: ChildProfile): boolean {
-    return child.emergency_contacts_count >= 1 && child.authorized_pickups_count >= 1;
+    const status = complianceByChild[child.id];
+    return !!status?.eligibleToBook;
   }
 
   function getProfileIncompleteMessage(child: ChildProfile): string {
-    const missing: string[] = [];
-    if (child.emergency_contacts_count < 1) missing.push('at least 1 emergency contact');
-    if (child.authorized_pickups_count < 1) missing.push('at least 1 authorized pickup');
-    return `Complete ${child.first_name} ${child.last_name}'s profile before booking: add ${missing.join(' and ')}.`;
+    const status = complianceByChild[child.id];
+    const blockers = status?.blockers || ['missing compliance requirements'];
+    return `Complete ${child.first_name} ${child.last_name}'s profile before booking: ${blockers.join('; ')}.`;
   }
 
   function handleSelectChild(childId: string) {
