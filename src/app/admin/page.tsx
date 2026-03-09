@@ -36,19 +36,18 @@ export default function AdminPage() {
       const currentCapacity = s?.max_capacity ?? DEFAULT_CAPACITY;
       const currentNights = (s?.operating_nights ?? DEFAULT_OPERATING_NIGHTS) as DayOfWeek[];
 
-      // Fetch stats
-      const [plansRes, childrenRes, waitlistRes] = await Promise.all([
-        supabase.from('plans').select('price_cents').eq('status', 'active'),
-        supabase.from('children').select('id', { count: 'exact', head: true }),
-        supabase.from('waitlist').select('id', { count: 'exact', head: true }).in('status', ['waiting', 'offered']),
-      ]);
+      // Fetch scoped summary stats from admin API
+      const summaryRes = await fetch('/api/admin');
+      const summary = await summaryRes.json();
+      if (!summaryRes.ok) throw new Error(summary.error || 'Failed to load admin summary');
 
       setStats({
-        activePlansCount: plansRes.data?.length ?? 0,
-        totalChildren: childrenRes.count ?? 0,
-        weeklyRevenue: plansRes.data?.reduce((s, p) => s + p.price_cents, 0) ?? 0,
+        activePlansCount: summary.activePlansCount ?? 0,
+        totalChildren: summary.totalChildren ?? 0,
+        weeklyRevenue: summary.weeklyRevenue ?? 0,
       });
-      setWaitlistCount(waitlistRes.count ?? 0);
+      setWaitlistCount(summary.waitlistedCount ?? 0);
+      setPaymentStats(summary.paymentStats ?? { succeeded: 0, pending: 0, failed: 0 });
 
       // Fetch capacity for current week nights
       const weekStart = getCurrentWeekStart();
@@ -70,17 +69,6 @@ export default function AdminPage() {
       });
       setNightCounts(counts);
 
-      // Fetch payment stats
-      const [succeededRes, pendingRes, failedRes] = await Promise.all([
-        supabase.from('payments').select('id', { count: 'exact', head: true }).eq('status', 'succeeded'),
-        supabase.from('payments').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('payments').select('id', { count: 'exact', head: true }).eq('status', 'failed'),
-      ]);
-      setPaymentStats({
-        succeeded: succeededRes.count ?? 0,
-        pending: pendingRes.count ?? 0,
-        failed: failedRes.count ?? 0,
-      });
 
       setLoading(false);
     }

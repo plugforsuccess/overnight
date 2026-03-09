@@ -41,12 +41,10 @@ export default function RosterPage() {
   useEffect(() => {
     if (!selectedDate) return;
     async function loadRoster() {
-      const { data } = await supabase
-        .from('reservations')
-        .select('*, child:children(*), overnight_block:overnight_blocks(*, parent:parents(*))')
-        .eq('date', selectedDate)
-        .eq('status', 'confirmed');
-      setReservations(data || []);
+      const res = await fetch(`/api/admin?view=roster&date=${selectedDate}`);
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || 'Failed to load roster');
+      setReservations(payload.reservations || []);
     }
     loadRoster();
   }, [selectedDate]);
@@ -60,7 +58,11 @@ export default function RosterPage() {
 
   async function cancelReservation(id: string) {
     if (!confirm('Cancel this reservation?')) return;
-    await supabase.from('reservations').update({ status: 'cancelled' }).eq('id', id);
+    await fetch('/api/admin', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'cancel_reservation', reservationId: id }),
+    });
     setReservations(prev => prev.filter(r => r.id !== id));
   }
 
