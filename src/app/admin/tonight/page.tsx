@@ -8,6 +8,7 @@ import {
   UserCheck, XCircle, Users, ShieldCheck, LogOut,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
+import { useAdminRole } from '@/lib/admin-role-context';
 import { DEFAULT_CAPACITY, OVERNIGHT_START, OVERNIGHT_END } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -47,6 +48,7 @@ interface AttendanceChild {
 
 export default function TonightPage() {
   const router = useRouter();
+  const { isStaff } = useAdminRole();
   const [roster, setRoster] = useState<AttendanceChild[]>([]);
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,8 +70,7 @@ export default function TonightPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
-      const { data: profile } = await supabase.from('parents').select('role').eq('id', user.id).single();
-      if (profile?.role !== 'admin') { router.push('/dashboard'); return; }
+      if (!isStaff) { router.push('/admin'); return; }
 
       const { data: s } = await supabase.from('admin_settings').select('*').limit(1).single();
       if (s) setSettings(s as AdminSettings);

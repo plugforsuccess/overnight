@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, unauthorized, badRequest } from '@/lib/api-auth';
+import { authenticateRequest, unauthorized, badRequest, verifyGuardianAccess } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { z } from 'zod';
 
@@ -21,21 +21,20 @@ export async function GET(
 
   const { id: childId } = await params;
 
-  // Verify child belongs to parent
-  const { data: child } = await auth.supabase
-    .from('children')
-    .select('id')
-    .eq('id', childId)
-    .eq('parent_id', auth.parentId)
-    .single();
-
-  if (!child) return badRequest('Child not found');
+  // Verify guardian access to this child
+  const guardian = await verifyGuardianAccess(auth.userId, childId);
+  if (!guardian) {
+    // Fallback: parent_id check for backward compatibility
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', childId).eq('parent_id', auth.parentId).single();
+    if (!child) return unauthorized();
+  }
 
   const url = new URL(req.url);
   const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 100);
   const offset = parseInt(url.searchParams.get('offset') || '0');
 
-  const { data: events, error, count } = await auth.supabase
+  const { data: events, error, count } = await supabaseAdmin
     .from('child_events')
     .select('*', { count: 'exact' })
     .eq('child_id', childId)
@@ -61,15 +60,14 @@ export async function POST(
 
   const { id: childId } = await params;
 
-  // Verify child belongs to parent
-  const { data: child } = await auth.supabase
-    .from('children')
-    .select('id')
-    .eq('id', childId)
-    .eq('parent_id', auth.parentId)
-    .single();
-
-  if (!child) return badRequest('Child not found');
+  // Verify guardian access to this child
+  const guardian = await verifyGuardianAccess(auth.userId, childId);
+  if (!guardian) {
+    // Fallback: parent_id check for backward compatibility
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', childId).eq('parent_id', auth.parentId).single();
+    if (!child) return unauthorized();
+  }
 
   let body;
   try { body = await req.json(); } catch { return badRequest('Invalid request body'); }

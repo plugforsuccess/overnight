@@ -1,11 +1,11 @@
 {
   "summary": {
-    "generatedAt": "2026-03-09T03:00:50.658Z",
+    "generatedAt": "2026-03-09T04:02:52.792Z",
     "totalRoutes": 70,
-    "totalFindings": 15,
+    "totalFindings": 13,
     "bySeverity": {
       "critical": 0,
-      "warning": 13,
+      "warning": 11,
       "info": 2
     },
     "byRouteType": {
@@ -18,7 +18,6 @@
     },
     "byIssueType": {
       "missing_center_scoping": 6,
-      "inline_admin_auth": 2,
       "sensitive_field_exposure": 2,
       "missing_audit_logging": 4,
       "missing_ownership_validation": 1
@@ -853,19 +852,6 @@
       "route": "/api/admin/pickup-verification",
       "file": "src/app/api/admin/pickup-verification/route.ts",
       "routeType": "admin_api",
-      "severity": "warning",
-      "issueType": "inline_admin_auth",
-      "summary": "Admin API uses inline auth check instead of shared checkAdmin() helper.",
-      "evidence": [
-        "Inline role/is_admin verification found",
-        "checkAdmin() import not detected"
-      ],
-      "recommendedFix": "Refactor to use the shared checkAdmin() helper from @/lib/admin-auth for consistency."
-    },
-    {
-      "route": "/api/admin/pickup-verification",
-      "file": "src/app/api/admin/pickup-verification/route.ts",
-      "routeType": "admin_api",
       "severity": "info",
       "issueType": "sensitive_field_exposure",
       "summary": "Possible sensitive field exposure detected (likely false positive — field appears used for validation/verification, not in API response).",
@@ -873,19 +859,6 @@
         "Pattern matched: select\\s*\\([^)]*pin_hash"
       ],
       "recommendedFix": "Verify sensitive fields are not included in API responses. Use .select() to exclude them."
-    },
-    {
-      "route": "/api/admin/waitlist-promote",
-      "file": "src/app/api/admin/waitlist-promote/route.ts",
-      "routeType": "admin_api",
-      "severity": "warning",
-      "issueType": "inline_admin_auth",
-      "summary": "Admin API uses inline auth check instead of shared checkAdmin() helper.",
-      "evidence": [
-        "Inline role/is_admin verification found",
-        "checkAdmin() import not detected"
-      ],
-      "recommendedFix": "Refactor to use the shared checkAdmin() helper from @/lib/admin-auth for consistency."
     },
     {
       "route": "/api/admin/waitlist-promote",

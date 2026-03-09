@@ -1,16 +1,21 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase-ssr';
-import { supabaseAdmin } from '@/lib/supabase-server';
 import { AdminSidebar } from '@/components/admin-sidebar';
 import { AdminHeader } from '@/components/admin-header';
+import { AdminRoleProvider } from '@/lib/admin-role-context';
+import {
+  getActiveCenterId,
+  requireCenterRole,
+  ALL_ADMIN_ROLES,
+} from '@/lib/role-helpers';
 
 /**
  * Server-side auth gate for all /admin/* routes.
  * Validates:
  * 1. User is authenticated (JWT verification)
- * 2. User has admin role or is_admin flag
+ * 2. User has an active center membership with any admin-panel role
  *
- * Renders dedicated admin shell with sidebar + header (no parent nav).
+ * Passes the user's role to client components via AdminRoleProvider.
  */
 export default async function AdminLayout({
   children,
@@ -18,29 +23,31 @@ export default async function AdminLayout({
   children: React.ReactNode;
 }) {
   const supabase = await createSupabaseServerClient();
-  const { data: { user }, error } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
     redirect('/login?redirect=/admin');
   }
 
-  const { data: parent } = await supabaseAdmin
-    .from('parents')
-    .select('id, role, is_admin')
-    .eq('id', user.id)
-    .single();
+  const centerId = await getActiveCenterId();
+  if (!centerId) {
+    redirect('/dashboard');
+  }
 
-  if (!parent || (parent.role !== 'admin' && !parent.is_admin)) {
+  const membership = await requireCenterRole(user.id, centerId, [...ALL_ADMIN_ROLES]);
+  if (!membership) {
     redirect('/dashboard');
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
-      <AdminSidebar />
-      <div className="flex-1 min-w-0 flex flex-col">
-        <AdminHeader />
-        <main className="flex-1">{children}</main>
+    <AdminRoleProvider role={membership.role} centerId={centerId}>
+      <div className="flex min-h-screen bg-gray-50">
+        <AdminSidebar />
+        <div className="flex-1 min-w-0 flex flex-col">
+          <AdminHeader />
+          <main className="flex-1">{children}</main>
+        </div>
       </div>
-    </div>
+    </AdminRoleProvider>
   );
 }

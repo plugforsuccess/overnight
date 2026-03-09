@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, unauthorized, badRequest } from '@/lib/api-auth';
+import { authenticateRequest, verifyGuardianAccess, unauthorized, badRequest } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { z } from 'zod';
 import { checkIdempotencyKey, saveIdempotencyResult } from '@/lib/idempotency';
@@ -26,16 +26,20 @@ export async function GET(
   const { id: sessionId } = await params;
 
   // Verify session belongs to parent's child
-  const { data: session } = await auth.supabase
+  const { data: session } = await supabaseAdmin
     .from('child_attendance_sessions')
-    .select('id, child_id, children!inner(parent_id)')
+    .select('id, child_id')
     .eq('id', sessionId)
     .single();
 
   if (!session) return badRequest('Attendance session not found');
 
-  if ((session as any).children?.parent_id !== auth.parentId) {
-    return unauthorized();
+  const guardian = await verifyGuardianAccess(auth.userId, session.child_id);
+  if (!guardian) {
+    // Fallback: parent_id check
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', session.child_id).eq('parent_id', auth.parentId).single();
+    if (!child) return unauthorized();
   }
 
   const { data: verification, error } = await auth.supabase
@@ -66,16 +70,20 @@ export async function POST(
   const { id: sessionId } = await params;
 
   // Verify session exists and belongs to parent's child
-  const { data: session } = await auth.supabase
+  const { data: session } = await supabaseAdmin
     .from('child_attendance_sessions')
-    .select('id, child_id, status, children!inner(parent_id)')
+    .select('id, child_id, status')
     .eq('id', sessionId)
     .single();
 
   if (!session) return badRequest('Attendance session not found');
 
-  if ((session as any).children?.parent_id !== auth.parentId) {
-    return unauthorized();
+  const guardianPost = await verifyGuardianAccess(auth.userId, session.child_id);
+  if (!guardianPost) {
+    // Fallback: parent_id check
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', session.child_id).eq('parent_id', auth.parentId).single();
+    if (!child) return unauthorized();
   }
 
   if (!['ready_for_pickup', 'checked_out'].includes(session.status)) {

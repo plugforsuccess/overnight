@@ -21,30 +21,58 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { useState } from 'react';
+import { useAdminRole } from '@/lib/admin-role-context';
+import type { CenterRole } from '@/lib/role-helpers';
 
 interface NavItem {
   href: string;
   label: string;
   icon: React.ElementType;
   section?: string;
+  /** Roles that can see this item. If omitted, visible to all admin roles. */
+  allowedRoles?: CenterRole[];
 }
 
+/**
+ * Role-based nav items for the admin sidebar.
+ *
+ * Launch role permissions:
+ * - owner/admin: all items
+ * - staff: tonight, safety, incidents, ops, pickup PIN
+ * - billing_only: dashboard (summary), revenue
+ * - manager: all operational items
+ * - viewer: dashboard only
+ */
 const NAV_ITEMS: NavItem[] = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, section: 'overview' },
-  { href: '/admin/tonight', label: 'Tonight', icon: Moon, section: 'operations' },
-  { href: '/admin/waitlist-ops', label: 'Waitlist Queue', icon: TrendingUp, section: 'operations' },
-  { href: '/admin/capacity', label: 'Capacity', icon: BarChart3, section: 'operations' },
-  { href: '/admin/closures', label: 'Closures', icon: Ban, section: 'operations' },
-  { href: '/admin/health', label: 'System Health', icon: Activity, section: 'operations' },
-  { href: '/admin/safety', label: 'Safety', icon: ShieldAlert, section: 'operations' },
-  { href: '/admin/incidents', label: 'Incidents', icon: AlertTriangle, section: 'operations' },
-  { href: '/admin/revenue', label: 'Revenue', icon: DollarSign, section: 'operations' },
-  { href: '/admin/ops', label: 'Ops Health', icon: Activity, section: 'operations' },
-  { href: '/admin/roster', label: 'Roster', icon: Calendar, section: 'management' },
-  { href: '/admin/plans', label: 'Plans', icon: List, section: 'management' },
-  { href: '/admin/waitlist', label: 'Waitlist', icon: Clock, section: 'management' },
-  { href: '/admin/pickup-verification', label: 'Pickup PIN', icon: ShieldCheck, section: 'management' },
-  { href: '/admin/settings', label: 'Settings', icon: Settings, section: 'settings' },
+  { href: '/admin/tonight', label: 'Tonight', icon: Moon, section: 'operations',
+    allowedRoles: ['owner', 'admin', 'manager', 'staff'] },
+  { href: '/admin/waitlist-ops', label: 'Waitlist Queue', icon: TrendingUp, section: 'operations',
+    allowedRoles: ['owner', 'admin', 'manager'] },
+  { href: '/admin/capacity', label: 'Capacity', icon: BarChart3, section: 'operations',
+    allowedRoles: ['owner', 'admin', 'manager'] },
+  { href: '/admin/closures', label: 'Closures', icon: Ban, section: 'operations',
+    allowedRoles: ['owner', 'admin'] },
+  { href: '/admin/health', label: 'System Health', icon: Activity, section: 'operations',
+    allowedRoles: ['owner', 'admin'] },
+  { href: '/admin/safety', label: 'Safety', icon: ShieldAlert, section: 'operations',
+    allowedRoles: ['owner', 'admin', 'manager', 'staff'] },
+  { href: '/admin/incidents', label: 'Incidents', icon: AlertTriangle, section: 'operations',
+    allowedRoles: ['owner', 'admin', 'manager', 'staff'] },
+  { href: '/admin/revenue', label: 'Revenue', icon: DollarSign, section: 'operations',
+    allowedRoles: ['owner', 'admin', 'manager', 'billing_only'] },
+  { href: '/admin/ops', label: 'Ops Health', icon: Activity, section: 'operations',
+    allowedRoles: ['owner', 'admin', 'manager', 'staff'] },
+  { href: '/admin/roster', label: 'Roster', icon: Calendar, section: 'management',
+    allowedRoles: ['owner', 'admin', 'manager'] },
+  { href: '/admin/plans', label: 'Plans', icon: List, section: 'management',
+    allowedRoles: ['owner', 'admin', 'manager'] },
+  { href: '/admin/waitlist', label: 'Waitlist', icon: Clock, section: 'management',
+    allowedRoles: ['owner', 'admin', 'manager'] },
+  { href: '/admin/pickup-verification', label: 'Pickup PIN', icon: ShieldCheck, section: 'management',
+    allowedRoles: ['owner', 'admin', 'manager', 'staff'] },
+  { href: '/admin/settings', label: 'Settings', icon: Settings, section: 'settings',
+    allowedRoles: ['owner', 'admin'] },
 ];
 
 const SECTION_LABELS: Record<string, string> = {
@@ -57,6 +85,12 @@ const SECTION_LABELS: Record<string, string> = {
 export function AdminSidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const { role } = useAdminRole();
+
+  // Filter nav items by role
+  const visibleItems = NAV_ITEMS.filter(
+    (item) => !item.allowedRoles || item.allowedRoles.includes(role)
+  );
 
   const isActive = (href: string) => {
     if (href === '/admin') return pathname === '/admin';
@@ -85,7 +119,7 @@ export function AdminSidebar() {
       </div>
 
       <nav className="flex-1 py-2 overflow-y-auto">
-        {NAV_ITEMS.map((item) => {
+        {visibleItems.map((item) => {
           const showSection = item.section !== lastSection && item.section && SECTION_LABELS[item.section];
           if (item.section) lastSection = item.section;
           const Icon = item.icon;

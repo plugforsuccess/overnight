@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, unauthorized } from '@/lib/api-auth';
+import { authenticateRequest, unauthorized, getAccessibleChildIds } from '@/lib/api-auth';
+import { supabaseAdmin } from '@/lib/supabase-server';
 import type { DashboardData, DashboardChild, DashboardAllergyInfo, DashboardUpcomingNight, DashboardNotification } from '@/types/dashboard';
 import { OVERNIGHT_START } from '@/lib/constants';
 
@@ -15,6 +16,9 @@ export async function GET(req: NextRequest) {
 
   const { supabase, parentId } = auth;
 
+  // Get accessible child IDs via guardian links (with parent_id fallback)
+  const guardianChildIds = await getAccessibleChildIds(auth.userId);
+
   // Fetch all dashboard data in parallel
   const [
     profileRes,
@@ -29,17 +33,29 @@ export async function GET(req: NextRequest) {
       .select('first_name, last_name, email, phone, stripe_customer_id, onboarding_status')
       .eq('id', parentId)
       .single(),
-    supabase
-      .from('children')
-      .select(`
-        id, first_name, last_name, date_of_birth, medical_notes,
-        child_allergies(id, allergen, custom_label, severity, child_allergy_action_plans(id, treatment_first_line)),
-        child_emergency_contacts(id),
-        child_authorized_pickups(id),
-        child_medical_profiles(id)
-      `)
-      .eq('parent_id', parentId)
-      .order('created_at', { ascending: true }),
+    guardianChildIds.length > 0
+      ? supabaseAdmin
+          .from('children')
+          .select(`
+            id, first_name, last_name, date_of_birth, medical_notes,
+            child_allergies(id, allergen, custom_label, severity, child_allergy_action_plans(id, treatment_first_line)),
+            child_emergency_contacts(id),
+            child_authorized_pickups(id),
+            child_medical_profiles(id)
+          `)
+          .in('id', guardianChildIds)
+          .order('created_at', { ascending: true })
+      : supabase
+          .from('children')
+          .select(`
+            id, first_name, last_name, date_of_birth, medical_notes,
+            child_allergies(id, allergen, custom_label, severity, child_allergy_action_plans(id, treatment_first_line)),
+            child_emergency_contacts(id),
+            child_authorized_pickups(id),
+            child_medical_profiles(id)
+          `)
+          .eq('parent_id', parentId)
+          .order('created_at', { ascending: true }),
     supabase
       .from('reservations')
       .select('id, date, status, child:children(first_name, last_name)')

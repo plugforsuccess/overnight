@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, unauthorized, badRequest, notFound, logAuditEvent } from '@/lib/api-auth';
+import { authenticateRequest, verifyGuardianAccess, unauthorized, badRequest, notFound, logAuditEvent } from '@/lib/api-auth';
+import { supabaseAdmin } from '@/lib/supabase-server';
 import { emergencyContactSchema } from '@/lib/validation/children';
 
 /**
@@ -14,15 +15,20 @@ export async function PATCH(
 
   const contactId = params.id;
 
-  // Verify ownership: contact -> child -> parent
-  const { data: existing } = await auth.supabase
+  // Verify ownership: contact -> child -> guardian/parent
+  const { data: existing } = await supabaseAdmin
     .from('child_emergency_contacts')
-    .select('*, children!inner(parent_id)')
+    .select('*, children!inner(id)')
     .eq('id', contactId)
     .single();
 
-  if (!existing || (existing as any).children?.parent_id !== auth.parentId) {
-    return notFound('Emergency contact not found');
+  if (!existing) return notFound('Emergency contact not found');
+  const guardian = await verifyGuardianAccess(auth.userId, existing.children.id);
+  if (!guardian) {
+    // Fallback: parent_id check
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', existing.children.id).eq('parent_id', auth.parentId).single();
+    if (!child) return unauthorized();
   }
 
   let body;
@@ -67,14 +73,19 @@ export async function DELETE(
   const contactId = params.id;
 
   // Verify ownership
-  const { data: existing } = await auth.supabase
+  const { data: existing } = await supabaseAdmin
     .from('child_emergency_contacts')
-    .select('*, children!inner(parent_id)')
+    .select('*, children!inner(id)')
     .eq('id', contactId)
     .single();
 
-  if (!existing || (existing as any).children?.parent_id !== auth.parentId) {
-    return notFound('Emergency contact not found');
+  if (!existing) return notFound('Emergency contact not found');
+  const guardian = await verifyGuardianAccess(auth.userId, existing.children.id);
+  if (!guardian) {
+    // Fallback: parent_id check
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', existing.children.id).eq('parent_id', auth.parentId).single();
+    if (!child) return unauthorized();
   }
 
   const { error } = await auth.supabase

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stripe, getOrCreateCustomer } from '@/lib/stripe';
 import { supabaseAdmin } from '@/lib/supabase-server';
+import { verifyGuardianAccess } from '@/lib/api-auth';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
 
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
   // Look up the overnight_block (per-user booking) to get the canonical price
   const { data: block, error: blockError } = await supabaseAdmin
     .from('overnight_blocks')
-    .select('id, weekly_price_cents, parent_id, nights_per_week, status')
+    .select('id, weekly_price_cents, parent_id, child_id, nights_per_week, status')
     .eq('id', planId)
     .single();
 
@@ -63,9 +64,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Parent profile not found', code: 'AUTH_REQUIRED' }, { status: 404 });
   }
 
-  if (block.parent_id !== parentRow.id) {
-    console.error(`[stripe] ownership mismatch: block.parent_id=${block.parent_id} parentRow.id=${parentRow.id}`);
-    return NextResponse.json({ error: 'Unauthorized', code: 'CHILD_NOT_OWNED' }, { status: 403 });
+  // Guardian-based access check with parent_id fallback
+  const guardian = await verifyGuardianAccess(user.id, block.child_id);
+  if (!guardian) {
+    // Fallback: parent_id check
+    if (block.parent_id !== parentRow.id) {
+      console.error(`[stripe] ownership mismatch: block.parent_id=${block.parent_id} parentRow.id=${parentRow.id}`);
+      return NextResponse.json({ error: 'Unauthorized', code: 'CHILD_NOT_OWNED' }, { status: 403 });
+    }
   }
 
   // Get or create Stripe customer

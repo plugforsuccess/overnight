@@ -1,15 +1,15 @@
 # Route Hardening Audit Report
 
-Generated: 2026-03-09T03:00:50.659Z
+Generated: 2026-03-09T04:02:52.793Z
 
 ## Summary
 
 | Metric | Count |
 |--------|-------|
 | Total routes scanned | 70 |
-| Total findings | 15 |
+| Total findings | 13 |
 | Critical | 0 |
-| Warning | 13 |
+| Warning | 11 |
 | Info | 2 |
 
 ## Route Inventory
@@ -28,7 +28,6 @@ Generated: 2026-03-09T03:00:50.659Z
 | Issue Type | Count |
 |------------|-------|
 | missing_center_scoping | 6 |
-| inline_admin_auth | 2 |
 | sensitive_field_exposure | 2 |
 | missing_audit_logging | 4 |
 | missing_ownership_validation | 1 |
@@ -96,32 +95,6 @@ None — all critical checks passed.
 - **Evidence:**
   - No center_id, program_id, or programId reference found
 - **Recommended Fix:** Add center_id/program_id scoping when multi-center support is needed.
-
----
-
-### `/api/admin/pickup-verification`
-- **File:** `src/app/api/admin/pickup-verification/route.ts`
-- **Route Type:** admin_api
-- **Severity:** WARNING
-- **Issue:** inline_admin_auth
-- **Summary:** Admin API uses inline auth check instead of shared checkAdmin() helper.
-- **Evidence:**
-  - Inline role/is_admin verification found
-  - checkAdmin() import not detected
-- **Recommended Fix:** Refactor to use the shared checkAdmin() helper from @/lib/admin-auth for consistency.
-
----
-
-### `/api/admin/waitlist-promote`
-- **File:** `src/app/api/admin/waitlist-promote/route.ts`
-- **Route Type:** admin_api
-- **Severity:** WARNING
-- **Issue:** inline_admin_auth
-- **Summary:** Admin API uses inline auth check instead of shared checkAdmin() helper.
-- **Evidence:**
-  - Inline role/is_admin verification found
-  - checkAdmin() import not detected
-- **Recommended Fix:** Refactor to use the shared checkAdmin() helper from @/lib/admin-auth for consistency.
 
 ---
 

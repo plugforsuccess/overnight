@@ -7,6 +7,7 @@ import {
   ArrowLeft, ChevronLeft, ChevronRight, TrendingUp, AlertTriangle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
+import { useAdminRole } from '@/lib/admin-role-context';
 import { DEFAULT_CAPACITY, DEFAULT_OPERATING_NIGHTS, DAY_LABELS } from '@/lib/constants';
 import { getWeekNights, getCurrentWeekStart, cn, formatWeekRange } from '@/lib/utils';
 import { DayOfWeek, AdminSettings } from '@/types/database';
@@ -28,6 +29,7 @@ interface WeekData {
 
 export default function CapacityPlannerPage() {
   const router = useRouter();
+  const { role } = useAdminRole();
   const [weeks, setWeeks] = useState<WeekData[]>([]);
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,8 +44,7 @@ export default function CapacityPlannerPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
-      const { data: profile } = await supabase.from('parents').select('role').eq('id', user.id).single();
-      if (profile?.role !== 'admin') { router.push('/dashboard'); return; }
+      if (!['owner', 'admin', 'manager'].includes(role)) { router.push('/admin'); return; }
 
       const { data: s } = await supabase.from('admin_settings').select('*').limit(1).single();
       if (s) setSettings(s as AdminSettings);

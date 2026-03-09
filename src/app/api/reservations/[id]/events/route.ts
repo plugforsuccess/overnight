@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, unauthorized, badRequest } from '@/lib/api-auth';
+import { authenticateRequest, verifyGuardianAccess, unauthorized, badRequest } from '@/lib/api-auth';
+import { supabaseAdmin } from '@/lib/supabase-server';
 
 /**
  * GET /api/reservations/:id/events
@@ -15,16 +16,20 @@ export async function GET(
   const { id: reservationId } = await params;
 
   // Verify reservation belongs to parent via child ownership
-  const { data: reservation } = await auth.supabase
+  const { data: reservation } = await supabaseAdmin
     .from('reservations')
-    .select('id, child_id, children!inner(parent_id)')
+    .select('id, child_id')
     .eq('id', reservationId)
     .single();
 
   if (!reservation) return badRequest('Reservation not found');
 
-  if ((reservation as any).children?.parent_id !== auth.parentId) {
-    return unauthorized();
+  const guardian = await verifyGuardianAccess(auth.userId, reservation.child_id);
+  if (!guardian) {
+    // Fallback: parent_id check
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', reservation.child_id).eq('parent_id', auth.parentId).single();
+    if (!child) return unauthorized();
   }
 
   const url = new URL(req.url);

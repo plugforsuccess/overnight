@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, unauthorized, badRequest, notFound, logAuditEvent } from '@/lib/api-auth';
+import { authenticateRequest, verifyGuardianAccess, unauthorized, badRequest, notFound, logAuditEvent } from '@/lib/api-auth';
+import { supabaseAdmin } from '@/lib/supabase-server';
 import { authorizedPickupUpdateSchema } from '@/lib/validation/children';
 import { hashPin } from '@/lib/pin-hash';
 
@@ -16,14 +17,19 @@ export async function PATCH(
   const pickupId = params.id;
 
   // Verify ownership
-  const { data: existing } = await auth.supabase
+  const { data: existing } = await supabaseAdmin
     .from('child_authorized_pickups')
-    .select('*, children!inner(parent_id)')
+    .select('*, children!inner(id)')
     .eq('id', pickupId)
     .single();
 
-  if (!existing || (existing as any).children?.parent_id !== auth.parentId) {
-    return notFound('Authorized pickup not found');
+  if (!existing) return notFound('Authorized pickup not found');
+  const guardian = await verifyGuardianAccess(auth.userId, existing.children.id);
+  if (!guardian) {
+    // Fallback: parent_id check
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', existing.children.id).eq('parent_id', auth.parentId).single();
+    if (!child) return unauthorized();
   }
 
   let body;
@@ -75,14 +81,19 @@ export async function DELETE(
   const pickupId = params.id;
 
   // Verify ownership
-  const { data: existing } = await auth.supabase
+  const { data: existing } = await supabaseAdmin
     .from('child_authorized_pickups')
-    .select('*, children!inner(parent_id)')
+    .select('*, children!inner(id)')
     .eq('id', pickupId)
     .single();
 
-  if (!existing || (existing as any).children?.parent_id !== auth.parentId) {
-    return notFound('Authorized pickup not found');
+  if (!existing) return notFound('Authorized pickup not found');
+  const guardian = await verifyGuardianAccess(auth.userId, existing.children.id);
+  if (!guardian) {
+    // Fallback: parent_id check
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', existing.children.id).eq('parent_id', auth.parentId).single();
+    if (!child) return unauthorized();
   }
 
   const { error } = await auth.supabase

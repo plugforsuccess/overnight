@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
+import { verifyGuardianAccess, getAccessibleChildIds } from '@/lib/api-auth';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
 import { DEFAULT_PRICING_TIERS, BOOKING_WINDOW_DAYS } from '@/lib/constants';
@@ -65,25 +66,33 @@ export async function GET(req: NextRequest) {
   const parentId = await resolveParentId(user.id);
   if (!parentId) return errorResponse('AUTH_REQUIRED', 'Parent profile not found', 400);
 
-  // Fetch overnight_blocks (the per-user booking records) instead of plans catalog
-  const { data: blocks, error: blocksError } = await supabaseAdmin
-    .from('overnight_blocks')
-    .select('*, child:children(*)')
-    .eq('parent_id', parentId)
-    .order('created_at', { ascending: false });
+  // Get all child IDs accessible to this user (guardian + parent_id)
+  const accessibleChildIds = await getAccessibleChildIds(user.id);
+  // Also include children owned via parent_id for backward compatibility
+  const { data: ownedChildren } = await supabaseAdmin
+    .from('children')
+    .select('id')
+    .eq('parent_id', parentId);
+  const ownedChildIds = (ownedChildren || []).map((c: { id: string }) => c.id);
+  const childIds = Array.from(new Set([...accessibleChildIds, ...ownedChildIds]));
+
+  // Fetch overnight_blocks (the per-user booking records) for accessible children
+  let blocks: unknown[] = [];
+  let blocksError = null;
+  if (childIds.length > 0) {
+    const result = await supabaseAdmin
+      .from('overnight_blocks')
+      .select('*, child:children(*)')
+      .in('child_id', childIds)
+      .order('created_at', { ascending: false });
+    blocks = result.data || [];
+    blocksError = result.error;
+  }
 
   if (blocksError) {
     console.error('[bookings GET] blocks error:', blocksError);
     return errorResponse('DB_INSERT_FAILED', 'Failed to load bookings', 400, blocksError.message);
   }
-
-  // Fetch reservations through child IDs belonging to this parent
-  const { data: children } = await supabaseAdmin
-    .from('children')
-    .select('id')
-    .eq('parent_id', parentId);
-
-  const childIds = (children || []).map((c: { id: string }) => c.id);
 
   let reservations: unknown[] = [];
   if (childIds.length > 0) {
@@ -100,11 +109,13 @@ export async function GET(req: NextRequest) {
     reservations = resData || [];
   }
 
-  const { data: waitlist } = await supabaseAdmin
-    .from('waitlist')
-    .select('*, child:children(*)')
-    .eq('parent_id', parentId)
-    .in('status', ['waiting', 'offered']);
+  const { data: waitlist } = childIds.length > 0
+    ? await supabaseAdmin
+        .from('waitlist')
+        .select('*, child:children(*)')
+        .in('child_id', childIds)
+        .in('status', ['waiting', 'offered'])
+    : { data: [] };
 
   return NextResponse.json({
     plans: blocks,
@@ -147,17 +158,28 @@ export async function POST(req: NextRequest) {
 
   const { childId, nightsPerWeek, selectedNights, weekStart } = parsed.data;
 
-  // Verify child belongs to this parent and is active
+  // Verify child belongs to this parent/guardian and is active
   const { data: child } = await supabaseAdmin
     .from('children')
     .select('id, first_name, last_name, active')
     .eq('id', childId)
-    .eq('parent_id', parentId)
     .single();
 
   if (!child) {
-    console.error(`[bookings POST] child ownership failed: childId=${childId} parentId=${parentId}`);
+    console.error(`[bookings POST] child not found: childId=${childId}`);
     return errorResponse('CHILD_NOT_OWNED', 'Child not found or does not belong to you', 403);
+  }
+
+  // Guardian-based access check with parent_id fallback
+  const guardianAccess = await verifyGuardianAccess(user.id, childId);
+  if (!guardianAccess) {
+    // Fallback: parent_id check
+    const { data: ownedChild } = await supabaseAdmin
+      .from('children').select('id').eq('id', childId).eq('parent_id', parentId).single();
+    if (!ownedChild) {
+      console.error(`[bookings POST] child ownership failed: childId=${childId} parentId=${parentId}`);
+      return errorResponse('CHILD_NOT_OWNED', 'Child not found or does not belong to you', 403);
+    }
   }
 
   if (!child.active) {
@@ -472,23 +494,27 @@ export async function DELETE(req: NextRequest) {
   const reservationId = searchParams.get('id');
   if (!reservationId) return errorResponse('INVALID_PLAN_SELECTION', 'Reservation ID is required', 400);
 
-  // Verify the reservation belongs to a child of this parent via overnight_block
+  // Verify the reservation belongs to a child of this parent/guardian via overnight_block
   const { data: reservation } = await supabaseAdmin
     .from('reservations')
-    .select('id, overnight_block_id')
+    .select('id, overnight_block_id, child_id')
     .eq('id', reservationId)
     .single();
 
   if (!reservation) return errorResponse('INVALID_PLAN_SELECTION', 'Reservation not found', 404);
 
-  const { data: ownerBlock } = await supabaseAdmin
-    .from('overnight_blocks')
-    .select('id')
-    .eq('id', reservation.overnight_block_id)
-    .eq('parent_id', parentId)
-    .single();
-
-  if (!ownerBlock) return errorResponse('CHILD_NOT_OWNED', 'Reservation does not belong to you', 403);
+  // Guardian-based access check with parent_id fallback
+  const guardianDel = await verifyGuardianAccess(user.id, reservation.child_id);
+  if (!guardianDel) {
+    // Fallback: parent_id check via overnight_block
+    const { data: ownerBlock } = await supabaseAdmin
+      .from('overnight_blocks')
+      .select('id')
+      .eq('id', reservation.overnight_block_id)
+      .eq('parent_id', parentId)
+      .single();
+    if (!ownerBlock) return errorResponse('CHILD_NOT_OWNED', 'Reservation does not belong to you', 403);
+  }
 
   const { error } = await supabaseAdmin
     .from('reservations')
@@ -574,15 +600,23 @@ export async function PATCH(req: NextRequest) {
     return errorResponse('INVALID_PLAN_SELECTION', 'Invalid action', 400);
   }
 
-  // Verify overnight_block belongs to this parent
+  // Verify overnight_block belongs to this parent/guardian
   const { data: block } = await supabaseAdmin
     .from('overnight_blocks')
-    .select('id, parent_id, stripe_subscription_id, status')
+    .select('id, parent_id, child_id, stripe_subscription_id, status')
     .eq('id', planId)
-    .eq('parent_id', parentId)
     .single();
 
   if (!block) return errorResponse('INVALID_PLAN_SELECTION', 'Booking not found', 404);
+
+  // Guardian-based access check with parent_id fallback
+  const guardianPatch = await verifyGuardianAccess(user.id, block.child_id);
+  if (!guardianPatch) {
+    // Fallback: parent_id check
+    if (block.parent_id !== parentId) {
+      return errorResponse('INVALID_PLAN_SELECTION', 'Booking not found', 404);
+    }
+  }
   if (block.status === 'cancelled') return errorResponse('INVALID_PLAN_SELECTION', 'Booking is already cancelled', 400);
 
   // Cancel Stripe subscription if exists

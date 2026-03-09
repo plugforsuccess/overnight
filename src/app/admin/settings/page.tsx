@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Save } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
+import { useAdminRole } from '@/lib/admin-role-context';
 import { DAY_LABELS } from '@/lib/constants';
 import { AdminSettings, DayOfWeek } from '@/types/database';
 
@@ -12,6 +13,7 @@ const ALL_DAYS: DayOfWeek[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thur
 
 export default function AdminSettingsPage() {
   const router = useRouter();
+  const { isOwnerOrAdmin } = useAdminRole();
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -22,8 +24,7 @@ export default function AdminSettingsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
-      const { data: profile } = await supabase.from('parents').select('role').eq('id', user.id).single();
-      if (profile?.role !== 'admin') { router.push('/dashboard'); return; }
+      if (!isOwnerOrAdmin) { router.push('/admin'); return; }
 
       const { data } = await supabase.from('admin_settings').select('*').limit(1).single();
       if (data) setSettings(data as AdminSettings);

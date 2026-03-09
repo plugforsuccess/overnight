@@ -26,12 +26,30 @@ export function Navbar() {
   const menuRef = useRef<HTMLDivElement>(null);
 
   const loadProfile = useCallback(async (userId: string) => {
-    const { data } = await supabase
+    // Load display profile from parents (name, email)
+    const { data: parentData } = await supabase
       .from('parents')
-      .select('first_name, last_name, email, role, is_admin')
+      .select('first_name, last_name, email')
       .eq('id', userId)
       .single();
-    if (data) setProfile(data);
+
+    if (!parentData) return;
+
+    // Check admin access via center_memberships
+    const { data: membership } = await supabase
+      .from('center_memberships')
+      .select('role, membership_status')
+      .eq('user_id', userId)
+      .eq('membership_status', 'active')
+      .limit(1)
+      .maybeSingle();
+
+    const hasAdminRole = !!membership;
+    setProfile({
+      ...parentData,
+      role: membership?.role ?? 'parent',
+      is_admin: hasAdminRole,
+    });
   }, []);
 
   useEffect(() => {

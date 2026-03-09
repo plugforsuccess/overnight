@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, DollarSign, Pause, XCircle, Gift } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
+import { useAdminRole } from '@/lib/admin-role-context';
 import { formatCents } from '@/lib/constants';
 import { Plan } from '@/types/database';
 
 export default function AdminPlansPage() {
   const router = useRouter();
+  const { role } = useAdminRole();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -18,8 +20,7 @@ export default function AdminPlansPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
-      const { data: profile } = await supabase.from('parents').select('role').eq('id', user.id).single();
-      if (profile?.role !== 'admin') { router.push('/dashboard'); return; }
+      if (!['owner', 'admin', 'manager'].includes(role)) { router.push('/admin'); return; }
 
       const { data } = await supabase
         .from('plans')

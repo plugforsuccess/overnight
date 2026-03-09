@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, unauthorized, logAuditEvent } from '@/lib/api-auth';
+import { authenticateRequest, unauthorized, logAuditEvent, getAccessibleChildIds, verifyGuardianAccess } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase-server';
 
 /**
@@ -13,11 +13,21 @@ export async function GET(req: NextRequest) {
 
   const { parentId } = auth;
 
-  // Get all child IDs belonging to this parent
-  const { data: children, error: childError } = await supabaseAdmin
-    .from('children')
-    .select('id, first_name, last_name')
-    .eq('parent_id', parentId);
+  // Get child IDs via guardian links (with parent_id fallback)
+  const guardianChildIds = await getAccessibleChildIds(auth.userId);
+  const childFilter = guardianChildIds.length > 0
+    ? { ids: guardianChildIds }
+    : { parentId };
+
+  const { data: children, error: childError } = guardianChildIds.length > 0
+    ? await supabaseAdmin
+        .from('children')
+        .select('id, first_name, last_name')
+        .in('id', guardianChildIds)
+    : await supabaseAdmin
+        .from('children')
+        .select('id, first_name, last_name')
+        .eq('parent_id', parentId);
 
   if (childError) {
     console.error('[api/reservations] children query error:', childError);
@@ -138,16 +148,14 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Reservation not found' }, { status: 404 });
   }
 
-  // Verify child ownership
-  const { data: child } = await supabaseAdmin
-    .from('children')
-    .select('id')
-    .eq('id', reservation.child_id)
-    .eq('parent_id', parentId)
-    .single();
-
-  if (!child) {
-    return NextResponse.json({ error: 'Not authorized to cancel this reservation' }, { status: 403 });
+  // Verify guardian access to this child (with parent_id fallback)
+  const guardian = await verifyGuardianAccess(auth.userId, reservation.child_id, 'can_book');
+  if (!guardian) {
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', reservation.child_id).eq('parent_id', parentId).single();
+    if (!child) {
+      return NextResponse.json({ error: 'Not authorized to cancel this reservation' }, { status: 403 });
+    }
   }
 
   if (['canceled', 'canceled_low_enrollment'].includes(reservation.status)) {

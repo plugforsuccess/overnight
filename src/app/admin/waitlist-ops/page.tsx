@@ -7,6 +7,7 @@ import {
   ArrowLeft, ArrowUpCircle, Bell, XCircle, Users, Clock, TrendingUp,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
+import { useAdminRole } from '@/lib/admin-role-context';
 import { DEFAULT_CAPACITY } from '@/lib/constants';
 import { cn, formatDate } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
@@ -21,6 +22,7 @@ interface WaitlistGroup {
 
 export default function WaitlistOpsPage() {
   const router = useRouter();
+  const { role } = useAdminRole();
   const [entries, setEntries] = useState<WaitlistEntry[]>([]);
   const [capacityCounts, setCapacityCounts] = useState<Record<string, number>>({});
   const [settings, setSettings] = useState<AdminSettings | null>(null);
@@ -34,8 +36,7 @@ export default function WaitlistOpsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
-      const { data: profile } = await supabase.from('parents').select('role').eq('id', user.id).single();
-      if (profile?.role !== 'admin') { router.push('/dashboard'); return; }
+      if (!['owner', 'admin', 'manager'].includes(role)) { router.push('/admin'); return; }
 
       const { data: s } = await supabase.from('admin_settings').select('*').limit(1).single();
       if (s) setSettings(s as AdminSettings);

@@ -1,18 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '@/lib/supabase-server';
+import {
+  requireGuardianAccess,
+  getGuardianChildIds,
+  type GuardianAccessResult,
+} from '@/lib/role-helpers';
 
 export interface AuthResult {
   supabase: SupabaseClient;
   /** Supabase auth user UUID (auth.uid()) */
   userId: string;
-  /** parents.id (PK) — the FK used in children.parent_id, etc. */
+  /** Alias for userId — maintained for backward compatibility */
   parentId: string;
 }
 
 /**
- * Authenticate a request and return the Supabase client + user ID + parent ID.
- * Returns null if not authenticated or parent profile not found.
+ * Authenticate a request and return the Supabase client + user ID.
+ * Validates the user exists in the `users` table (canonical identity).
+ * Falls back to `parents` table if user not yet in `users` (graceful migration).
+ * Returns null if not authenticated or user profile not found.
  */
 export async function authenticateRequest(req: NextRequest): Promise<AuthResult | null> {
   const authHeader = req.headers.get('Authorization');
@@ -27,22 +34,53 @@ export async function authenticateRequest(req: NextRequest): Promise<AuthResult 
   console.log(`[api-auth] getUser: id=${user?.id ?? 'null'} error=${userError?.message ?? 'none'}`);
   if (!user) return null;
 
-  // parents.id = auth.users.id — single canonical identity, no extra lookup needed
-  // Verify the parent row exists
-  const { data: parentRow, error: parentError } = await supabaseAdmin
-    .from('parents')
+  // Check canonical users table first
+  const { data: userRow } = await supabaseAdmin
+    .from('users')
     .select('id')
     .eq('id', user.id)
     .single();
 
-  console.log(`[api-auth] parent lookup: found=${!!parentRow} error=${parentError?.message ?? 'none'}`);
-  if (!parentRow) return null;
+  if (!userRow) {
+    // Fallback: check parents table for users not yet backfilled
+    const { data: parentRow } = await supabaseAdmin
+      .from('parents')
+      .select('id')
+      .eq('id', user.id)
+      .single();
+
+    console.log(`[api-auth] users miss, parents fallback: found=${!!parentRow}`);
+    if (!parentRow) return null;
+  }
 
   return { supabase, userId: user.id, parentId: user.id };
 }
 
+/**
+ * Verify the authenticated user has guardian access to a specific child.
+ * Returns the guardian link if authorized, null otherwise.
+ */
+export async function verifyGuardianAccess(
+  userId: string,
+  childId: string,
+  permission?: 'can_book' | 'can_view_billing' | 'can_manage_pickups'
+): Promise<GuardianAccessResult | null> {
+  return requireGuardianAccess(userId, childId, permission);
+}
+
+/**
+ * Get all child IDs the user has guardian access to.
+ */
+export async function getAccessibleChildIds(userId: string): Promise<string[]> {
+  return getGuardianChildIds(userId);
+}
+
 export function unauthorized() {
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+}
+
+export function forbidden(message = 'Access denied') {
+  return NextResponse.json({ error: message }, { status: 403 });
 }
 
 export function badRequest(message: string) {

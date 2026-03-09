@@ -52,7 +52,9 @@ export default function LoginPage() {
       if (meRes.ok) {
         const { role } = await meRes.json();
         const redirectTo = searchParams.get('redirect');
-        const destination = role === 'admin' ? '/admin' : (redirectTo || '/dashboard');
+        // Any center membership role (owner, admin, manager, staff, billing_only, viewer) → admin panel
+        const isAdminPanelRole = role !== 'parent';
+        const destination = isAdminPanelRole ? '/admin' : (redirectTo || '/dashboard');
 
         // Use router.replace (not push) so back button doesn't return to login
         // Then router.refresh() to ensure server components re-evaluate auth

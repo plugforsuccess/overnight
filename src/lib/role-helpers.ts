@@ -1,14 +1,14 @@
 /**
- * Multi-Tenant Role Helpers — Future Auth Layer
+ * Multi-Tenant Role Helpers — Live Auth Layer (Phase B)
  *
- * These helpers implement center-scoped role checks using the new
+ * These helpers implement center-scoped role checks using the
  * `users`, `center_memberships`, and `child_guardians` tables.
  *
- * Phase C: run in parallel with existing parents.role checks.
- * Phase D: replace existing checks entirely.
+ * Phase B (current): canonical auth source for all routes.
+ * Phase C (future): multi-center expansion.
  *
  * Usage:
- *   import { requireCenterRole, requireGuardianAccess } from '@/lib/role-helpers';
+ *   import { requireCenterRole, requireGuardianAccess, getActiveCenterId } from '@/lib/role-helpers';
  */
 
 import { supabaseAdmin } from '@/lib/supabase-server';
@@ -223,4 +223,44 @@ export async function getUserMemberships(
 
   if (error || !data) return [];
   return data as CenterMembershipResult[];
+}
+
+// ─── Active Center Resolution ────────────────────────────────────────────────
+
+/**
+ * Module-level cache for the active center ID.
+ * In the current single-center deployment (Dreamwatch Overnight),
+ * there is exactly one active center. This avoids repeated DB lookups.
+ */
+let _cachedCenterId: string | null = null;
+
+/**
+ * Get the active center ID for the current single-center deployment.
+ * Caches the result in memory for the lifetime of the server process.
+ *
+ * For future multi-center support, this will be replaced by a
+ * request-scoped center resolution (e.g., from subdomain or header).
+ */
+export async function getActiveCenterId(): Promise<string | null> {
+  if (_cachedCenterId) return _cachedCenterId;
+
+  const { data, error } = await supabaseAdmin
+    .from('centers')
+    .select('id')
+    .eq('is_active', true)
+    .limit(1)
+    .single();
+
+  if (error || !data) return null;
+  _cachedCenterId = data.id;
+  return _cachedCenterId;
+}
+
+/**
+ * Get the child IDs that a user has guardian access to.
+ * Returns an array of child UUIDs.
+ */
+export async function getGuardianChildIds(userId: string): Promise<string[]> {
+  const guardianLinks = await getGuardianChildren(userId);
+  return guardianLinks.map((g) => g.child_id);
 }

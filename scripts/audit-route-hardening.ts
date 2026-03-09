@@ -81,7 +81,12 @@ const AUTH_PAGE_PATHS = ['/login', '/signup'];
 // Patterns to detect auth mechanisms
 const ADMIN_AUTH_PATTERNS = [
   /checkAdmin\s*\(/,
+  /checkStaff\s*\(/,
+  /checkBilling\s*\(/,
+  /checkAnyAdminRole\s*\(/,
+  /checkAdminWithRole\s*\(/,
   /requireAdmin\s*\(/,
+  /requireCenterRole\s*\(/,
   /is_admin/,
   /role\s*!==\s*['"]admin['"]/,
   /role\s*===\s*['"]admin['"]/,
@@ -296,7 +301,7 @@ function checkNamespaceCorrectness(route: RouteInfo, findings: Finding[]) {
 
   // Admin-like route outside admin namespace
   if (routeType !== 'admin_api' && routeType !== 'admin_page') {
-    const hasAdminAuth = matchesAny(content, [/checkAdmin\s*\(/, /requireAdmin\s*\(/]);
+    const hasAdminAuth = matchesAny(content, [/checkAdmin\s*\(/, /checkStaff\s*\(/, /checkBilling\s*\(/, /checkAnyAdminRole\s*\(/, /requireAdmin\s*\(/]);
     const hasInlineAdminCheck = /role\s*!==\s*['"]admin['"]/.test(content) && /is_admin/.test(content);
 
     if (hasAdminAuth) {
@@ -359,8 +364,8 @@ function checkAuthGuard(route: RouteInfo, findings: Finding[]) {
       });
     }
 
-    // Flag admin routes using inline auth instead of the shared checkAdmin() helper
-    const usesCheckAdmin = /checkAdmin\s*\(/.test(content);
+    // Flag admin routes using inline auth instead of the shared admin-auth helpers
+    const usesCheckAdmin = /check(?:Admin|Staff|Billing|AnyAdminRole|AdminWithRole)\s*\(/.test(content);
     const hasInlineAdminAuth = hasAdminAuth && !usesCheckAdmin;
     if (hasInlineAdminAuth) {
       findings.push({

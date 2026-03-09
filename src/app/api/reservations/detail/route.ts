@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, unauthorized, logAuditEvent } from '@/lib/api-auth';
+import { authenticateRequest, unauthorized, logAuditEvent, verifyGuardianAccess } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase-server';
 
 /**
@@ -19,15 +19,20 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'blockId is required' }, { status: 400 });
   }
 
-  // Fetch the block with ownership check
+  // Fetch the block
   const { data: block, error: blockError } = await supabaseAdmin
     .from('overnight_blocks')
-    .select('id, week_start, child_id, nights_per_week, weekly_price_cents, status, payment_status, caregiver_notes, created_at')
+    .select('id, week_start, child_id, nights_per_week, weekly_price_cents, status, payment_status, caregiver_notes, created_at, parent_id')
     .eq('id', blockId)
-    .eq('parent_id', parentId)
     .single();
 
   if (blockError || !block) {
+    return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
+  }
+
+  // Verify access via guardian link or parent_id
+  const guardian = await verifyGuardianAccess(auth.userId, block.child_id);
+  if (!guardian && block.parent_id !== parentId) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
   }
 
@@ -156,15 +161,20 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Notes must be a string, max 500 characters' }, { status: 400 });
   }
 
-  // Fetch current notes for diff in audit log
+  // Fetch current block and verify access
   const { data: currentBlock } = await supabaseAdmin
     .from('overnight_blocks')
-    .select('caregiver_notes, child_id')
+    .select('caregiver_notes, child_id, parent_id')
     .eq('id', blockId)
-    .eq('parent_id', parentId)
     .single();
 
   if (!currentBlock) {
+    return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
+  }
+
+  // Verify access via guardian link or parent_id
+  const guardian = await verifyGuardianAccess(auth.userId, currentBlock.child_id);
+  if (!guardian && currentBlock.parent_id !== parentId) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
   }
 
@@ -173,8 +183,7 @@ export async function PATCH(req: NextRequest) {
   const { error } = await supabaseAdmin
     .from('overnight_blocks')
     .update({ caregiver_notes: trimmedNotes })
-    .eq('id', blockId)
-    .eq('parent_id', parentId);
+    .eq('id', blockId);
 
   if (error) {
     return NextResponse.json({ error: 'Failed to update notes' }, { status: 500 });

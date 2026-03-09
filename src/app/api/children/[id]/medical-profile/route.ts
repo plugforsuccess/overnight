@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, unauthorized, badRequest } from '@/lib/api-auth';
+import { authenticateRequest, unauthorized, badRequest, verifyGuardianAccess } from '@/lib/api-auth';
 import { medicalProfileSchema } from '@/lib/validation/children';
 import { supabaseAdmin } from '@/lib/supabase-server';
 
@@ -12,17 +12,16 @@ export async function GET(
 
   const { id: childId } = await params;
 
-  // Verify child belongs to parent
-  const { data: child } = await auth.supabase
-    .from('children')
-    .select('id')
-    .eq('id', childId)
-    .eq('parent_id', auth.parentId)
-    .single();
+  // Verify guardian access to this child
+  const guardian = await verifyGuardianAccess(auth.userId, childId);
+  if (!guardian) {
+    // Fallback: parent_id check for backward compatibility
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', childId).eq('parent_id', auth.parentId).single();
+    if (!child) return unauthorized();
+  }
 
-  if (!child) return badRequest('Child not found');
-
-  const { data: profile, error } = await auth.supabase
+  const { data: profile, error } = await supabaseAdmin
     .from('child_medical_profiles')
     .select('*')
     .eq('child_id', childId)
@@ -41,15 +40,14 @@ export async function POST(
 
   const { id: childId } = await params;
 
-  // Verify child belongs to parent
-  const { data: child } = await auth.supabase
-    .from('children')
-    .select('id')
-    .eq('id', childId)
-    .eq('parent_id', auth.parentId)
-    .single();
-
-  if (!child) return badRequest('Child not found');
+  // Verify guardian access to this child
+  const guardian = await verifyGuardianAccess(auth.userId, childId);
+  if (!guardian) {
+    // Fallback: parent_id check for backward compatibility
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', childId).eq('parent_id', auth.parentId).single();
+    if (!child) return unauthorized();
+  }
 
   let body;
   try { body = await req.json(); } catch { return badRequest('Invalid request body'); }

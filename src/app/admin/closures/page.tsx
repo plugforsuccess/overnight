@@ -8,6 +8,7 @@ import {
   Calendar, Users, Clock, ChevronLeft, ChevronRight, Ban,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
+import { useAdminRole } from '@/lib/admin-role-context';
 import { cn } from '@/lib/utils';
 import { format, addDays, startOfDay } from 'date-fns';
 
@@ -53,6 +54,7 @@ interface OverrideItem {
 
 export default function ClosuresPage() {
   const router = useRouter();
+  const { isOwnerOrAdmin } = useAdminRole();
   const [loading, setLoading] = useState(true);
   const [overrides, setOverrides] = useState<OverrideItem[]>([]);
   const [weekStart, setWeekStart] = useState(() => startOfDay(new Date()));
@@ -96,8 +98,7 @@ export default function ClosuresPage() {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
-      const { data: profile } = await supabase.from('parents').select('role').eq('id', user.id).single();
-      if (profile?.role !== 'admin') { router.push('/dashboard'); return; }
+      if (!isOwnerOrAdmin) { router.push('/admin'); return; }
       loadData();
     }
     init();

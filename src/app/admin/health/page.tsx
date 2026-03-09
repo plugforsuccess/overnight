@@ -8,6 +8,7 @@ import {
   Clock, Shield, Activity, ChevronDown, ChevronUp, XCircle,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
+import { useAdminRole } from '@/lib/admin-role-context';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 
@@ -80,6 +81,7 @@ const RECOMMENDED_ACTIONS: Record<string, string> = {
 
 export default function HealthPage() {
   const router = useRouter();
+  const { isOwnerOrAdmin } = useAdminRole();
   const [loading, setLoading] = useState(true);
   const [issues, setIssues] = useState<HealthIssue[]>([]);
   const [runs, setRuns] = useState<HealthRun[]>([]);
@@ -118,8 +120,7 @@ export default function HealthPage() {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
-      const { data: profile } = await supabase.from('parents').select('role').eq('id', user.id).single();
-      if (profile?.role !== 'admin') { router.push('/dashboard'); return; }
+      if (!isOwnerOrAdmin) { router.push('/admin'); return; }
       loadData();
     }
     init();

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, unauthorized, badRequest, notFound, logAuditEvent } from '@/lib/api-auth';
+import { authenticateRequest, unauthorized, badRequest, notFound, logAuditEvent, verifyGuardianAccess } from '@/lib/api-auth';
+import { supabaseAdmin } from '@/lib/supabase-server';
 import { authorizedPickupSchema } from '@/lib/validation/children';
 import { hashPin } from '@/lib/pin-hash';
 
@@ -15,17 +16,17 @@ export async function GET(
 
   const childId = params.id;
 
-  const { data: child } = await auth.supabase
-    .from('children')
-    .select('id')
-    .eq('id', childId)
-    .eq('parent_id', auth.parentId)
-    .single();
-
-  if (!child) return notFound('Child not found');
+  // Verify guardian access to this child
+  const guardian = await verifyGuardianAccess(auth.userId, childId);
+  if (!guardian) {
+    // Fallback: parent_id check for backward compatibility
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', childId).eq('parent_id', auth.parentId).single();
+    if (!child) return unauthorized();
+  }
 
   // Never return pickup_pin_hash
-  const { data, error } = await auth.supabase
+  const { data, error } = await supabaseAdmin
     .from('child_authorized_pickups')
     .select('id, child_id, first_name, last_name, relationship, phone, id_verified, id_verified_at, notes, created_at, updated_at')
     .eq('child_id', childId)
@@ -47,17 +48,17 @@ export async function POST(
 
   const childId = params.id;
 
-  const { data: child } = await auth.supabase
-    .from('children')
-    .select('id')
-    .eq('id', childId)
-    .eq('parent_id', auth.parentId)
-    .single();
-
-  if (!child) return notFound('Child not found');
+  // Verify guardian access to this child
+  const guardian = await verifyGuardianAccess(auth.userId, childId);
+  if (!guardian) {
+    // Fallback: parent_id check for backward compatibility
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', childId).eq('parent_id', auth.parentId).single();
+    if (!child) return unauthorized();
+  }
 
   // Enforce max 5 authorized pickups per child
-  const { count: pickupCount } = await auth.supabase
+  const { count: pickupCount } = await supabaseAdmin
     .from('child_authorized_pickups')
     .select('*', { count: 'exact', head: true })
     .eq('child_id', childId);
@@ -78,7 +79,7 @@ export async function POST(
 
   const pinHash = await hashPin(parsed.data.pickup_pin);
 
-  const { data, error } = await auth.supabase
+  const { data, error } = await supabaseAdmin
     .from('child_authorized_pickups')
     .insert({
       child_id: childId,
@@ -94,7 +95,7 @@ export async function POST(
 
   if (error) return badRequest(error.message);
 
-  await logAuditEvent(auth.supabase, auth.userId, 'add_authorized_pickup', 'child_authorized_pickup', data.id, {
+  await logAuditEvent(supabaseAdmin, auth.userId, 'add_authorized_pickup', 'child_authorized_pickup', data.id, {
     child_id: childId,
   });
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, unauthorized, badRequest, notFound, logAuditEvent } from '@/lib/api-auth';
+import { authenticateRequest, unauthorized, badRequest, notFound, logAuditEvent, verifyGuardianAccess } from '@/lib/api-auth';
+import { supabaseAdmin } from '@/lib/supabase-server';
 import { allergiesListSchema } from '@/lib/validation/children';
 
 /**
@@ -16,15 +17,14 @@ export async function POST(
 
   const childId = params.id;
 
-  // Verify child ownership
-  const { data: child, error: childError } = await auth.supabase
-    .from('children')
-    .select('id')
-    .eq('id', childId)
-    .eq('parent_id', auth.parentId)
-    .single();
-
-  if (childError || !child) return notFound('Child not found');
+  // Verify guardian access to this child
+  const guardian = await verifyGuardianAccess(auth.userId, childId);
+  if (!guardian) {
+    // Fallback: parent_id check for backward compatibility
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', childId).eq('parent_id', auth.parentId).single();
+    if (!child) return unauthorized();
+  }
 
   let body;
   try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
@@ -36,7 +36,7 @@ export async function POST(
   const allergies = parsed.data;
 
   // Get existing allergies for this child
-  const { data: existingAllergies } = await auth.supabase
+  const { data: existingAllergies } = await supabaseAdmin
     .from('child_allergies')
     .select('id, allergen, custom_label')
     .eq('child_id', childId);
@@ -53,7 +53,7 @@ export async function POST(
   );
 
   for (const allergy of toDelete) {
-    await auth.supabase.from('child_allergies').delete().eq('id', allergy.id);
+    await supabaseAdmin.from('child_allergies').delete().eq('id', allergy.id);
   }
 
   // Upsert each allergy + action plan
@@ -66,7 +66,7 @@ export async function POST(
 
     if (existingId) {
       // Update severity
-      const { data, error } = await auth.supabase
+      const { data, error } = await supabaseAdmin
         .from('child_allergies')
         .update({ severity: allergy.severity, custom_label: allergy.custom_label || null })
         .eq('id', existingId)
@@ -77,7 +77,7 @@ export async function POST(
       allergyId = data.id;
     } else {
       // Insert new allergy
-      const { data, error } = await auth.supabase
+      const { data, error } = await supabaseAdmin
         .from('child_allergies')
         .insert({
           child_id: childId,
@@ -95,7 +95,7 @@ export async function POST(
     // Upsert action plan (required for every allergy)
     {
       const plan = allergy.action_plan;
-      const { data: existingPlan } = await auth.supabase
+      const { data: existingPlan } = await supabaseAdmin
         .from('child_allergy_action_plans')
         .select('id')
         .eq('child_allergy_id', allergyId)
@@ -115,12 +115,12 @@ export async function POST(
       };
 
       if (existingPlan) {
-        await auth.supabase
+        await supabaseAdmin
           .from('child_allergy_action_plans')
           .update(planData)
           .eq('id', existingPlan.id);
       } else {
-        await auth.supabase
+        await supabaseAdmin
           .from('child_allergy_action_plans')
           .insert(planData);
       }
@@ -130,13 +130,13 @@ export async function POST(
   }
 
   // Audit log
-  await logAuditEvent(auth.supabase, auth.userId, 'update_allergies', 'child', childId, {
+  await logAuditEvent(supabaseAdmin, auth.userId, 'update_allergies', 'child', childId, {
     allergy_count: allergies.length,
     deleted_count: toDelete.length,
   });
 
   // Return updated allergies
-  const { data: updated } = await auth.supabase
+  const { data: updated } = await supabaseAdmin
     .from('child_allergies')
     .select('*, child_allergy_action_plans(*)')
     .eq('child_id', childId)

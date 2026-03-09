@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest, unauthorized, badRequest, notFound, logAuditEvent } from '@/lib/api-auth';
+import { authenticateRequest, unauthorized, badRequest, notFound, logAuditEvent, verifyGuardianAccess } from '@/lib/api-auth';
+import { supabaseAdmin } from '@/lib/supabase-server';
 import { emergencyContactSchema } from '@/lib/validation/children';
 import { hashPin } from '@/lib/pin-hash';
 
@@ -15,17 +16,16 @@ export async function GET(
 
   const childId = params.id;
 
-  // Verify child ownership
-  const { data: child } = await auth.supabase
-    .from('children')
-    .select('id')
-    .eq('id', childId)
-    .eq('parent_id', auth.parentId)
-    .single();
+  // Verify guardian access to this child
+  const guardian = await verifyGuardianAccess(auth.userId, childId);
+  if (!guardian) {
+    // Fallback: parent_id check for backward compatibility
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', childId).eq('parent_id', auth.parentId).single();
+    if (!child) return unauthorized();
+  }
 
-  if (!child) return notFound('Child not found');
-
-  const { data, error } = await auth.supabase
+  const { data, error } = await supabaseAdmin
     .from('child_emergency_contacts')
     .select('id, child_id, first_name, last_name, relationship, phone, phone_alt, priority, authorized_for_pickup, created_at, updated_at')
     .eq('child_id', childId)
@@ -50,15 +50,14 @@ export async function POST(
 
   const childId = params.id;
 
-  // Verify child ownership
-  const { data: child } = await auth.supabase
-    .from('children')
-    .select('id')
-    .eq('id', childId)
-    .eq('parent_id', auth.parentId)
-    .single();
-
-  if (!child) return notFound('Child not found');
+  // Verify guardian access to this child
+  const guardian = await verifyGuardianAccess(auth.userId, childId);
+  if (!guardian) {
+    // Fallback: parent_id check for backward compatibility
+    const { data: child } = await supabaseAdmin
+      .from('children').select('id').eq('id', childId).eq('parent_id', auth.parentId).single();
+    if (!child) return unauthorized();
+  }
 
   let body;
   try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
@@ -78,7 +77,7 @@ export async function POST(
     );
   }
 
-  const { data, error } = await auth.supabase
+  const { data, error } = await supabaseAdmin
     .from('child_emergency_contacts')
     .insert({
       child_id: childId,
@@ -109,7 +108,7 @@ export async function POST(
     return badRequest('Failed to add emergency contact');
   }
 
-  await logAuditEvent(auth.supabase, auth.userId, 'add_emergency_contact', 'child_emergency_contact', data.id, {
+  await logAuditEvent(supabaseAdmin, auth.userId, 'add_emergency_contact', 'child_emergency_contact', data.id, {
     child_id: childId,
   });
 
@@ -118,7 +117,7 @@ export async function POST(
   if (parsed.data.authorized_for_pickup && pickupPin) {
     const pinHash = await hashPin(pickupPin);
 
-    const { data: pickupData, error: pickupError } = await auth.supabase
+    const { data: pickupData, error: pickupError } = await supabaseAdmin
       .from('child_authorized_pickups')
       .insert({
         child_id: childId,
@@ -134,7 +133,7 @@ export async function POST(
 
     if (!pickupError && pickupData) {
       pickup = pickupData;
-      await logAuditEvent(auth.supabase, auth.userId, 'add_authorized_pickup', 'child_authorized_pickup', pickupData.id, {
+      await logAuditEvent(supabaseAdmin, auth.userId, 'add_authorized_pickup', 'child_authorized_pickup', pickupData.id, {
         child_id: childId,
         promoted_from_emergency_contact: data.id,
       });

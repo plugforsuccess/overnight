@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ShieldCheck, ShieldX, Lock, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
+import { useAdminRole } from '@/lib/admin-role-context';
 
 interface ChildOption {
   id: string;
@@ -24,6 +25,7 @@ interface PickupPerson {
 
 export default function PickupVerificationPage() {
   const router = useRouter();
+  const { isStaff } = useAdminRole();
   const [children, setChildren] = useState<ChildOption[]>([]);
   const [selectedChildId, setSelectedChildId] = useState<string>('');
   const [pickups, setPickups] = useState<PickupPerson[]>([]);
@@ -48,8 +50,7 @@ export default function PickupVerificationPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
-      const { data: profile } = await supabase.from('parents').select('role').eq('id', user.id).single();
-      if (profile?.role !== 'admin') { router.push('/dashboard'); return; }
+      if (!isStaff) { router.push('/admin'); return; }
 
       try {
         const headers = await getAuthHeaders();

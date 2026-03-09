@@ -1,9 +1,9 @@
-# Route Access Matrix — Future Multi-Tenant Roles
+# Route Access Matrix — Multi-Tenant Roles
 
-## Status: Post-Launch Migration Plan
+## Status: LIVE (Phase B Activated)
 
-This document maps every route/API to the required role(s) under the future
-center-scoped permission model.
+This document maps every route/API to the required role(s) under the
+center-scoped permission model. **This is the live production auth model.**
 
 ---
 
@@ -114,8 +114,19 @@ role switcher or detect context from the current route prefix (`/dashboard` vs `
 
 ## Implementation Notes
 
-1. All admin routes must accept `centerId` (from session context or URL parameter)
+1. Active center is resolved via `getActiveCenterId()` (single-center deployment)
 2. `center_memberships.membership_status` must be `active` for access to be granted
-3. Role checks should use the `requireCenterRole()` helper
-4. Parent routes should use the `requireGuardianAccess()` helper
-5. Audit logs should capture both `user_id` and the `center_id` context
+3. Admin routes use `checkAdmin()` / `checkStaff()` / `checkBilling()` from `admin-auth.ts`
+4. Parent routes use `verifyGuardianAccess()` from `api-auth.ts` with `parent_id` fallback
+5. Admin layout provides `AdminRoleProvider` context for client-side role checks
+6. Sidebar filters nav items by role via `useAdminRole()` hook
+7. Login redirect: any center membership role redirects to `/admin`, otherwise `/dashboard`
+
+## Canonical Auth Sources (Phase B)
+
+| Concern | Source | Table |
+|---------|--------|-------|
+| Identity | `users` | `public.users` |
+| Staff/Admin access | `center_memberships` | `public.center_memberships` |
+| Parent/Guardian access | `child_guardians` | `public.child_guardians` |
+| Profile/Billing data | `parents` | `public.parents` (retained for compatibility) |

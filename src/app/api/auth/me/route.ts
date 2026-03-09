@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '@/lib/supabase-server';
+import { getActiveCenterId, getCenterMembership } from '@/lib/role-helpers';
 
 /**
  * POST /api/auth/me
  *
  * Called after signInWithPassword succeeds. Uses the service-role client to:
  * 1. Verify the caller's JWT
- * 2. Find their parent row by id (= auth.users.id)
- * 3. Return the parent's role for redirect routing
+ * 2. Check center_memberships for operational role
+ * 3. Fall back to parents table for identity verification
+ * 4. Return the user's role for redirect routing
  */
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get('Authorization');
@@ -30,18 +32,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
   }
 
-  // parents.id = auth.users.id — look up directly by id
-  const { data: parent, error: parentError } = await supabaseAdmin
-    .from('parents')
-    .select('id, role')
+  // Check center_memberships for operational role
+  const centerId = await getActiveCenterId();
+  let role = 'parent';
+
+  if (centerId) {
+    const membership = await getCenterMembership(user.id, centerId);
+    if (membership && membership.membership_status === 'active') {
+      role = membership.role;
+      console.log(`[api/auth/me] membership found: role=${role}`);
+    }
+  }
+
+  // Verify user exists (check users table, fall back to parents)
+  const { data: userRow } = await supabaseAdmin
+    .from('users')
+    .select('id')
     .eq('id', user.id)
     .single();
 
-  console.log(`[api/auth/me] parent lookup: found=${!!parent} role=${parent?.role ?? 'null'} error=${parentError?.message ?? 'none'}`);
+  if (!userRow) {
+    const { data: parent } = await supabaseAdmin
+      .from('parents')
+      .select('id')
+      .eq('id', user.id)
+      .single();
 
-  if (!parent) {
-    return NextResponse.json({ error: 'No parent profile found for this account' }, { status: 404 });
+    if (!parent) {
+      return NextResponse.json({ error: 'No profile found for this account' }, { status: 404 });
+    }
   }
 
-  return NextResponse.json({ role: parent.role ?? 'parent' });
+  return NextResponse.json({ role });
 }
