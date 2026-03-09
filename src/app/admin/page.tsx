@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Calendar, Users, DollarSign, Clock, Settings, List, CreditCard, ShieldCheck, Moon, TrendingUp, BarChart3, Ban, Activity } from 'lucide-react';
+import { Calendar, Users, DollarSign, Clock, List, CreditCard, ShieldCheck, Moon, TrendingUp, BarChart3, Ban, Activity } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { formatCents, DEFAULT_CAPACITY, DEFAULT_OPERATING_NIGHTS, DAY_LABELS } from '@/lib/constants';
 import { getWeekNights, getCurrentWeekStart } from '@/lib/utils';
@@ -174,8 +174,8 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Operations */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+        {/* Admin Cards — 3×3 Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <Link href="/admin/tonight" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-navy-600">
             <Moon className="h-10 w-10 text-navy-700 mx-auto mb-3" />
             <div className="font-semibold text-gray-900">Tonight&apos;s Attendance</div>
@@ -201,34 +201,25 @@ export default function AdminPage() {
             <div className="font-semibold text-gray-900">System Health</div>
             <div className="text-sm text-gray-500">Data integrity &amp; reconciliation</div>
           </Link>
-        </div>
-
-        {/* Navigation */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Link href="/admin/roster" className="card hover:shadow-md transition-shadow text-center">
+          <Link href="/admin/roster" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-navy-500">
             <Calendar className="h-10 w-10 text-navy-700 mx-auto mb-3" />
             <div className="font-semibold text-gray-900">Nightly Roster</div>
             <div className="text-sm text-gray-500">View children by night</div>
           </Link>
-          <Link href="/admin/plans" className="card hover:shadow-md transition-shadow text-center">
+          <Link href="/admin/plans" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-navy-400">
             <List className="h-10 w-10 text-navy-600 mx-auto mb-3" />
             <div className="font-semibold text-gray-900">Active Plans</div>
             <div className="text-sm text-gray-500">View & manage plans</div>
           </Link>
-          <Link href="/admin/waitlist" className="card hover:shadow-md transition-shadow text-center">
+          <Link href="/admin/waitlist" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-yellow-500">
             <Clock className="h-10 w-10 text-yellow-600 mx-auto mb-3" />
             <div className="font-semibold text-gray-900">Waitlist</div>
             <div className="text-sm text-gray-500">Manage waitlisted families</div>
           </Link>
-          <Link href="/admin/pickup-verification" className="card hover:shadow-md transition-shadow text-center">
+          <Link href="/admin/pickup-verification" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-green-400">
             <ShieldCheck className="h-10 w-10 text-green-600 mx-auto mb-3" />
             <div className="font-semibold text-gray-900">Pickup Verification</div>
             <div className="text-sm text-gray-500">Verify pickup PIN codes</div>
-          </Link>
-          <Link href="/admin/settings" className="card hover:shadow-md transition-shadow text-center">
-            <Settings className="h-10 w-10 text-gray-600 mx-auto mb-3" />
-            <div className="font-semibold text-gray-900">Settings</div>
-            <div className="text-sm text-gray-500">Capacity, pricing, hours</div>
           </Link>
         </div>
       </div>
