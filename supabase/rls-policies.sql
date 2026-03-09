@@ -521,6 +521,120 @@ CREATE POLICY admins_manage_medical_profiles ON public.child_medical_profiles
     EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
   );
 
+-- ── child_documents ────────────────────────────────────────────
+ALTER TABLE public.child_documents ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS parents_select_child_documents ON public.child_documents;
+CREATE POLICY parents_select_child_documents ON public.child_documents
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS parents_insert_child_documents ON public.child_documents;
+CREATE POLICY parents_insert_child_documents ON public.child_documents
+  FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS parents_update_child_documents ON public.child_documents;
+CREATE POLICY parents_update_child_documents ON public.child_documents
+  FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS parents_delete_child_documents ON public.child_documents;
+CREATE POLICY parents_delete_child_documents ON public.child_documents
+  FOR DELETE USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS admins_manage_child_documents ON public.child_documents;
+CREATE POLICY admins_manage_child_documents ON public.child_documents
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── child_immunization_records ──────────────────────────────────
+ALTER TABLE public.child_immunization_records ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS parents_select_immunization ON public.child_immunization_records;
+CREATE POLICY parents_select_immunization ON public.child_immunization_records
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS parents_insert_immunization ON public.child_immunization_records;
+CREATE POLICY parents_insert_immunization ON public.child_immunization_records
+  FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS parents_update_immunization ON public.child_immunization_records;
+CREATE POLICY parents_update_immunization ON public.child_immunization_records
+  FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS admins_manage_immunization ON public.child_immunization_records;
+CREATE POLICY admins_manage_immunization ON public.child_immunization_records
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── medication_authorizations ───────────────────────────────────
+ALTER TABLE public.medication_authorizations ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS parents_select_med_auth ON public.medication_authorizations;
+CREATE POLICY parents_select_med_auth ON public.medication_authorizations
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS parents_insert_med_auth ON public.medication_authorizations;
+CREATE POLICY parents_insert_med_auth ON public.medication_authorizations
+  FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS parents_update_med_auth ON public.medication_authorizations;
+CREATE POLICY parents_update_med_auth ON public.medication_authorizations
+  FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS parents_delete_med_auth ON public.medication_authorizations;
+CREATE POLICY parents_delete_med_auth ON public.medication_authorizations
+  FOR DELETE USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS admins_manage_med_auth ON public.medication_authorizations;
+CREATE POLICY admins_manage_med_auth ON public.medication_authorizations
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── medication_administration_logs ──────────────────────────────
+ALTER TABLE public.medication_administration_logs ENABLE ROW LEVEL SECURITY;
+
+-- Parents can view administration logs for their children
+DROP POLICY IF EXISTS parents_select_med_admin_logs ON public.medication_administration_logs;
+CREATE POLICY parents_select_med_admin_logs ON public.medication_administration_logs
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.medication_authorizations ma
+      JOIN public.children c ON c.id = ma.child_id
+      WHERE ma.id = medication_authorization_id AND c.parent_id = auth.uid()
+    )
+  );
+
+-- Only admins/staff can insert administration logs
+DROP POLICY IF EXISTS admins_manage_med_admin_logs ON public.medication_administration_logs;
+CREATE POLICY admins_manage_med_admin_logs ON public.medication_administration_logs
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
 -- ── child_events (append-only ledger) ────────────────────────
 DROP POLICY IF EXISTS parents_select_child_events ON public.child_events;
 CREATE POLICY parents_select_child_events ON public.child_events

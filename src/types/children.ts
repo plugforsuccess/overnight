@@ -319,6 +319,102 @@ export const VALID_ATTENDANCE_TRANSITIONS: Record<string, string[]> = {
   cancelled: [],
 };
 
+// ─── Immunization Record ──────────────────────────────────────────────────────
+
+export const IMMUNIZATION_STATUSES = ['current', 'expired', 'exempt_medical', 'exempt_religious', 'missing'] as const;
+export type ImmunizationStatus = typeof IMMUNIZATION_STATUSES[number];
+
+export const IMMUNIZATION_STATUS_LABELS: Record<ImmunizationStatus, string> = {
+  current: 'Current',
+  expired: 'Expired',
+  exempt_medical: 'Exempt (Medical)',
+  exempt_religious: 'Exempt (Religious)',
+  missing: 'Missing',
+};
+
+export interface ChildImmunizationRecordRow {
+  id: string;
+  child_id: string;
+  center_id: string | null;
+  status: ImmunizationStatus;
+  document_url: string | null;
+  document_path: string | null;
+  issued_date: string | null;
+  expires_at: string | null;
+  exemption_reason: string | null;
+  verified_by: string | null;
+  verified_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Medication Authorization ─────────────────────────────────────────────────
+
+export const MEDICATION_ROUTES = ['oral', 'topical', 'inhaled', 'injection', 'other'] as const;
+export type MedicationRoute = typeof MEDICATION_ROUTES[number];
+
+export const MEDICATION_ROUTE_LABELS: Record<MedicationRoute, string> = {
+  oral: 'Oral',
+  topical: 'Topical',
+  inhaled: 'Inhaled',
+  injection: 'Injection',
+  other: 'Other',
+};
+
+export interface MedicationAuthorizationRow {
+  id: string;
+  child_id: string;
+  center_id: string | null;
+  medication_name: string;
+  dosage: string;
+  route: MedicationRoute;
+  frequency: string;
+  start_date: string;
+  end_date: string | null;
+  special_instructions: string | null;
+  prescribing_physician: string | null;
+  parent_consent_name: string | null;
+  parent_consent_signed_at: string | null;
+  document_url: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Child Document ───────────────────────────────────────────────────────────
+
+export const DOCUMENT_TYPES = ['immunization_certificate', 'medication_authorization', 'photo_id', 'consent_form', 'other'] as const;
+export type DocumentType = typeof DOCUMENT_TYPES[number];
+
+export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
+  immunization_certificate: 'Immunization Certificate',
+  medication_authorization: 'Medication Authorization',
+  photo_id: 'Photo ID',
+  consent_form: 'Consent Form',
+  other: 'Other',
+};
+
+export interface ChildDocumentRow {
+  id: string;
+  child_id: string;
+  center_id: string | null;
+  document_type: DocumentType;
+  file_name: string;
+  file_url: string;
+  file_size: number | null;
+  mime_type: string | null;
+  uploaded_by: string;
+  expires_at: string | null;
+  verified: boolean;
+  verified_by: string | null;
+  verified_at: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 // ─── Full child with nested data (for UI) ────────────────────────────────────
 
 export interface ChildWithDetails extends ChildRow {
@@ -326,4 +422,6 @@ export interface ChildWithDetails extends ChildRow {
   emergency_contacts: ChildEmergencyContactRow[];
   authorized_pickups: Omit<ChildAuthorizedPickupRow, 'pickup_pin_hash'>[];
   medical_profile: ChildMedicalProfileRow | null;
+  immunization_record: ChildImmunizationRecordRow | null;
+  medication_authorizations: MedicationAuthorizationRow[];
 }

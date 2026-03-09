@@ -94,6 +94,8 @@ const phoneSchema = z.string().min(1, 'Phone number is required').refine((val) =
   return digits.length >= 10 && digits.length <= 11;
 }, { message: 'Please enter a valid phone number (10-11 digits)' });
 
+export { phoneSchema };
+
 export const emergencyContactSchema = z.object({
   first_name: z.string().trim().min(1, 'First name is required').max(50),
   last_name: z.string().trim().min(1, 'Last name is required').max(50),
@@ -119,7 +121,7 @@ export const authorizedPickupSchema = z.object({
 
 export type AuthorizedPickupInput = z.infer<typeof authorizedPickupSchema>;
 
-// For update (PIN optional — only set if resetting)
+// For update (PIN optional -- only set if resetting)
 export const authorizedPickupUpdateSchema = z.object({
   first_name: z.string().trim().min(1).max(50),
   last_name: z.string().trim().min(1).max(50),
@@ -164,6 +166,76 @@ export const medicalProfileSchema = medicalAckSchema.and(z.object({
 }));
 
 export type MedicalProfileInput = z.infer<typeof medicalProfileSchema>;
+
+// ─── Immunization Record ─────────────────────────────────────────────────────
+
+export const immunizationStatusSchema = z.enum([
+  'current', 'expired', 'exempt_medical', 'exempt_religious', 'missing',
+]);
+
+export const immunizationRecordSchema = z.object({
+  status: immunizationStatusSchema,
+  issued_date: z.string().optional().nullable(),
+  expires_at: z.string().optional().nullable(),
+  exemption_reason: z.string().max(500).optional().nullable(),
+  notes: z.string().max(500).optional().nullable(),
+}).refine((data) => {
+  if (data.status === 'exempt_medical' || data.status === 'exempt_religious') {
+    return data.exemption_reason && data.exemption_reason.trim().length > 0;
+  }
+  return true;
+}, {
+  message: 'Exemption reason is required for exempt status',
+  path: ['exemption_reason'],
+});
+
+export type ImmunizationRecordInput = z.infer<typeof immunizationRecordSchema>;
+
+// ─── Medication Authorization ────────────────────────────────────────────────
+
+export const medicationRouteSchema = z.enum(['oral', 'topical', 'inhaled', 'injection', 'other']);
+
+export const medicationAuthorizationSchema = z.object({
+  medication_name: z.string().trim().min(1, 'Medication name is required').max(100),
+  dosage: z.string().trim().min(1, 'Dosage is required').max(100),
+  route: medicationRouteSchema,
+  frequency: z.string().trim().min(1, 'Frequency is required').max(100),
+  start_date: z.string().refine(val => !isNaN(new Date(val).getTime()), {
+    message: 'Valid start date is required',
+  }),
+  end_date: z.string().optional().nullable(),
+  special_instructions: z.string().max(500).optional().nullable(),
+  prescribing_physician: z.string().max(100).optional().nullable(),
+  parent_consent_name: z.string().trim().min(1, 'Parent signature (typed name) is required').max(100),
+});
+
+export type MedicationAuthorizationInput = z.infer<typeof medicationAuthorizationSchema>;
+
+// ─── Document Upload ─────────────────────────────────────────────────────────
+
+export const documentTypeSchema = z.enum([
+  'immunization_certificate', 'medication_authorization', 'photo_id', 'consent_form', 'other',
+]);
+
+export const childDocumentSchema = z.object({
+  document_type: documentTypeSchema,
+  file_name: z.string().min(1, 'File name is required'),
+  expires_at: z.string().optional().nullable(),
+  notes: z.string().max(500).optional().nullable(),
+});
+
+export type ChildDocumentInput = z.infer<typeof childDocumentSchema>;
+
+// ─── Parent Profile ──────────────────────────────────────────────────────────
+
+export const parentProfileSchema = z.object({
+  first_name: z.string().trim().min(1, 'First name is required').max(50),
+  last_name: z.string().trim().min(1, 'Last name is required').max(50),
+  phone: phoneSchema,
+  address: z.string().max(200).optional().nullable(),
+});
+
+export type ParentProfileInput = z.infer<typeof parentProfileSchema>;
 
 // ─── Onboarding Status ───────────────────────────────────────────────────────
 

@@ -236,9 +236,125 @@ model Child {
   incident_reports      IncidentReport[]
   reservation_nights    ReservationNight[]
   billing_ledger        BillingLedger[]
+  documents             ChildDocument[]
+  immunization_record   ChildImmunizationRecord?
+  medication_authorizations MedicationAuthorization[]
 
   @@index([parent_id], map: "idx_children_parent_id")
   @@map("children")
+}
+
+// ─── child_documents ──────────────────────────────────────────────────────
+// Secure document storage for immunization certificates, medication
+// authorization forms, photo IDs, and other licensing-required files.
+// Files live in Supabase Storage; this table tracks metadata.
+model ChildDocument {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id      String    @db.Uuid
+  center_id     String?   @db.Uuid
+  document_type String    // immunization_certificate | medication_authorization | photo_id | consent_form | other
+  file_name     String
+  file_url      String    // Supabase Storage signed URL or path
+  file_size     Int?
+  mime_type     String?
+  uploaded_by   String    @db.Uuid
+  expires_at    DateTime? @db.Timestamptz(6)
+  verified      Boolean   @default(false)
+  verified_by   String?   @db.Uuid
+  verified_at   DateTime? @db.Timestamptz(6)
+  notes         String?
+  is_active     Boolean   @default(true)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  child Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
+
+  @@index([child_id, document_type], map: "idx_child_documents_child_type")
+  @@map("child_documents")
+}
+
+// ─── child_immunization_records ──────────────────────────────────────────
+// Tracks immunization status per child. Georgia DECAL requires Form 3231
+// (Certificate of Immunization) on file for every enrolled child.
+// CHECK: status IN (current, expired, exempt_medical, exempt_religious, missing)
+model ChildImmunizationRecord {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id       String    @unique @db.Uuid
+  center_id      String?   @db.Uuid
+  status         String    @default("missing") // current | expired | exempt_medical | exempt_religious | missing
+  document_url   String?   // path in Supabase Storage (child-documents bucket)
+  document_path  String?   // storage key for deletion
+  issued_date    DateTime? @db.Date
+  expires_at     DateTime? @db.Date
+  exemption_reason String?
+  verified_by    String?   @db.Uuid
+  verified_at    DateTime? @db.Timestamptz(6)
+  notes          String?
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  child Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
+
+  @@map("child_immunization_records")
+}
+
+// ─── medication_authorizations ───────────────────────────────────────────
+// Written parental authorization for each medication a child may receive
+// in care. Georgia DECAL requires signed authorization before any medication
+// can be administered. Covers routine meds (antibiotics, ADHD, seizure, etc.)
+// that allergy action plans do not cover.
+model MedicationAuthorization {
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id                String    @db.Uuid
+  center_id               String?   @db.Uuid
+  medication_name         String
+  dosage                  String
+  route                   String    // oral | topical | inhaled | injection | other
+  frequency               String    // e.g. "every 4 hours", "twice daily", "as needed"
+  start_date              DateTime  @db.Date
+  end_date                DateTime? @db.Date
+  special_instructions    String?
+  prescribing_physician   String?
+  parent_consent_name     String?   // name of consenting parent (typed signature)
+  parent_consent_signed_at DateTime? @db.Timestamptz(6)
+  document_url            String?   // signed authorization form upload
+  is_active               Boolean   @default(true)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  child                Child                        @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  administration_logs  MedicationAdministrationLog[]
+
+  @@index([child_id, is_active], map: "idx_med_auth_child_active")
+  @@map("medication_authorizations")
+}
+
+// ─── medication_administration_logs ──────────────────────────────────────
+// Immutable record of each medication administration event.
+// Staff logs when medication is actually given to a child.
+model MedicationAdministrationLog {
+  id                          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  medication_authorization_id String   @db.Uuid
+  child_id                    String   @db.Uuid
+  administered_at             DateTime @db.Timestamptz(6)
+  administered_by             String   @db.Uuid
+  dose_given                  String
+  notes                       String?
+  parent_notified             Boolean  @default(false)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  authorization MedicationAuthorization @relation(fields: [medication_authorization_id], references: [id], onDelete: Cascade)
+
+  @@index([child_id, administered_at], map: "idx_med_admin_child_time")
+  @@map("medication_administration_logs")
 }
 
 // ─── child_allergies ─────────────────────────────────────────────────────────

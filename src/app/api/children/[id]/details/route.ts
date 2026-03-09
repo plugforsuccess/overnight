@@ -3,7 +3,8 @@ import { authenticateRequest, unauthorized, badRequest, notFound } from '@/lib/a
 
 /**
  * GET /api/children/:id/details
- * Fetches a child with all related data (allergies, action plans, contacts, pickups).
+ * Fetches a child with all related data (allergies, action plans, contacts,
+ * pickups, immunization record, medication authorizations).
  */
 export async function GET(
   req: NextRequest,
@@ -25,7 +26,7 @@ export async function GET(
   if (childError || !child) return notFound('Child not found');
 
   // Fetch related data in parallel
-  const [allergiesRes, contactsRes, pickupsRes, medicalRes] = await Promise.all([
+  const [allergiesRes, contactsRes, pickupsRes, medicalRes, immunizationRes, medicationsRes] = await Promise.all([
     auth.supabase
       .from('child_allergies')
       .select('*, child_allergy_action_plans(*)')
@@ -46,12 +47,23 @@ export async function GET(
       .select('*')
       .eq('child_id', childId)
       .single(),
+    auth.supabase
+      .from('child_immunization_records')
+      .select('*')
+      .eq('child_id', childId)
+      .single(),
+    auth.supabase
+      .from('medication_authorizations')
+      .select('*')
+      .eq('child_id', childId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false }),
   ]);
 
   if (allergiesRes.error) return badRequest('Failed to load allergies');
   if (contactsRes.error) return badRequest('Failed to load emergency contacts');
   if (pickupsRes.error) return badRequest('Failed to load authorized pickups');
-  // medical profile might not exist yet — that's OK
+  // medical profile, immunization record might not exist yet -- that's OK
 
   return NextResponse.json({
     ...child,
@@ -59,5 +71,7 @@ export async function GET(
     emergency_contacts: contactsRes.data || [],
     authorized_pickups: pickupsRes.data || [],
     medical_profile: medicalRes.data || null,
+    immunization_record: immunizationRes.data || null,
+    medication_authorizations: medicationsRes.data || [],
   });
 }

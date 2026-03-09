@@ -14,13 +14,19 @@ import { ChildFormBasics } from '@/components/children/ChildFormBasics';
 import { ChildAllergiesEditor } from '@/components/children/ChildAllergiesEditor';
 import { EmergencyContactsEditor } from '@/components/children/EmergencyContactsEditor';
 import { AuthorizedPickupsEditor } from '@/components/children/AuthorizedPickupsEditor';
+import { MedicalProfileEditor } from '@/components/children/MedicalProfileEditor';
+import { ImmunizationPanel } from '@/components/children/ImmunizationPanel';
+import { MedicationAuthorizationEditor } from '@/components/children/MedicationAuthorizationEditor';
 
-type Tab = 'basics' | 'allergies' | 'emergency' | 'pickups';
+type Tab = 'basics' | 'physician' | 'allergies' | 'emergency' | 'pickups' | 'immunization' | 'medications';
 const TABS: { key: Tab; label: string }[] = [
   { key: 'basics', label: 'Basics' },
+  { key: 'physician', label: 'Physician' },
   { key: 'allergies', label: 'Allergies & Plans' },
   { key: 'emergency', label: 'Emergency Contacts' },
   { key: 'pickups', label: 'Authorized Pickups' },
+  { key: 'immunization', label: 'Immunization' },
+  { key: 'medications', label: 'Medications' },
 ];
 
 export default function ChildrenPage() {
@@ -35,7 +41,7 @@ export default function ChildrenPage() {
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
 
-  // ── Auth token helper ──────────────────────────────────────────────
+  // -- Auth token helper --
   async function getAuthHeaders(): Promise<Record<string, string>> {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) throw new Error('Not authenticated');
@@ -50,13 +56,12 @@ export default function ChildrenPage() {
     setTimeout(() => setToast(''), 3000);
   }
 
-  // ── Load children list ─────────────────────────────────────────────
+  // -- Load children list --
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
-      // parents.id = auth user ID
       const { data: parentRow } = await supabase
         .from('parents')
         .select('id')
@@ -77,7 +82,7 @@ export default function ChildrenPage() {
     load();
   }, [router]);
 
-  // ── Load child details ─────────────────────────────────────────────
+  // -- Load child details --
   const loadChildDetails = useCallback(async (childId: string) => {
     setDetailLoading(true);
     setError('');
@@ -102,7 +107,7 @@ export default function ChildrenPage() {
     if (selectedId) loadChildDetails(selectedId);
   }, [selectedId, loadChildDetails]);
 
-  // ── CRUD handlers ──────────────────────────────────────────────────
+  // -- CRUD handlers --
 
   async function handleAddChild() {
     setSaving(true);
@@ -320,6 +325,102 @@ export default function ChildrenPage() {
     }
   }
 
+  // -- Medical profile --
+  async function handleSaveMedicalProfile(profileData: any) {
+    if (!selectedId) return;
+    setSaving(true);
+    setError('');
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/children/${selectedId}/medical-profile`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(profileData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setSelectedChild(prev => prev ? { ...prev, medical_profile: data.profile } : null);
+      showToast('Medical profile saved');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // -- Immunization --
+  async function handleSaveImmunization(recordData: any) {
+    if (!selectedId) return;
+    setSaving(true);
+    setError('');
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/children/${selectedId}/immunization`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(recordData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setSelectedChild(prev => prev ? { ...prev, immunization_record: data.record } : null);
+      showToast('Immunization record saved');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // -- Medications --
+  async function handleAddMedication(medData: any) {
+    if (!selectedId) return;
+    setSaving(true);
+    setError('');
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/children/${selectedId}/medications`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(medData),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setSelectedChild(prev => prev ? {
+        ...prev,
+        medication_authorizations: [data.medication, ...prev.medication_authorizations],
+      } : null);
+      showToast('Medication authorized');
+    } catch (err: any) {
+      throw err;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteMedication(id: string) {
+    setSaving(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/medications/${id}`, {
+        method: 'DELETE',
+        headers,
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error);
+      }
+      setSelectedChild(prev => prev ? {
+        ...prev,
+        medication_authorizations: prev.medication_authorizations.filter(m => m.id !== id),
+      } : null);
+      showToast('Medication authorization removed');
+    } catch (err: any) {
+      throw err;
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleDeleteChild(childId: string) {
     if (!confirm('Are you sure you want to remove this child? All related data will be deleted.')) return;
     try {
@@ -343,7 +444,7 @@ export default function ChildrenPage() {
     }
   }
 
-  // ── Render ─────────────────────────────────────────────────────────
+  // -- Render --
 
   if (loading) {
     return (
@@ -449,12 +550,12 @@ export default function ChildrenPage() {
               ) : selectedChild ? (
                 <div className="card">
                   {/* Tabs */}
-                  <div className="flex border-b mb-6 -mt-2 gap-1">
+                  <div className="flex border-b mb-6 -mt-2 gap-1 overflow-x-auto">
                     {TABS.map(tab => (
                       <button
                         key={tab.key}
                         onClick={() => setActiveTab(tab.key)}
-                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                        className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                           activeTab === tab.key
                             ? 'border-accent-500 text-accent-700'
                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -470,6 +571,15 @@ export default function ChildrenPage() {
                     <ChildFormBasics
                       child={selectedChild}
                       onSave={handleSaveBasics}
+                      saving={saving}
+                    />
+                  )}
+
+                  {activeTab === 'physician' && (
+                    <MedicalProfileEditor
+                      childId={selectedChild.id}
+                      profile={selectedChild.medical_profile}
+                      onSave={handleSaveMedicalProfile}
                       saving={saving}
                     />
                   )}
@@ -501,6 +611,25 @@ export default function ChildrenPage() {
                       onAdd={handleAddPickup}
                       onUpdate={handleUpdatePickup}
                       onDelete={handleDeletePickup}
+                      saving={saving}
+                    />
+                  )}
+
+                  {activeTab === 'immunization' && (
+                    <ImmunizationPanel
+                      childId={selectedChild.id}
+                      record={selectedChild.immunization_record}
+                      onSave={handleSaveImmunization}
+                      saving={saving}
+                    />
+                  )}
+
+                  {activeTab === 'medications' && (
+                    <MedicationAuthorizationEditor
+                      childId={selectedChild.id}
+                      medications={selectedChild.medication_authorizations}
+                      onAdd={handleAddMedication}
+                      onDelete={handleDeleteMedication}
                       saving={saving}
                     />
                   )}
