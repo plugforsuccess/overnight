@@ -1,0 +1,887 @@
+{
+  "generatedAt": "2026-03-09T00:47:07.114Z",
+  "issues": [
+    {
+      "severity": "warning",
+      "code": "SHADOW_AUTH",
+      "message": "Supabase auth schema reference: auth.uid",
+      "source": "20260306000002_create_parent_settings"
+    },
+    {
+      "severity": "warning",
+      "code": "SHADOW_AUTH",
+      "message": "Supabase auth schema reference: auth.uid",
+      "source": "20260307000001_harden_parent_onboarding"
+    },
+    {
+      "severity": "warning",
+      "code": "SHADOW_AUTH",
+      "message": "Supabase auth schema reference: auth.uid",
+      "source": "20260307000002_enterprise_hardening"
+    },
+    {
+      "severity": "warning",
+      "code": "SHADOW_AUTH",
+      "message": "Supabase auth schema reference: auth.uid",
+      "source": "20260307000003_operational_hardening"
+    },
+    {
+      "severity": "critical",
+      "code": "MIGRATION_TABLE_ORDER",
+      "message": "20260308000001_attendance_records depends on table reservation_nights before creation",
+      "source": "20260308000001_attendance_records"
+    },
+    {
+      "severity": "critical",
+      "code": "MIGRATION_TABLE_ORDER",
+      "message": "20260308000002_capacity_overrides depends on table centers before creation",
+      "source": "20260308000002_capacity_overrides"
+    },
+    {
+      "severity": "critical",
+      "code": "MIGRATION_TABLE_ORDER",
+      "message": "20260308000002_capacity_overrides depends on table programs before creation",
+      "source": "20260308000002_capacity_overrides"
+    },
+    {
+      "severity": "critical",
+      "code": "MIGRATION_TABLE_ORDER",
+      "message": "20260308000004_billing_ledger depends on table reservation_nights before creation",
+      "source": "20260308000004_billing_ledger"
+    },
+    {
+      "severity": "critical",
+      "code": "SCHEMA_TABLE_MISSING_FROM_MIGRATIONS",
+      "message": "Table centers present in schema but never created in migrations"
+    },
+    {
+      "severity": "critical",
+      "code": "SCHEMA_TABLE_MISSING_FROM_MIGRATIONS",
+      "message": "Table programs present in schema but never created in migrations"
+    },
+    {
+      "severity": "critical",
+      "code": "SCHEMA_TABLE_MISSING_FROM_MIGRATIONS",
+      "message": "Table program_capacity present in schema but never created in migrations"
+    },
+    {
+      "severity": "critical",
+      "code": "SCHEMA_TABLE_MISSING_FROM_MIGRATIONS",
+      "message": "Table reservation_nights present in schema but never created in migrations"
+    },
+    {
+      "severity": "warning",
+      "code": "DB_UNAVAILABLE",
+      "message": "DATABASE_URL not set"
+    }
+  ],
+  "migrations": [
+    {
+      "name": "0_baseline",
+      "creates": [
+        "parents",
+        "children",
+        "child_allergies",
+        "child_allergy_action_plans",
+        "child_emergency_contacts",
+        "child_authorized_pickups",
+        "plans",
+        "overnight_blocks",
+        "reservations",
+        "nightly_capacity",
+        "waitlist",
+        "payments",
+        "admin_settings",
+        "credits",
+        "audit_log",
+        "config",
+        "stripe_prices",
+        "subscriptions",
+        "pending_plan_changes",
+        "billing_events"
+      ],
+      "alters": [
+        "children",
+        "child_allergies",
+        "child_allergy_action_plans",
+        "child_emergency_contacts",
+        "child_authorized_pickups",
+        "overnight_blocks",
+        "overnight_blocks",
+        "overnight_blocks",
+        "reservations",
+        "reservations",
+        "waitlist",
+        "waitlist",
+        "payments",
+        "payments",
+        "credits",
+        "credits",
+        "audit_log",
+        "subscriptions",
+        "pending_plan_changes",
+        "billing_events"
+      ],
+      "dependsOn": [
+        "parents",
+        "children",
+        "child_allergies",
+        "plans",
+        "overnight_blocks",
+        "subscriptions",
+        "child_allergy_action_plans",
+        "child_emergency_contacts",
+        "reservations",
+        "waitlist",
+        "payments",
+        "credits",
+        "audit_log",
+        "stripe_prices",
+        "pending_plan_changes",
+        "billing_events"
+      ],
+      "unsafeAssumptions": [],
+      "createdColumns": {
+        "parents": [
+          "id",
+          "first_name",
+          "last_name",
+          "email",
+          "phone",
+          "address",
+          "role",
+          "is_admin",
+          "stripe_customer_id",
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "children": [
+          "id",
+          "parent_id",
+          "first_name",
+          "last_name",
+          "date_of_birth",
+          "name",
+          "allergies",
+          "photo_url",
+          "medical_notes",
+          "created_at",
+          "updated_at"
+        ],
+        "child_allergies": [
+          "id",
+          "child_id",
+          "allergen",
+          "custom_label",
+          "severity",
+          "created_at",
+          "updated_at"
+        ],
+        "child_allergy_action_plans": [
+          "id",
+          "child_allergy_id",
+          "treatment_first_line",
+          "dose_instructions",
+          "symptoms_watch",
+          "med_location",
+          "requires_med_on_site",
+          "medication_expires_on",
+          "physician_name",
+          "parent_confirmed",
+          "parent_confirmed_at",
+          "created_at",
+          "updated_at"
+        ],
+        "child_emergency_contacts": [
+          "id",
+          "child_id",
+          "first_name",
+          "last_name",
+          "relationship",
+          "phone",
+          "phone_alt",
+          "priority",
+          "authorized_for_pickup",
+          "created_at",
+          "updated_at"
+        ],
+        "child_authorized_pickups": [
+          "id",
+          "child_id",
+          "first_name",
+          "last_name",
+          "relationship",
+          "phone",
+          "pickup_pin_hash",
+          "id_verified",
+          "id_verified_at",
+          "id_verified_by",
+          "notes",
+          "created_at",
+          "updated_at"
+        ],
+        "plans": [
+          "id",
+          "name",
+          "nights_per_week",
+          "weekly_price_cents",
+          "active",
+          "created_at",
+          "updated_at"
+        ],
+        "overnight_blocks": [
+          "id",
+          "week_start",
+          "parent_id",
+          "child_id",
+          "plan_id",
+          "nights_per_week",
+          "weekly_price_cents",
+          "multi_child_discount_pct",
+          "status",
+          "payment_status",
+          "stripe_subscription_id",
+          "stripe_invoice_id",
+          "created_at",
+          "updated_at"
+        ],
+        "reservations": [
+          "id",
+          "child_id",
+          "date",
+          "overnight_block_id",
+          "status",
+          "admin_override",
+          "created_at",
+          "updated_at"
+        ],
+        "nightly_capacity": [
+          "date",
+          "capacity",
+          "min_enrollment",
+          "confirmed_count",
+          "status",
+          "override_capacity",
+          "created_at",
+          "updated_at"
+        ],
+        "waitlist": [
+          "id",
+          "date",
+          "child_id",
+          "parent_id",
+          "status",
+          "offered_at",
+          "expires_at",
+          "created_at",
+          "updated_at"
+        ],
+        "payments": [
+          "id",
+          "parent_id",
+          "plan_id",
+          "amount_cents",
+          "status",
+          "description",
+          "stripe_payment_intent_id",
+          "stripe_invoice_id",
+          "created_at",
+          "updated_at"
+        ],
+        "admin_settings": [
+          "id",
+          "max_capacity",
+          "min_enrollment",
+          "pricing_tiers",
+          "operating_nights",
+          "billing_day",
+          "billing_time",
+          "waitlist_confirm_hours",
+          "overnight_start_time",
+          "overnight_end_time",
+          "created_at",
+          "updated_at"
+        ],
+        "credits": [
+          "id",
+          "parent_id",
+          "amount_cents",
+          "reason",
+          "related_block_id",
+          "related_date",
+          "source_weekly_price_cents",
+          "source_plan_nights",
+          "applied",
+          "applied_at",
+          "created_at",
+          "updated_at"
+        ],
+        "audit_log": [
+          "id",
+          "actor_id",
+          "action",
+          "entity_type",
+          "entity_id",
+          "metadata",
+          "created_at"
+        ],
+        "config": [
+          "key",
+          "value"
+        ],
+        "stripe_prices": [
+          "tier",
+          "price_id",
+          "mode",
+          "updated_at"
+        ],
+        "subscriptions": [
+          "id",
+          "parent_id",
+          "stripe_subscription_id",
+          "plan_tier",
+          "status",
+          "stripe_status",
+          "next_billing_date",
+          "current_period_end",
+          "created_at",
+          "updated_at"
+        ],
+        "pending_plan_changes": [
+          "id",
+          "subscription_id",
+          "new_plan_tier",
+          "effective_date",
+          "created_at",
+          "updated_at"
+        ],
+        "billing_events": [
+          "id",
+          "stripe_event_id",
+          "event_type",
+          "subscription_id",
+          "payload",
+          "livemode",
+          "stripe_created_at",
+          "status",
+          "error",
+          "processed_at",
+          "created_at"
+        ]
+      }
+    },
+    {
+      "name": "20260306000002_create_parent_settings",
+      "creates": [
+        "parent_settings"
+      ],
+      "alters": [
+        "parent_settings",
+        "parent_settings"
+      ],
+      "dependsOn": [
+        "parents",
+        "parent_settings"
+      ],
+      "unsafeAssumptions": [
+        "Supabase auth schema reference: auth.uid"
+      ],
+      "createdColumns": {
+        "parent_settings": [
+          "id",
+          "parent_id",
+          "email_notifications",
+          "sms_notifications",
+          "reservation_reminders",
+          "billing_reminders",
+          "emergency_alerts",
+          "require_pickup_pin",
+          "notify_on_check_in_out",
+          "notify_on_pickup_changes",
+          "emergency_contact_reminder",
+          "preferred_contact_method",
+          "preferred_reminder_timing",
+          "staff_notes",
+          "language_preference",
+          "created_at",
+          "updated_at"
+        ]
+      }
+    },
+    {
+      "name": "20260307000001_harden_parent_onboarding",
+      "creates": [
+        "child_medical_profiles"
+      ],
+      "alters": [
+        "parents",
+        "parents",
+        "parents",
+        "children",
+        "child_emergency_contacts",
+        "child_authorized_pickups",
+        "child_authorized_pickups",
+        "child_medical_profiles"
+      ],
+      "dependsOn": [
+        "children"
+      ],
+      "unsafeAssumptions": [
+        "Supabase auth schema reference: auth.uid"
+      ],
+      "createdColumns": {
+        "child_medical_profiles": [
+          "id",
+          "child_id",
+          "center_id",
+          "has_allergies",
+          "has_medications",
+          "has_medical_conditions",
+          "allergies_summary",
+          "medications_summary",
+          "medical_conditions_summary",
+          "physician_name",
+          "physician_phone",
+          "hospital_preference",
+          "special_instructions",
+          "created_at",
+          "updated_at"
+        ],
+        "parents": [
+          "IF"
+        ],
+        "children": [
+          "IF"
+        ],
+        "child_emergency_contacts": [
+          "IF"
+        ],
+        "child_authorized_pickups": [
+          "IF"
+        ]
+      }
+    },
+    {
+      "name": "20260307000002_enterprise_hardening",
+      "creates": [
+        "child_events",
+        "child_attendance_sessions",
+        "pickup_events"
+      ],
+      "alters": [
+        "child_attendance_sessions",
+        "child_attendance_sessions",
+        "child_emergency_contacts",
+        "child_events",
+        "child_attendance_sessions",
+        "audit_log",
+        "pickup_events"
+      ],
+      "dependsOn": [
+        "children",
+        "reservations",
+        "child_authorized_pickups",
+        "parents"
+      ],
+      "unsafeAssumptions": [
+        "Supabase auth schema reference: auth.uid"
+      ],
+      "createdColumns": {
+        "child_events": [
+          "id",
+          "child_id",
+          "center_id",
+          "event_type",
+          "event_data",
+          "created_by",
+          "created_at"
+        ],
+        "child_attendance_sessions": [
+          "id",
+          "child_id",
+          "center_id",
+          "reservation_id",
+          "check_in_at",
+          "check_out_at",
+          "checked_in_by",
+          "checked_out_by",
+          "pickup_person_name",
+          "pickup_relationship",
+          "pickup_verified",
+          "status",
+          "notes",
+          "created_at",
+          "updated_at"
+        ],
+        "pickup_events": [
+          "id",
+          "child_id",
+          "pickup_person_id",
+          "verified_by_staff_id",
+          "verification_method",
+          "notes",
+          "created_at"
+        ],
+        "child_emergency_contacts": [],
+        "audit_log": []
+      }
+    },
+    {
+      "name": "20260307000003_operational_hardening",
+      "creates": [
+        "reservation_events",
+        "incident_reports",
+        "center_staff_memberships",
+        "pickup_verifications"
+      ],
+      "alters": [
+        "incident_reports",
+        "incident_reports",
+        "incident_reports",
+        "incident_reports",
+        "center_staff_memberships",
+        "center_staff_memberships",
+        "reservation_events",
+        "incident_reports",
+        "center_staff_memberships",
+        "pickup_verifications"
+      ],
+      "dependsOn": [
+        "reservations",
+        "children",
+        "child_attendance_sessions",
+        "parents"
+      ],
+      "unsafeAssumptions": [
+        "Supabase auth schema reference: auth.uid"
+      ],
+      "createdColumns": {
+        "reservation_events": [
+          "id",
+          "reservation_id",
+          "event_type",
+          "event_data",
+          "created_by",
+          "created_at"
+        ],
+        "incident_reports": [
+          "id",
+          "child_id",
+          "attendance_session_id",
+          "center_id",
+          "severity",
+          "category",
+          "summary",
+          "details",
+          "reported_by",
+          "parent_notified_at",
+          "resolved_at",
+          "closed_at",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "center_staff_memberships": [
+          "id",
+          "user_id",
+          "center_id",
+          "role",
+          "active",
+          "created_at",
+          "updated_at"
+        ],
+        "pickup_verifications": [
+          "id",
+          "attendance_session_id",
+          "authorized_pickup_id",
+          "verified_name",
+          "verified_relationship",
+          "verification_method",
+          "verified_by",
+          "verified_at",
+          "notes",
+          "created_at"
+        ]
+      }
+    },
+    {
+      "name": "20260307000004_sprint_hardening",
+      "creates": [
+        "idempotency_keys",
+        "center_staff_memberships",
+        "incident_reports",
+        "pickup_verifications"
+      ],
+      "alters": [
+        "idempotency_keys",
+        "children",
+        "child_authorized_pickups",
+        "child_emergency_contacts",
+        "center_staff_memberships",
+        "center_staff_memberships",
+        "center_staff_memberships",
+        "center_staff_memberships",
+        "overnight_blocks",
+        "incident_reports",
+        "pickup_verifications"
+      ],
+      "dependsOn": [
+        "parents",
+        "children",
+        "child_attendance_sessions"
+      ],
+      "unsafeAssumptions": [],
+      "createdColumns": {
+        "idempotency_keys": [
+          "key",
+          "user_id",
+          "request_path",
+          "response_status",
+          "response_body",
+          "created_at",
+          "expires_at"
+        ],
+        "center_staff_memberships": [
+          "id",
+          "user_id",
+          "center_id",
+          "role",
+          "active",
+          "created_at",
+          "updated_at",
+          "IF"
+        ],
+        "incident_reports": [
+          "id",
+          "child_id",
+          "attendance_session_id",
+          "center_id",
+          "severity",
+          "category",
+          "summary",
+          "details",
+          "reported_by",
+          "parent_notified_at",
+          "resolved_at",
+          "closed_at",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "pickup_verifications": [
+          "id",
+          "attendance_session_id",
+          "authorized_pickup_id",
+          "verified_name",
+          "verified_relationship",
+          "verification_method",
+          "verified_by",
+          "verified_at",
+          "notes",
+          "created_at"
+        ],
+        "children": [
+          "IF"
+        ],
+        "child_authorized_pickups": [
+          "IF"
+        ],
+        "child_emergency_contacts": [
+          "IF"
+        ],
+        "overnight_blocks": [
+          "IF"
+        ]
+      }
+    },
+    {
+      "name": "20260308000001_attendance_records",
+      "creates": [
+        "attendance_records",
+        "attendance_events"
+      ],
+      "alters": [
+        "attendance_records",
+        "attendance_records",
+        "attendance_records",
+        "attendance_records",
+        "attendance_records",
+        "attendance_records",
+        "attendance_records",
+        "attendance_records",
+        "attendance_events",
+        "attendance_events"
+      ],
+      "dependsOn": [
+        "reservation_nights",
+        "attendance_records"
+      ],
+      "unsafeAssumptions": [],
+      "createdColumns": {
+        "attendance_records": [
+          "id",
+          "reservation_night_id",
+          "center_id",
+          "child_id",
+          "parent_id",
+          "care_date",
+          "attendance_status",
+          "expected_arrival_at",
+          "checked_in_at",
+          "checked_in_by_user_id",
+          "check_in_method",
+          "arrival_notes",
+          "expected_departure_at",
+          "checked_out_at",
+          "checked_out_by_user_id",
+          "check_out_method",
+          "checked_out_to_pickup_id",
+          "pickup_verification_status",
+          "departure_notes",
+          "no_show_marked_at",
+          "no_show_marked_by_user_id",
+          "cancellation_after_cutoff",
+          "late_arrival_minutes",
+          "created_at",
+          "updated_at"
+        ],
+        "attendance_events": [
+          "id",
+          "attendance_record_id",
+          "reservation_night_id",
+          "center_id",
+          "child_id",
+          "actor_user_id",
+          "event_type",
+          "event_at",
+          "metadata"
+        ]
+      }
+    },
+    {
+      "name": "20260308000002_capacity_overrides",
+      "creates": [
+        "capacity_overrides",
+        "capacity_override_events"
+      ],
+      "alters": [
+        "capacity_overrides",
+        "capacity_overrides",
+        "capacity_override_events"
+      ],
+      "dependsOn": [
+        "centers",
+        "programs",
+        "capacity_overrides",
+        "capacity_override_events"
+      ],
+      "unsafeAssumptions": [],
+      "createdColumns": {
+        "capacity_overrides": [
+          "id",
+          "center_id",
+          "program_id",
+          "care_date",
+          "override_type",
+          "capacity_override",
+          "reason_code",
+          "reason_text",
+          "is_active",
+          "created_by_user_id",
+          "updated_by_user_id",
+          "created_at",
+          "updated_at"
+        ],
+        "capacity_override_events": [
+          "id",
+          "capacity_override_id",
+          "center_id",
+          "program_id",
+          "care_date",
+          "actor_user_id",
+          "event_type",
+          "event_at",
+          "metadata"
+        ]
+      }
+    },
+    {
+      "name": "20260308000003_health_checks",
+      "creates": [
+        "health_check_runs",
+        "health_issues"
+      ],
+      "alters": [
+        "health_issues"
+      ],
+      "dependsOn": [
+        "health_check_runs",
+        "health_issues"
+      ],
+      "unsafeAssumptions": [],
+      "createdColumns": {
+        "health_check_runs": [
+          "id",
+          "run_type",
+          "started_at",
+          "completed_at",
+          "status",
+          "triggered_by_user_id",
+          "summary",
+          "created_at"
+        ],
+        "health_issues": [
+          "id",
+          "health_check_run_id",
+          "issue_type",
+          "severity",
+          "status",
+          "center_id",
+          "program_id",
+          "care_date",
+          "reservation_night_id",
+          "attendance_record_id",
+          "child_id",
+          "metadata",
+          "detected_at",
+          "resolved_at",
+          "resolved_by_user_id",
+          "resolution_notes"
+        ]
+      }
+    },
+    {
+      "name": "20260308000004_billing_ledger",
+      "creates": [
+        "billing_ledger"
+      ],
+      "alters": [],
+      "dependsOn": [
+        "parents",
+        "reservation_nights",
+        "children",
+        "billing_ledger"
+      ],
+      "unsafeAssumptions": [],
+      "createdColumns": {
+        "billing_ledger": [
+          "id",
+          "parent_id",
+          "reservation_night_id",
+          "child_id",
+          "amount_cents",
+          "status",
+          "CHECK",
+          "payment_provider",
+          "stripe_payment_intent_id",
+          "description",
+          "care_date",
+          "created_at",
+          "updated_at"
+        ]
+      }
+    }
+  ],
+  "dbAvailable": false
+}
