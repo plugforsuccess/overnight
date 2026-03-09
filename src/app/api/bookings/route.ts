@@ -6,6 +6,7 @@ import { DEFAULT_PRICING_TIERS, BOOKING_WINDOW_DAYS } from '@/lib/constants';
 import { rateLimit } from '@/lib/rate-limit';
 import { cancelSubscription } from '@/lib/stripe';
 import { checkIdempotencyKey, saveIdempotencyResult } from '@/lib/idempotency';
+import { checkBookingEligibility } from '@/lib/profile-completion';
 
 // ─── Error codes ──────────────────────────────────────────────────────────────
 type ErrorCode =
@@ -169,34 +170,22 @@ export async function POST(req: NextRequest) {
   }
   console.log(`[bookings POST] child ownership valid: childId=${childId} name=${child.first_name} ${child.last_name}`);
 
-  // Check profile completeness: emergency contact + medical acknowledgement required.
-  // Authorized pickups are optional — the parent is implicitly authorized.
-  const [ecRes, medRes] = await Promise.all([
-    supabaseAdmin
-      .from('child_emergency_contacts')
-      .select('id', { count: 'exact', head: true })
-      .eq('child_id', childId),
-    supabaseAdmin
-      .from('child_medical_profiles')
-      .select('id', { count: 'exact', head: true })
-      .eq('child_id', childId),
-  ]);
+  // Centralized profile completion check — enforces parent, child safety, and billing rules
+  const eligibility = await checkBookingEligibility(supabaseAdmin, parentId, childId);
+  console.log(`[bookings POST] profile completion check: eligible=${eligibility.eligible} blockers=${eligibility.blockers.length}`);
 
-  const ecCount = ecRes.count ?? 0;
-  const medCount = medRes.count ?? 0;
-
-  console.log(`[bookings POST] profile check: emergencyContacts=${ecCount} medicalProfiles=${medCount}`);
-
-  const missing: string[] = [];
-  if (ecCount < 1) missing.push('at least 1 emergency contact');
-  if (medCount < 1) missing.push('medical safety acknowledgement');
-
-  if (missing.length > 0) {
-    return errorResponse(
-      'PROFILE_INCOMPLETE',
-      `Complete ${child.first_name} ${child.last_name}'s profile before booking: ${missing.join(' and ')}.`,
-      400,
-    );
+  if (!eligibility.eligible) {
+    return NextResponse.json({
+      error: 'PROFILE_COMPLETION_REQUIRED',
+      code: 'PROFILE_INCOMPLETE' as ErrorCode,
+      message: 'Profile completion required before booking care.',
+      blockers: eligibility.blockers.map(b => ({
+        code: b.code,
+        label: b.label,
+        area: b.area,
+        actionPath: b.actionPath,
+      })),
+    }, { status: 400 });
   }
 
   // Look up the plan tier from the plans catalog table
