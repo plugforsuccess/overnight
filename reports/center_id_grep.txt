@@ -1,0 +1,85 @@
+src/app/api/bookings/route.ts:263:  // Uses center_id and program_id from the first existing row, or creates without them.
+src/app/api/bookings/route.ts:268:      .select('id, center_id')
+src/app/api/bookings/route.ts:280:      ...(defaultProgram ? { center_id: defaultProgram.center_id, program_id: defaultProgram.id } : {}),
+src/app/api/admin/closures/route.ts:91:    .select('id, center_id')
+src/app/api/admin/closures/route.ts:124:      centerId: program.center_id,
+src/app/api/admin/closures/route.ts:140:    centerId: program.center_id,
+src/app/api/capacity/route.ts:69:      .select('id, center_id')
+src/app/api/capacity/route.ts:84:        center_id: defaultProgram.center_id,
+src/types/database.ts:21:  center_id: string;
+src/types/database.ts:38:  center_id: string;
+src/types/children.ts:276:  center_id: string;
+src/lib/health/check-capacity.ts:33:    .select('id, center_id, program_id, care_date, capacity_total, capacity_reserved, capacity_waitlisted, status')
+src/lib/health/check-capacity.ts:113:        centerId: cap.center_id,
+src/lib/health/check-capacity.ts:129:        centerId: cap.center_id,
+src/lib/health/check-capacity.ts:145:        centerId: cap.center_id,
+src/lib/health/check-capacity.ts:161:        centerId: cap.center_id,
+src/lib/health/run-health-checks.ts:61:        center_id: issue.centerId || null,
+src/lib/closures/apply.ts:64:        center_id: input.centerId,
+src/lib/closures/apply.ts:93:          center_id: input.centerId,
+src/lib/closures/apply.ts:129:        center_id: input.centerId,
+src/lib/closures/apply.ts:146:      center_id: input.centerId,
+src/lib/closures/reopen.ts:74:      center_id: input.centerId,
+prisma/migrations/20260309000001_child_licensing_compliance/migration.sql:12:    "center_id" UUID,
+prisma/migrations/20260309000001_child_licensing_compliance/migration.sql:49:    "center_id" UUID,
+prisma/migrations/20260309000001_child_licensing_compliance/migration.sql:80:    "center_id" UUID,
+prisma/migrations/20260308000001_attendance_records/migration.sql:10:    "center_id"                  UUID,
+prisma/migrations/20260308000001_attendance_records/migration.sql:93:    ON "attendance_records"("center_id", "care_date");
+prisma/migrations/20260308000001_attendance_records/migration.sql:107:    "center_id"            UUID,
+prisma/migrations/20260308000001_attendance_records/migration.sql:145:    ON "attendance_events"("center_id", "event_at");
+prisma/migrations/20260308000002_capacity_overrides/migration.sql:5:    "center_id" UUID NOT NULL,
+prisma/migrations/20260308000002_capacity_overrides/migration.sql:43:CREATE INDEX "idx_capacity_overrides_center_date" ON "capacity_overrides" ("center_id", "care_date");
+prisma/migrations/20260308000002_capacity_overrides/migration.sql:50:    FOREIGN KEY ("center_id") REFERENCES "centers"("id") ON DELETE CASCADE;
+prisma/migrations/20260308000002_capacity_overrides/migration.sql:59:    "center_id" UUID NOT NULL,
+prisma/migrations/20260308000002_capacity_overrides/migration.sql:78:CREATE INDEX "idx_override_events_center_date" ON "capacity_override_events" ("center_id", "care_date");
+prisma/migrations/20260307000001_harden_parent_onboarding/migration.sql:15:-- 1. Parents: add onboarding_status and center_id
+prisma/migrations/20260307000001_harden_parent_onboarding/migration.sql:19:  ADD COLUMN IF NOT EXISTS center_id uuid,
+prisma/migrations/20260307000001_harden_parent_onboarding/migration.sql:43:  ADD COLUMN IF NOT EXISTS center_id uuid;
+prisma/migrations/20260307000001_harden_parent_onboarding/migration.sql:52:  center_id uuid,
+prisma/migrations/20260307000001_harden_parent_onboarding/migration.sql:79:-- 4. Emergency Contacts: add email, is_primary, center_id
+prisma/migrations/20260307000001_harden_parent_onboarding/migration.sql:85:  ADD COLUMN IF NOT EXISTS center_id uuid;
+prisma/migrations/20260307000001_harden_parent_onboarding/migration.sql:89:--    is_emergency_contact, is_active, center_id
+prisma/migrations/20260307000001_harden_parent_onboarding/migration.sql:99:  ADD COLUMN IF NOT EXISTS center_id uuid;
+prisma/migrations/20260307000004_sprint_hardening/migration.sql:97:  center_id uuid NOT NULL,
+prisma/migrations/20260307000004_sprint_hardening/migration.sql:105:  ON public.center_staff_memberships (user_id, center_id);
+prisma/migrations/20260307000004_sprint_hardening/migration.sql:107:  ON public.center_staff_memberships (center_id, active);
+prisma/migrations/20260307000004_sprint_hardening/migration.sql:135:  center_id uuid,
+prisma/migrations/20260307000002_enterprise_hardening/migration.sql:61:  center_id uuid,
+prisma/migrations/20260307000002_enterprise_hardening/migration.sql:81:  center_id uuid,
+prisma/migrations/20260308000000_create_centers_programs/migration.sql:26:    "center_id" UUID NOT NULL,
+prisma/migrations/20260308000000_create_centers_programs/migration.sql:45:CREATE INDEX "idx_programs_center_id" ON "programs"("center_id");
+prisma/migrations/20260308000000_create_centers_programs/migration.sql:48:ALTER TABLE "programs" ADD CONSTRAINT "programs_center_id_fkey"
+prisma/migrations/20260308000000_create_centers_programs/migration.sql:49:    FOREIGN KEY ("center_id") REFERENCES "centers"("id") ON DELETE CASCADE;
+prisma/migrations/20260308000003_health_checks/migration.sql:34:    "center_id" UUID,
+prisma/migrations/20260307000003_operational_hardening/migration.sql:37:  center_id uuid,
+prisma/migrations/20260307000003_operational_hardening/migration.sql:82:  center_id uuid NOT NULL,
+prisma/migrations/20260307000003_operational_hardening/migration.sql:91:  ON public.center_staff_memberships (user_id, center_id);
+prisma/migrations/20260307000003_operational_hardening/migration.sql:93:  ON public.center_staff_memberships (center_id, active);
+prisma/schema.prisma:135:  center_id      String   @db.Uuid
+prisma/schema.prisma:148:  center             Center             @relation(fields: [center_id], references: [id], onDelete: Cascade)
+prisma/schema.prisma:163:  center_id           String   @db.Uuid
+prisma/schema.prisma:175:  center             Center             @relation(fields: [center_id], references: [id], onDelete: Cascade)
+prisma/schema.prisma:194:  center_id          String   @db.Uuid
+prisma/schema.prisma:209:  center  Center                  @relation(fields: [center_id], references: [id], onDelete: Cascade)
+prisma/schema.prisma:213:  @@index([center_id, care_date], map: "idx_capacity_overrides_center_date")
+prisma/schema.prisma:228:  center_id            String   @db.Uuid
+prisma/schema.prisma:240:  @@index([center_id, care_date], map: "idx_override_events_center_date")
+prisma/schema.prisma:263:  center_id          String?  @db.Uuid
+prisma/schema.prisma:305:  center_id      String?   @db.Uuid
+prisma/schema.prisma:405:  center_id                String?   @db.Uuid
+prisma/schema.prisma:539:  center_id             String?   @db.Uuid
+prisma/schema.prisma:569:  center_id            String?   @db.Uuid
+prisma/schema.prisma:628:  center_id      String?  @db.Uuid
+prisma/schema.prisma:691:  center_id             String?  @db.Uuid
+prisma/schema.prisma:725:  center_id   String    @db.Uuid
+prisma/schema.prisma:736:  @@unique([user_id, center_id], map: "center_staff_memberships_user_center_unique")
+prisma/schema.prisma:737:  @@index([center_id, active], map: "idx_staff_memberships_center_active")
+prisma/schema.prisma:1365:  center_id            String?  @db.Uuid
+prisma/schema.prisma:1404:  @@index([center_id, care_date], map: "idx_attendance_records_center_date")
+prisma/schema.prisma:1421:  center_id            String?  @db.Uuid
+prisma/schema.prisma:1437:  @@index([center_id, event_at], map: "idx_attendance_events_center")
+prisma/schema.prisma:1481:  center_id            String?   @db.Uuid
+supabase/rls-policies.sql:1438:  v_center_id UUID;
+supabase/rls-policies.sql:1442:  SELECT id, center_id INTO v_program_id, v_center_id
+supabase/rls-policies.sql:1453:      (center_id, program_id, care_date, capacity_total, capacity_reserved, capacity_waitlisted, status)
+supabase/rls-policies.sql:1455:      (v_center_id, v_program_id, v_date, p_default_capacity, 0, 0, 'open')

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import type { ComplianceStatus } from '@/types/compliance';
 import Link from 'next/link';
 import { Calendar, Users, CreditCard, Clock, AlertCircle, Check, Shield, Moon } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
@@ -29,6 +30,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedChildId, setSelectedChildId] = useState<string | null>(null);
+  const [complianceByChild, setComplianceByChild] = useState<Record<string, ComplianceStatus>>({});
 
   useEffect(() => {
     async function load() {
@@ -78,9 +80,18 @@ export default function DashboardPage() {
       const dashboardData: DashboardData = await res.json();
       setData(dashboardData);
 
-      // Default to first child
       if (dashboardData.children.length > 0) {
         setSelectedChildId(dashboardData.children[0].id);
+        const complianceEntries = await Promise.all(
+          dashboardData.children.map(async (child) => {
+            const cres = await fetch(`/api/children/${child.id}/compliance`, {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            const cdata = await cres.json();
+            return [child.id, cdata.status] as const;
+          })
+        );
+        setComplianceByChild(Object.fromEntries(complianceEntries));
       }
       setLoading(false);
     }
@@ -137,9 +148,8 @@ export default function DashboardPage() {
   const hasChildren = children.length > 0;
 
   // Check if reservation should be blocked (missing safety info)
-  const canReserve = selectedChild
-    ? selectedChild.emergency_contacts_count >= 1 && selectedChild.has_medical_profile
-    : false;
+  const selectedCompliance = selectedChild ? complianceByChild[selectedChild.id] : undefined;
+  const canReserve = !!selectedCompliance?.eligibleToBook;
 
   // Profile completion checklist items
   const checklistItems = hasChildren ? [
@@ -314,11 +324,7 @@ export default function DashboardPage() {
           <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800 flex items-start gap-2">
             <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
             <span>
-              Reservations require{' '}
-              {selectedChild.emergency_contacts_count < 1 && 'at least 1 emergency contact'}
-              {selectedChild.emergency_contacts_count < 1 && !selectedChild.has_medical_profile && ' and '}
-              {!selectedChild.has_medical_profile && 'medical safety acknowledgement'}
-              {' '}for {selectedChild.first_name}.{' '}
+              Reservations are blocked for {selectedChild.first_name}: {selectedCompliance?.blockers?.join('; ') || 'Complete compliance items'}. 
               <Link href="/dashboard/children" className="font-medium underline">Complete profile</Link>
             </span>
           </div>

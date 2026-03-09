@@ -17,8 +17,9 @@ import { AuthorizedPickupsEditor } from '@/components/children/AuthorizedPickups
 import { MedicalProfileEditor } from '@/components/children/MedicalProfileEditor';
 import { ImmunizationPanel } from '@/components/children/ImmunizationPanel';
 import { MedicationAuthorizationEditor } from '@/components/children/MedicationAuthorizationEditor';
+import { ChildDocumentsPanel } from '@/components/children/ChildDocumentsPanel';
 
-type Tab = 'basics' | 'physician' | 'allergies' | 'emergency' | 'pickups' | 'immunization' | 'medications';
+type Tab = 'basics' | 'physician' | 'allergies' | 'emergency' | 'pickups' | 'immunization' | 'medications' | 'documents';
 const TABS: { key: Tab; label: string }[] = [
   { key: 'basics', label: 'Basics' },
   { key: 'physician', label: 'Physician' },
@@ -27,6 +28,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'pickups', label: 'Authorized Pickups' },
   { key: 'immunization', label: 'Immunization' },
   { key: 'medications', label: 'Medications' },
+  { key: 'documents', label: 'Documents' },
 ];
 
 export default function ChildrenPage() {
@@ -178,6 +180,18 @@ export default function ChildrenPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+
+
+  function handleDocumentUploaded(doc: any) {
+    setSelectedChild(prev => prev ? { ...prev, documents: [doc, ...(prev.documents || [])] } : prev);
+    showToast('Document uploaded');
+  }
+
+  function handleDocumentDeleted(id: string) {
+    setSelectedChild(prev => prev ? { ...prev, documents: (prev.documents || []).filter((d: any) => d.id !== id) } : prev);
+    showToast('Document deleted');
   }
 
   async function handleAddContact(contact: any) {
@@ -631,6 +645,15 @@ export default function ChildrenPage() {
                       onAdd={handleAddMedication}
                       onDelete={handleDeleteMedication}
                       saving={saving}
+                    />
+                  )}
+
+                  {activeTab === 'documents' && (
+                    <ChildDocumentsPanel
+                      childId={selectedChild.id}
+                      documents={selectedChild.documents || []}
+                      onUploaded={handleDocumentUploaded}
+                      onDeleted={handleDocumentDeleted}
                     />
                   )}
                 </div>

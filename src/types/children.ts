@@ -427,4 +427,5 @@ export interface ChildWithDetails extends ChildRow {
   medical_profile: ChildMedicalProfileRow | null;
   immunization_record: ChildImmunizationRecordRow | null;
   medication_authorizations: MedicationAuthorizationRow[];
+  documents: ChildDocumentRow[];
 }

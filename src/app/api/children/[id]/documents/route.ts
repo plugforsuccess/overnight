@@ -153,7 +153,7 @@ export async function POST(
 
   // Log to child_events
   await supabaseAdmin.from('child_events').insert({
-    facility_id: auth.activeFacilityId,
+    facility_id: facilityId,
     child_id: childId,
     event_type: 'document_uploaded',
     event_data: { document_type: parsed.data.document_type, document_id: doc.id },

@@ -28,7 +28,7 @@ export async function GET(
   if (childError || !child) return notFound('Child not found');
 
   // Fetch related data in parallel
-  const [allergiesRes, contactsRes, pickupsRes, medicalRes, immunizationRes, medicationsRes] = await Promise.all([
+  const [allergiesRes, contactsRes, pickupsRes, medicalRes, immunizationRes, medicationsRes, documentsRes] = await Promise.all([
     auth.supabase
       .from('child_allergies')
       .select('*, child_allergy_action_plans(*)')
@@ -60,6 +60,12 @@ export async function GET(
       .from('medication_authorizations')
       .select('*')
       .eq('child_id', childId)
+      .order('created_at', { ascending: false }),
+    auth.supabase
+      .from('child_documents')
+      .select('*')
+      .eq('child_id', childId)
+      .eq('facility_id', auth.activeFacilityId)
       .eq('is_active', true)
       .order('created_at', { ascending: false }),
   ]);
@@ -77,5 +83,6 @@ export async function GET(
     medical_profile: medicalRes.data || null,
     immunization_record: immunizationRes.data || null,
     medication_authorizations: medicationsRes.data || [],
+    documents: documentsRes.data || [],
   });
 }
