@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
         parent:parents(id, first_name, last_name, email, phone)
       `)
       .eq('active', true)
+      .eq('facility_id', admin.activeFacilityId)
       .order('last_name');
 
     if (childError) {
@@ -27,34 +28,40 @@ export async function GET(req: NextRequest) {
     const { data: emergencyContacts } = await supabaseAdmin
       .from('child_emergency_contacts')
       .select('child_id')
+      .eq('facility_id', admin.activeFacilityId)
       .is('archived_at', null);
 
     // Fetch authorized pickups counts per child
     const { data: pickups } = await supabaseAdmin
       .from('child_authorized_pickups')
       .select('child_id')
+      .eq('facility_id', admin.activeFacilityId)
       .eq('is_active', true);
 
     // Fetch child allergies with action plans
     const { data: allergies } = await supabaseAdmin
       .from('child_allergies')
-      .select('child_id, allergen, severity, action_plan:child_allergy_action_plans(id)');
+      .select('child_id, allergen, severity, action_plan:child_allergy_action_plans(id)')
+      .eq('facility_id', admin.activeFacilityId);
 
     // Fetch medical profiles
     const { data: medicalProfiles } = await supabaseAdmin
       .from('child_medical_profiles')
-      .select('child_id, has_allergies, has_medications, has_medical_conditions');
+      .select('child_id, has_allergies, has_medications, has_medical_conditions')
+      .eq('facility_id', admin.activeFacilityId);
 
     // Fetch most recent attendance per child
     const { data: recentAttendance } = await supabaseAdmin
       .from('child_attendance_sessions')
       .select('child_id, session_date')
+      .eq('facility_id', admin.activeFacilityId)
       .order('session_date', { ascending: false });
 
     // Fetch reservations for caregiver notes
     const { data: reservations } = await supabaseAdmin
       .from('reservations')
       .select('child_id, caregiver_notes')
+      .eq('facility_id', admin.activeFacilityId)
       .not('caregiver_notes', 'is', null);
 
     // Build lookup maps

@@ -48,11 +48,13 @@ export async function GET(
       .from('child_medical_profiles')
       .select('*')
       .eq('child_id', childId)
+      .eq('facility_id', auth.activeFacilityId)
       .single(),
     auth.supabase
       .from('child_immunization_records')
       .select('*')
       .eq('child_id', childId)
+      .eq('facility_id', auth.activeFacilityId)
       .single(),
     auth.supabase
       .from('medication_authorizations')

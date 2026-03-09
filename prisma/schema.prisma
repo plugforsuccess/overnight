@@ -338,7 +338,8 @@ model Child {
 model ChildDocument {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   child_id      String    @db.Uuid
-  center_id     String?   @db.Uuid
+  facility_id   String    @map("facility_id") @db.Uuid
+  facility      Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
   document_type String // immunization_certificate | medication_authorization | photo_id | consent_form | physician_note | incident_attachment | other
   file_name     String
   file_url      String // Supabase Storage signed URL or path
@@ -360,6 +361,7 @@ model ChildDocument {
   child Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
 
   @@index([child_id, document_type], map: "idx_child_documents_child_type")
+  @@index([facility_id], map: "idx_child_documents_facility_id")
   @@map("child_documents")
 }
 
@@ -370,7 +372,8 @@ model ChildDocument {
 model ChildImmunizationRecord {
   id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   child_id         String    @unique @db.Uuid
-  center_id        String?   @db.Uuid
+  facility_id      String    @map("facility_id") @db.Uuid
+  facility          Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
   status           String    @default("missing") // current | expired | exempt_medical | exempt_religious | missing
   document_url     String? // path in Supabase Storage (child-documents bucket)
   document_path    String? // storage key for deletion
@@ -387,6 +390,7 @@ model ChildImmunizationRecord {
   // Relations
   child Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
 
+  @@index([facility_id], map: "idx_child_immunization_records_facility_id")
   @@map("child_immunization_records")
 }
 
@@ -500,7 +504,6 @@ model ChildMedicalProfile {
   facility_id String   @map("facility_id") @db.Uuid
   facility    Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
   child_id    String   @unique @db.Uuid
-  center_id   String?  @db.Uuid
 
   has_allergies          Boolean @default(false)
   has_medications        Boolean @default(false)
@@ -599,7 +602,6 @@ model ChildEvent {
   facility_id String   @map("facility_id") @db.Uuid
   facility    Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
   child_id    String   @db.Uuid
-  center_id   String?  @db.Uuid
   event_type  String // e.g. child_checked_in, child_checked_out, medical_alert_triggered, etc.
   event_data  Json     @default("{}") @db.JsonB
   created_by  String?  @db.Uuid
@@ -1119,6 +1121,8 @@ model Facility {
   parents                 Parent[]
   children                Child[]
   childAllergies          ChildAllergy[]
+  childDocuments          ChildDocument[]
+  childImmunizationRecords ChildImmunizationRecord[]
   childMedicalProfiles    ChildMedicalProfile[]
   childEmergencyContacts  ChildEmergencyContact[]
   childAuthorizedPickups  ChildAuthorizedPickup[]

@@ -28,6 +28,7 @@ export async function GET(
     .from('child_immunization_records')
     .select('*')
     .eq('child_id', childId)
+    .eq('facility_id', auth.activeFacilityId)
     .single();
 
   if (error && error.code !== 'PGRST116') return badRequest('Failed to load immunization record');
@@ -65,6 +66,7 @@ export async function POST(
 
   const recordData = {
     child_id: childId,
+    facility_id: auth.activeFacilityId,
     ...parsed.data,
   };
 
@@ -73,6 +75,7 @@ export async function POST(
     .from('child_immunization_records')
     .select('id')
     .eq('child_id', childId)
+    .eq('facility_id', auth.activeFacilityId)
     .single();
 
   let result;
@@ -81,6 +84,7 @@ export async function POST(
       .from('child_immunization_records')
       .update(parsed.data)
       .eq('child_id', childId)
+      .eq('facility_id', auth.activeFacilityId)
       .select()
       .single();
     if (error) return badRequest(error.message);
@@ -97,6 +101,7 @@ export async function POST(
 
   // Log to child_events
   await supabaseAdmin.from('child_events').insert({
+    facility_id: auth.activeFacilityId,
     child_id: childId,
     event_type: 'immunization_record_updated',
     event_data: { status: parsed.data.status },

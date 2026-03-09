@@ -37,6 +37,7 @@ export async function GET(
     .from('child_documents')
     .select('*')
     .eq('child_id', childId)
+    .eq('facility_id', auth.activeFacilityId)
     .eq('is_active', true)
     .order('created_at', { ascending: false });
 
@@ -57,7 +58,7 @@ export async function POST(
   // Verify child belongs to parent
   const { data: child } = await auth.supabase
     .from('children')
-    .select('id, center_id')
+    .select('id, facility_id')
     .eq('id', childId)
     .eq('parent_id', auth.parentId)
     .eq('facility_id', auth.activeFacilityId)
@@ -101,9 +102,9 @@ export async function POST(
   }
 
   // Server-constructed storage path — prevents path tampering
-  const centerId = child.center_id || 'default';
+  const facilityId = child.facility_id || auth.activeFacilityId;
   const fileExt = file.name.split('.').pop()?.toLowerCase() || 'bin';
-  const storagePath = `child-documents/${centerId}/${childId}/${parsed.data.document_type}/${randomUUID()}.${fileExt}`;
+  const storagePath = `child-documents/${facilityId}/${childId}/${parsed.data.document_type}/${randomUUID()}.${fileExt}`;
 
   // Upload to Supabase Storage
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -130,7 +131,7 @@ export async function POST(
     .from('child_documents')
     .insert({
       child_id: childId,
-      center_id: child.center_id,
+      facility_id: facilityId,
       document_type: parsed.data.document_type,
       file_name: parsed.data.file_name,
       file_url: fileUrl,
@@ -152,6 +153,7 @@ export async function POST(
 
   // Log to child_events
   await supabaseAdmin.from('child_events').insert({
+    facility_id: auth.activeFacilityId,
     child_id: childId,
     event_type: 'document_uploaded',
     event_data: { document_type: parsed.data.document_type, document_id: doc.id },

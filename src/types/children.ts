@@ -64,7 +64,7 @@ export interface ChildRow {
   notes: string | null;
   active: boolean;
   archived_at: string | null;
-  center_id: string | null;
+  facility_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -99,7 +99,7 @@ export interface ChildAllergyActionPlanRow {
 export interface ChildEmergencyContactRow {
   id: string;
   child_id: string;
-  center_id: string | null;
+  facility_id: string | null;
   first_name: string;
   last_name: string;
   relationship: string;
@@ -117,7 +117,7 @@ export interface ChildEmergencyContactRow {
 export interface ChildAuthorizedPickupRow {
   id: string;
   child_id: string;
-  center_id: string | null;
+  facility_id: string | null;
   first_name: string;
   last_name: string;
   relationship: string;
@@ -140,7 +140,7 @@ export interface ChildAuthorizedPickupRow {
 export interface ChildMedicalProfileRow {
   id: string;
   child_id: string;
-  center_id: string | null;
+  facility_id: string | null;
   has_allergies: boolean;
   has_medications: boolean;
   has_medical_conditions: boolean;
@@ -180,7 +180,7 @@ export type ChildEventType = typeof CHILD_EVENT_TYPES[number];
 export interface ChildEventRow {
   id: string;
   child_id: string;
-  center_id: string | null;
+  facility_id: string | null;
   event_type: string;
   event_data: Record<string, unknown>;
   created_by: string | null;
@@ -202,7 +202,7 @@ export type AttendanceStatus = typeof ATTENDANCE_STATUSES[number];
 export interface ChildAttendanceSessionRow {
   id: string;
   child_id: string;
-  center_id: string | null;
+  facility_id: string | null;
   reservation_id: string | null;
   check_in_at: string | null;
   check_out_at: string | null;
@@ -251,7 +251,7 @@ export interface IncidentReportRow {
   id: string;
   child_id: string;
   attendance_session_id: string | null;
-  center_id: string | null;
+  facility_id: string | null;
   severity: string;
   category: string;
   summary: string;
@@ -335,7 +335,7 @@ export const IMMUNIZATION_STATUS_LABELS: Record<ImmunizationStatus, string> = {
 export interface ChildImmunizationRecordRow {
   id: string;
   child_id: string;
-  center_id: string | null;
+  facility_id: string | null;
   status: ImmunizationStatus;
   document_url: string | null;
   document_path: string | null;
@@ -365,7 +365,7 @@ export const MEDICATION_ROUTE_LABELS: Record<MedicationRoute, string> = {
 export interface MedicationAuthorizationRow {
   id: string;
   child_id: string;
-  center_id: string | null;
+  facility_id: string | null;
   medication_name: string;
   dosage: string;
   route: MedicationRoute;
@@ -400,7 +400,7 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
 export interface ChildDocumentRow {
   id: string;
   child_id: string;
-  center_id: string | null;
+  facility_id: string | null;
   document_type: DocumentType;
   file_name: string;
   file_url: string;

@@ -56,6 +56,7 @@ export async function GET(
     .from('child_attendance_sessions')
     .select('*')
     .eq('child_id', childId)
+    .eq('facility_id', auth.activeFacilityId)
     .order('created_at', { ascending: false })
     .limit(limit);
 
@@ -111,6 +112,7 @@ export async function POST(
     .from('child_attendance_sessions')
     .insert({
       child_id: childId,
+      facility_id: auth.activeFacilityId,
       reservation_id: parsed.data.reservation_id || null,
       status: parsed.data.status,
       notes: parsed.data.notes || null,
@@ -122,6 +124,7 @@ export async function POST(
 
   // Log event
   await supabaseAdmin.from('child_events').insert({
+    facility_id: auth.activeFacilityId,
     child_id: childId,
     event_type: 'attendance_session_created',
     event_data: { session_id: session.id, status: session.status },
@@ -178,6 +181,7 @@ export async function PATCH(
       .select('status')
       .eq('id', sessionId)
       .eq('child_id', childId)
+      .eq('facility_id', auth.activeFacilityId)
       .single();
 
     if (!currentSession) return badRequest('Attendance session not found');
@@ -202,6 +206,7 @@ export async function PATCH(
     .update(updateData)
     .eq('id', sessionId)
     .eq('child_id', childId)
+    .eq('facility_id', auth.activeFacilityId)
     .select()
     .single();
 
@@ -210,6 +215,7 @@ export async function PATCH(
   // Log status change event
   if (parsed.data.status) {
     await supabaseAdmin.from('child_events').insert({
+      facility_id: auth.activeFacilityId,
       child_id: childId,
       event_type: `attendance_${parsed.data.status}`,
       event_data: { session_id: sessionId },

@@ -6,7 +6,6 @@ import { checkIdempotencyKey, saveIdempotencyResult } from '@/lib/idempotency';
 
 const createIncidentSchema = z.object({
   attendance_session_id: z.string().uuid().optional().nullable(),
-  center_id: z.string().uuid().optional().nullable(),
   severity: z.enum(['low', 'medium', 'high', 'critical']),
   category: z.string().min(1).max(100),
   summary: z.string().min(1).max(500),
@@ -47,6 +46,7 @@ export async function GET(
     .from('incident_reports')
     .select('*', { count: 'exact' })
     .eq('child_id', childId)
+    .eq('facility_id', auth.activeFacilityId)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -102,7 +102,7 @@ export async function POST(
     .insert({
       child_id: childId,
       attendance_session_id: parsed.data.attendance_session_id || null,
-      center_id: parsed.data.center_id || null,
+      facility_id: auth.activeFacilityId,
       severity: parsed.data.severity,
       category: parsed.data.category,
       summary: parsed.data.summary,
@@ -116,6 +116,7 @@ export async function POST(
 
   // Log to child event ledger
   await supabaseAdmin.from('child_events').insert({
+    facility_id: auth.activeFacilityId,
     child_id: childId,
     event_type: 'incident_reported',
     event_data: { incident_id: incident.id, severity: incident.severity, category: incident.category },
