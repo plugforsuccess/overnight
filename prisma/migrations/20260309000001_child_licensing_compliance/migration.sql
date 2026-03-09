@@ -28,12 +28,15 @@ CREATE TABLE "child_documents" (
     CONSTRAINT "child_documents_pkey" PRIMARY KEY ("id"),
 
     CONSTRAINT "child_documents_type_check" CHECK (
-        "document_type" IN ('immunization_certificate', 'medication_authorization', 'photo_id', 'consent_form', 'other')
+        "document_type" IN ('immunization_certificate', 'medication_authorization', 'photo_id', 'consent_form', 'physician_note', 'incident_attachment', 'other')
     ),
 
     CONSTRAINT "child_documents_child_id_fkey"
         FOREIGN KEY ("child_id") REFERENCES "children"("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
+
+-- Add storage_path for safe server-side file management
+ALTER TABLE "child_documents" ADD COLUMN "storage_path" TEXT;
 
 CREATE INDEX "idx_child_documents_child_type" ON "child_documents"("child_id", "document_type");
 

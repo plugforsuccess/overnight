@@ -252,9 +252,10 @@ model ChildDocument {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   child_id      String    @db.Uuid
   center_id     String?   @db.Uuid
-  document_type String    // immunization_certificate | medication_authorization | photo_id | consent_form | other
+  document_type String    // immunization_certificate | medication_authorization | photo_id | consent_form | physician_note | incident_attachment | other
   file_name     String
   file_url      String    // Supabase Storage signed URL or path
+  storage_path  String?   // Server-constructed storage path for safe deletion
   file_size     Int?
   mime_type     String?
   uploaded_by   String    @db.Uuid

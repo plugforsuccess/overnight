@@ -214,7 +214,7 @@ export type MedicationAuthorizationInput = z.infer<typeof medicationAuthorizatio
 // ─── Document Upload ─────────────────────────────────────────────────────────
 
 export const documentTypeSchema = z.enum([
-  'immunization_certificate', 'medication_authorization', 'photo_id', 'consent_form', 'other',
+  'immunization_certificate', 'medication_authorization', 'photo_id', 'consent_form', 'physician_note', 'incident_attachment', 'other',
 ]);
 
 export const childDocumentSchema = z.object({

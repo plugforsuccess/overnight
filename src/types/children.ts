@@ -384,7 +384,7 @@ export interface MedicationAuthorizationRow {
 
 // ─── Child Document ───────────────────────────────────────────────────────────
 
-export const DOCUMENT_TYPES = ['immunization_certificate', 'medication_authorization', 'photo_id', 'consent_form', 'other'] as const;
+export const DOCUMENT_TYPES = ['immunization_certificate', 'medication_authorization', 'photo_id', 'consent_form', 'physician_note', 'incident_attachment', 'other'] as const;
 export type DocumentType = typeof DOCUMENT_TYPES[number];
 
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
@@ -392,6 +392,8 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   medication_authorization: 'Medication Authorization',
   photo_id: 'Photo ID',
   consent_form: 'Consent Form',
+  physician_note: 'Physician Note',
+  incident_attachment: 'Incident Attachment',
   other: 'Other',
 };
 
@@ -402,6 +404,7 @@ export interface ChildDocumentRow {
   document_type: DocumentType;
   file_name: string;
   file_url: string;
+  storage_path: string | null;
   file_size: number | null;
   mime_type: string | null;
   uploaded_by: string;
