@@ -3,7 +3,7 @@ import { authenticateRequest, unauthorized, badRequest } from '@/lib/api-auth';
 import { onboardingStatusSchema } from '@/lib/validation/children';
 import { supabaseAdmin } from '@/lib/supabase-server';
 
-// Valid state transitions — only allow forward progression
+// Valid state transitions -- only allow forward progression
 const VALID_TRANSITIONS: Record<string, string[]> = {
   started: ['parent_profile_complete'],
   parent_profile_complete: ['child_created'],
@@ -44,7 +44,7 @@ export async function PATCH(req: NextRequest) {
   // Get current status
   const { data: parent } = await supabaseAdmin
     .from('parents')
-    .select('onboarding_status')
+    .select('onboarding_status, phone')
     .eq('id', auth.parentId)
     .single();
 
@@ -58,17 +58,28 @@ export async function PATCH(req: NextRequest) {
     return badRequest(`Cannot transition from '${currentStatus}' to '${newStatus}'`);
   }
 
+  // For 'parent_profile_complete' status, verify parent phone is set
+  if (newStatus === 'parent_profile_complete') {
+    if (!parent.phone || parent.phone.trim().length === 0) {
+      return badRequest('Phone number is required to complete your profile. Please update your profile with a valid phone number.');
+    }
+  }
+
   // For 'complete' status, verify all requirements are met
   if (newStatus === 'complete') {
-    const [childrenRes, ecRes, medRes] = await Promise.all([
+    // Verify parent phone
+    if (!parent.phone || parent.phone.trim().length === 0) {
+      return badRequest('Parent phone number is required to complete onboarding');
+    }
+
+    const [childrenRes, medRes] = await Promise.all([
       supabaseAdmin
         .from('children')
         .select('id', { count: 'exact', head: true })
         .eq('parent_id', auth.parentId),
-      Promise.resolve(supabaseAdmin.rpc('count_emergency_contacts_for_parent', { p_parent_id: auth.parentId })).catch(() => null),
       supabaseAdmin
         .from('children')
-        .select('id, child_medical_profiles(id)')
+        .select('id, child_medical_profiles(id, physician_name, physician_phone)')
         .eq('parent_id', auth.parentId),
     ]);
 
@@ -76,11 +87,11 @@ export async function PATCH(req: NextRequest) {
       return badRequest('At least one child is required to complete onboarding');
     }
 
-    // Check emergency contacts exist for at least one child
     const childrenWithData = medRes.data || [];
     const childIds = childrenWithData.map((c: any) => c.id);
 
     if (childIds.length > 0) {
+      // Check emergency contacts exist for at least one child
       const { count: ecCount } = await supabaseAdmin
         .from('child_emergency_contacts')
         .select('id', { count: 'exact', head: true })
@@ -97,6 +108,17 @@ export async function PATCH(req: NextRequest) {
     );
     if (childrenWithoutMedical.length > 0) {
       return badRequest('Medical acknowledgement is required for all children');
+    }
+
+    // Check physician info exists for all children
+    const childrenWithoutPhysician = childrenWithData.filter(
+      (c: any) => {
+        const profile = c.child_medical_profiles?.[0];
+        return !profile?.physician_name || !profile?.physician_phone;
+      }
+    );
+    if (childrenWithoutPhysician.length > 0) {
+      return badRequest('Physician name and phone are required for all children. Please complete the Physician tab for each child.');
     }
   }
 
