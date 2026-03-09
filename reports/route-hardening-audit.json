@@ -1,7 +1,7 @@
 {
   "summary": {
-    "generatedAt": "2026-03-08T23:54:24.696Z",
-    "totalRoutes": 68,
+    "generatedAt": "2026-03-09T03:00:50.658Z",
+    "totalRoutes": 70,
     "totalFindings": 15,
     "bySeverity": {
       "critical": 0,
@@ -10,8 +10,8 @@
     },
     "byRouteType": {
       "public_page": 5,
-      "admin_page": 15,
-      "admin_api": 16,
+      "admin_page": 16,
+      "admin_api": 17,
       "parent_api": 20,
       "public_api": 4,
       "parent_page": 8
@@ -82,6 +82,15 @@
     {
       "route": "/admin/incidents",
       "file": "src/app/admin/incidents/page.tsx",
+      "fileType": "page",
+      "routeType": "admin_page",
+      "httpMethods": [],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/admin/ops",
+      "file": "src/app/admin/ops/page.tsx",
       "fileType": "page",
       "routeType": "admin_page",
       "httpMethods": [],
@@ -296,6 +305,17 @@
     {
       "route": "/api/admin/incidents",
       "file": "src/app/api/admin/incidents/route.ts",
+      "fileType": "route",
+      "routeType": "admin_api",
+      "httpMethods": [
+        "GET"
+      ],
+      "isDynamic": false,
+      "dynamicSegments": []
+    },
+    {
+      "route": "/api/admin/ops-metrics",
+      "file": "src/app/api/admin/ops-metrics/route.ts",
       "fileType": "route",
       "routeType": "admin_api",
       "httpMethods": [

@@ -1,12 +1,12 @@
 # Route Hardening Audit Report
 
-Generated: 2026-03-08T23:54:24.697Z
+Generated: 2026-03-09T03:00:50.659Z
 
 ## Summary
 
 | Metric | Count |
 |--------|-------|
-| Total routes scanned | 68 |
+| Total routes scanned | 70 |
 | Total findings | 15 |
 | Critical | 0 |
 | Warning | 13 |
@@ -17,8 +17,8 @@ Generated: 2026-03-08T23:54:24.697Z
 | Route Type | Count |
 |------------|-------|
 | public_page | 5 |
-| admin_page | 15 |
-| admin_api | 16 |
+| admin_page | 16 |
+| admin_api | 17 |
 | parent_api | 20 |
 | public_api | 4 |
 | parent_page | 8 |
@@ -237,6 +237,7 @@ None — all critical checks passed.
 | `/admin/closures` | admin_page | src/app/admin/closures/page.tsx | - | - |
 | `/admin/health` | admin_page | src/app/admin/health/page.tsx | - | - |
 | `/admin/incidents` | admin_page | src/app/admin/incidents/page.tsx | - | - |
+| `/admin/ops` | admin_page | src/app/admin/ops/page.tsx | - | - |
 | `/admin/pickup-verification` | admin_page | src/app/admin/pickup-verification/page.tsx | - | - |
 | `/admin/plans` | admin_page | src/app/admin/plans/page.tsx | - | - |
 | `/admin/revenue` | admin_page | src/app/admin/revenue/page.tsx | - | - |
@@ -258,6 +259,7 @@ None — all critical checks passed.
 | `/api/admin/health/run` | admin_api | src/app/api/admin/health/run/route.ts | - | POST |
 | `/api/admin/health/runs` | admin_api | src/app/api/admin/health/runs/route.ts | - | GET |
 | `/api/admin/incidents` | admin_api | src/app/api/admin/incidents/route.ts | - | GET |
+| `/api/admin/ops-metrics` | admin_api | src/app/api/admin/ops-metrics/route.ts | - | GET |
 | `/api/admin/pickup-verification` | admin_api | src/app/api/admin/pickup-verification/route.ts | - | GET, POST |
 | `/api/admin/revenue` | admin_api | src/app/api/admin/revenue/route.ts | - | GET |
 | `/api/admin/safety` | admin_api | src/app/api/admin/safety/route.ts | - | GET |

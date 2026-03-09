@@ -87,6 +87,11 @@ ALTER TABLE "child_guardians"
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'update_timestamp') THEN
+        -- Drop triggers first for idempotency (CREATE TRIGGER has no IF NOT EXISTS)
+        DROP TRIGGER IF EXISTS set_updated_at_users ON "users";
+        DROP TRIGGER IF EXISTS set_updated_at_center_memberships ON "center_memberships";
+        DROP TRIGGER IF EXISTS set_updated_at_child_guardians ON "child_guardians";
+
         CREATE TRIGGER set_updated_at_users
             BEFORE UPDATE ON "users"
             FOR EACH ROW EXECUTE FUNCTION update_timestamp();
