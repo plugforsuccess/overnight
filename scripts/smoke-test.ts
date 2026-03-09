@@ -44,8 +44,10 @@ let testParentId: string;
 let testChildId: string;
 let testReservationId: string;
 let testNightId: string;
-let programId: string;
+let testOvernightBlockId: string;
+let testPlanId: string;
 let activeFacilityId: string;
+let planResolution: 'resolved' | 'created';
 let cleanupItems: { table: string; id: string }[] = [];
 
 const results: { step: string; status: 'pass' | 'fail'; message: string }[] = [];
@@ -66,6 +68,15 @@ function today(): string {
   // Use tomorrow to avoid conflicts with actual operations
   const d = new Date();
   d.setDate(d.getDate() + 30); // 30 days out to avoid conflicts
+  return d.toISOString().split('T')[0];
+}
+
+function weekStartDateISO(reference: Date = new Date()): string {
+  const d = new Date(reference);
+  const day = d.getDay(); // 0=Sun ... 6=Sat
+  const deltaToMonday = (day + 6) % 7;
+  d.setDate(d.getDate() - deltaToMonday);
+  d.setHours(0, 0, 0, 0);
   return d.toISOString().split('T')[0];
 }
 
@@ -160,6 +171,7 @@ async function step2_createChild(): Promise<boolean> {
     .from('children')
     .insert({
       facility_id: activeFacilityId,
+      parent_id: testParentId,
       first_name: 'SmokeChild',
       last_name: 'Test',
       date_of_birth: '2020-01-15',
@@ -180,20 +192,75 @@ async function step2_createChild(): Promise<boolean> {
 }
 
 async function step3_bookNight(): Promise<boolean> {
-  // Get program
-  const { data: program } = await supabase
-    .from('programs')
+  const careDate = today();
+  const weekStart = weekStartDateISO();
+
+  const { data: existingPlan, error: existingPlanError } = await supabase
+    .from('plans')
     .select('id')
     .eq('facility_id', activeFacilityId)
-    .eq('is_active', true)
+    .eq('active', true)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
     .limit(1)
-    .single();
+    .maybeSingle();
 
-  if (!program) {
-    fail('book_night', 'No active program found');
+  if (existingPlanError) {
+    fail('book_night', `Plan resolution failed: ${existingPlanError.message}`);
     return false;
   }
-  programId = program.id;
+
+  if (existingPlan?.id) {
+    testPlanId = existingPlan.id;
+    planResolution = 'resolved';
+  } else {
+    const { data: createdPlan, error: createdPlanError } = await supabase
+      .from('plans')
+      .insert({
+        name: 'Smoke Test Plan',
+        nights_per_week: 1,
+        weekly_price_cents: 10000,
+        active: true,
+        facility_id: activeFacilityId,
+      })
+      .select('id')
+      .single();
+
+    if (createdPlanError || !createdPlan) {
+      fail('book_night', `Plan creation failed: ${createdPlanError?.message}`);
+      return false;
+    }
+
+    testPlanId = createdPlan.id;
+    planResolution = 'created';
+    cleanupItems.push({ table: 'plans', id: testPlanId });
+  }
+
+  // Create overnight block required by reservations. For smoke flow,
+  // keep values deterministic and aligned to a single-center context.
+  const { data: overnightBlock, error: overnightBlockError } = await supabase
+    .from('overnight_blocks')
+    .insert({
+      week_start: weekStart,
+      parent_id: testParentId,
+      child_id: testChildId,
+      plan_id: testPlanId,
+      nights_per_week: 1,
+      weekly_price_cents: 10000,
+      multi_child_discount_pct: 0,
+      status: 'active',
+      payment_status: 'confirmed',
+      facility_id: activeFacilityId,
+    })
+    .select('id')
+    .single();
+
+  if (overnightBlockError || !overnightBlock) {
+    fail('book_night', `Overnight block creation failed: ${overnightBlockError?.message}`);
+    return false;
+  }
+  testOvernightBlockId = overnightBlock.id;
+  cleanupItems.push({ table: 'overnight_blocks', id: testOvernightBlockId });
 
   // Create reservation
   const { data: reservation, error: resError } = await supabase
@@ -201,9 +268,11 @@ async function step3_bookNight(): Promise<boolean> {
     .insert({
       facility_id: activeFacilityId,
       child_id: testChildId,
-      program_id: programId,
+      date: careDate,
+      overnight_block_id: testOvernightBlockId,
       status: 'confirmed',
-      })
+      admin_override: false,
+    })
     .select('id')
     .single();
 
@@ -214,14 +283,6 @@ async function step3_bookNight(): Promise<boolean> {
   testReservationId = reservation.id;
   cleanupItems.push({ table: 'reservations', id: testReservationId });
 
-  const careDate = today();
-
-  // Ensure capacity row exists
-  await supabase.rpc('ensure_capacity_rows', {
-    p_dates: [careDate],
-    p_default_capacity: 6,
-  });
-
   // Create reservation night
   const { data: night, error: nightError } = await supabase
     .from('reservation_nights')
@@ -231,6 +292,7 @@ async function step3_bookNight(): Promise<boolean> {
       child_id: testChildId,
       care_date: careDate,
       status: 'confirmed',
+      capacity_snapshot: 0,
     })
     .select('id')
     .single();
@@ -242,7 +304,7 @@ async function step3_bookNight(): Promise<boolean> {
   testNightId = night.id;
   cleanupItems.push({ table: 'reservation_nights', id: testNightId });
 
-  pass('book_night', `Booked night ${careDate} (${testNightId})`);
+  pass('book_night', `Booked night ${careDate} (${testNightId}); plan ${planResolution} (${testPlanId})`);
   return true;
 }
 
@@ -267,6 +329,7 @@ async function step4_cancelNight(): Promise<boolean> {
       child_id: testChildId,
       care_date: careDate,
       status: 'confirmed',
+      capacity_snapshot: 0,
     })
     .select('id')
     .single();
@@ -286,15 +349,13 @@ async function step4_cancelNight(): Promise<boolean> {
 
 async function step5_checkIn(): Promise<boolean> {
   // Create attendance record
-  const careDate = today();
   const { data: session, error: sessionError } = await supabase
     .from('child_attendance_sessions')
     .insert({
       facility_id: activeFacilityId,
-      reservation_night_id: testNightId,
+      reservation_id: testReservationId,
       child_id: testChildId,
-      session_date: careDate,
-      status: 'expected',
+      status: 'scheduled',
     })
     .select('id')
     .single();
