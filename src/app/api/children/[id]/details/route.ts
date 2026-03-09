@@ -12,6 +12,7 @@ export async function GET(
 ) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const childId = params.id;
 
@@ -21,6 +22,7 @@ export async function GET(
     .select('id, parent_id, first_name, last_name, date_of_birth, medical_notes, created_at, updated_at')
     .eq('id', childId)
     .eq('parent_id', auth.parentId)
+    .eq('facility_id', auth.activeFacilityId)
     .single();
 
   if (childError || !child) return notFound('Child not found');

@@ -1,29 +1,14 @@
 import { NextRequest } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { supabaseAdmin } from '@/lib/supabase-server';
+import { authenticateParentForFacility, checkFacilityAdmin, checkPlatformAdmin, checkPlatformSupport } from '@/lib/facility-auth';
 
 /**
- * Verify the request comes from an admin user.
- * Returns the user object if admin, null otherwise.
+ * Verify request has facility admin or platform admin/support access.
  */
 export async function checkAdmin(req: NextRequest) {
-  const authHeader = req.headers.get('Authorization');
-  const token = authHeader?.replace('Bearer ', '') || '';
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: `Bearer ${token}` } } }
-  );
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data: parent } = await supabaseAdmin
-    .from('parents')
-    .select('id, role, is_admin')
-    .eq('id', user.id)
-    .single();
-
-  if (!parent || (parent.role !== 'admin' && !parent.is_admin)) return null;
-  return user;
+  const session = await authenticateParentForFacility(req);
+  if (!session) return null;
+  if (checkPlatformAdmin(session) || checkPlatformSupport(session) || checkFacilityAdmin(session)) {
+    return session;
+  }
+  return null;
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '@/lib/supabase-server';
+import { authenticateParentForFacility } from '@/lib/facility-auth';
 
 /**
  * POST /api/auth/me
@@ -43,5 +44,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No parent profile found for this account' }, { status: 404 });
   }
 
-  return NextResponse.json({ role: parent.role ?? 'parent' });
+  const facilitySession = await authenticateParentForFacility(req);
+
+  return NextResponse.json({
+    role: parent.role ?? 'parent',
+    activeFacilityId: facilitySession?.activeFacilityId ?? null,
+    activeFacilitySlug: facilitySession?.activeFacilitySlug ?? null,
+    activeFacilityRole: facilitySession?.activeFacilityRole ?? null,
+    platformRole: facilitySession?.platformRole ?? 'NONE',
+  });
 }

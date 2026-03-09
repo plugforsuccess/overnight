@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from '@/lib/supabase-server';
+import { authenticateParentForFacility } from '@/lib/facility-auth';
 
 export interface AuthResult {
   supabase: SupabaseClient;
@@ -8,6 +9,9 @@ export interface AuthResult {
   userId: string;
   /** parents.id (PK) — the FK used in children.parent_id, etc. */
   parentId: string;
+  activeFacilityId?: string | null;
+  activeFacilitySlug?: string | null;
+  activeFacilityRole?: string | null;
 }
 
 /**
@@ -38,7 +42,16 @@ export async function authenticateRequest(req: NextRequest): Promise<AuthResult 
   console.log(`[api-auth] parent lookup: found=${!!parentRow} error=${parentError?.message ?? 'none'}`);
   if (!parentRow) return null;
 
-  return { supabase, userId: user.id, parentId: user.id };
+  const facilitySession = await authenticateParentForFacility(req);
+
+  return {
+    supabase,
+    userId: user.id,
+    parentId: user.id,
+    activeFacilityId: facilitySession?.activeFacilityId,
+    activeFacilitySlug: facilitySession?.activeFacilitySlug,
+    activeFacilityRole: facilitySession?.activeFacilityRole,
+  };
 }
 
 export function unauthorized() {

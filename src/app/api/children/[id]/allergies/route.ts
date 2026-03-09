@@ -13,6 +13,7 @@ export async function POST(
 ) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const childId = params.id;
 
@@ -22,6 +23,7 @@ export async function POST(
     .select('id')
     .eq('id', childId)
     .eq('parent_id', auth.parentId)
+    .eq('facility_id', auth.activeFacilityId)
     .single();
 
   if (childError || !child) return notFound('Child not found');

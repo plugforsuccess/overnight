@@ -6,6 +6,7 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 export async function GET(req: NextRequest) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const { data: parent, error } = await supabaseAdmin
     .from('parents')
@@ -20,6 +21,7 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   let body;
   try { body = await req.json(); } catch { return badRequest('Invalid request body'); }

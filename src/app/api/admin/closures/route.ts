@@ -40,7 +40,7 @@ const reopenSchema = z.object({
  */
 export async function GET(req: NextRequest) {
   const admin = await checkAdmin(req);
-  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!admin?.activeFacilityId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const start = req.nextUrl.searchParams.get('start');
   const end = req.nextUrl.searchParams.get('end');
@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   const admin = await checkAdmin(req);
-  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!admin?.activeFacilityId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let body;
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }

@@ -9,6 +9,7 @@ export async function PATCH(
 ) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const { id: medId } = await params;
 
@@ -26,6 +27,7 @@ export async function PATCH(
     .select('id')
     .eq('id', med.child_id)
     .eq('parent_id', auth.parentId)
+    .eq('facility_id', auth.activeFacilityId)
     .single();
 
   if (!child) return notFound('Child not found');
@@ -58,6 +60,7 @@ export async function DELETE(
 ) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const { id: medId } = await params;
 
@@ -75,6 +78,7 @@ export async function DELETE(
     .select('id')
     .eq('id', med.child_id)
     .eq('parent_id', auth.parentId)
+    .eq('facility_id', auth.activeFacilityId)
     .single();
 
   if (!child) return notFound('Child not found');

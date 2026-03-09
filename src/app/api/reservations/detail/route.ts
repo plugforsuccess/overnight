@@ -10,6 +10,7 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 export async function GET(req: NextRequest) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const { parentId } = auth;
   const { searchParams } = new URL(req.url);
@@ -140,6 +141,7 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const { parentId } = auth;
   const { searchParams } = new URL(req.url);

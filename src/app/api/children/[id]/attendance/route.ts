@@ -33,6 +33,7 @@ export async function GET(
 ) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const { id: childId } = await params;
 
@@ -42,6 +43,7 @@ export async function GET(
     .select('id')
     .eq('id', childId)
     .eq('parent_id', auth.parentId)
+    .eq('facility_id', auth.activeFacilityId)
     .single();
 
   if (!child) return badRequest('Child not found');
@@ -82,6 +84,7 @@ export async function POST(
 
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const { id: childId } = await params;
 
@@ -91,6 +94,7 @@ export async function POST(
     .select('id')
     .eq('id', childId)
     .eq('parent_id', auth.parentId)
+    .eq('facility_id', auth.activeFacilityId)
     .single();
 
   if (!child) return badRequest('Child not found');
@@ -140,6 +144,7 @@ export async function PATCH(
 ) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const { id: childId } = await params;
 
@@ -153,6 +158,7 @@ export async function PATCH(
     .select('id')
     .eq('id', childId)
     .eq('parent_id', auth.parentId)
+    .eq('facility_id', auth.activeFacilityId)
     .single();
 
   if (!child) return badRequest('Child not found');

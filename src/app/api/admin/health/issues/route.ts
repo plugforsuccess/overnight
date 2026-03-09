@@ -8,7 +8,7 @@ import { supabaseAdmin } from '@/lib/supabase-server';
  */
 export async function GET(req: NextRequest) {
   const admin = await checkAdmin(req);
-  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!admin?.activeFacilityId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let query = supabaseAdmin
     .from('health_issues')
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   const admin = await checkAdmin(req);
-  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!admin?.activeFacilityId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { issueId, status, resolutionNotes } = await req.json();
 

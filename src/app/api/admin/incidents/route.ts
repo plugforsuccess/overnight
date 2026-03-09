@@ -28,7 +28,7 @@ function getSeverity(eventType: string): string {
 
 export async function GET(req: NextRequest) {
   const admin = await checkAdmin(req);
-  if (!admin) {
+  if (!admin?.activeFacilityId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

@@ -3,6 +3,8 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 import { rateLimit } from '@/lib/rate-limit';
 import { z } from 'zod';
 
+const DEFAULT_FACILITY_ID = '00000000-0000-0000-0000-000000000001';
+
 const signupSchema = z.object({
   email: z.string().email('Invalid email address').max(255),
   password: z.string().min(8, 'Password must be at least 8 characters').max(128),
@@ -67,6 +69,7 @@ export async function POST(req: NextRequest) {
       phone: phone?.replace(/\D/g, '') || null,
       address: address || null,
       role: 'parent',
+      facility_id: DEFAULT_FACILITY_ID,
       onboarding_status: 'parent_profile_complete',
     }, { onConflict: 'id' });
 
