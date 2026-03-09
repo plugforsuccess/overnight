@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Trash2, Pill } from 'lucide-react';
+import { Plus, Trash2, Pill, AlertTriangle } from 'lucide-react';
 import type { MedicationAuthorizationRow, MedicationRoute } from '@/types/children';
 import { MEDICATION_ROUTE_LABELS } from '@/types/children';
 
@@ -91,13 +91,22 @@ export function MedicationAuthorizationEditor({ childId, medications, onAdd, onD
       {/* Existing medications */}
       {medications.length > 0 ? (
         <div className="space-y-3">
-          {medications.map(med => (
-            <div key={med.id} className="border border-gray-200 rounded-lg p-4">
+          {medications.map(med => {
+            const isExpired = med.end_date && new Date(med.end_date) < new Date();
+            return (
+            <div key={med.id} className={`border rounded-lg p-4 ${isExpired ? 'border-red-200 bg-red-50/30' : 'border-gray-200'}`}>
               <div className="flex items-start justify-between">
                 <div className="flex items-start gap-3">
-                  <Pill className="h-5 w-5 text-accent-600 mt-0.5" />
+                  <Pill className={`h-5 w-5 mt-0.5 ${isExpired ? 'text-red-500' : 'text-accent-600'}`} />
                   <div>
-                    <h4 className="font-semibold text-gray-900">{med.medication_name}</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-semibold text-gray-900">{med.medication_name}</h4>
+                      {isExpired && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 border border-red-200">
+                          <AlertTriangle className="h-3 w-3" /> EXPIRED
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-gray-600">{med.dosage} &middot; {MEDICATION_ROUTE_LABELS[med.route]} &middot; {med.frequency}</p>
                     {med.prescribing_physician && <p className="text-xs text-gray-500 mt-1">Prescribed by: {med.prescribing_physician}</p>}
                     <p className="text-xs text-gray-500">
@@ -120,7 +129,8 @@ export function MedicationAuthorizationEditor({ childId, medications, onAdd, onD
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       ) : !showForm ? (
         <div className="text-center py-8 text-gray-500 border border-dashed border-gray-300 rounded-lg">

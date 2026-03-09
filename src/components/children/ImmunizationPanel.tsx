@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { AlertCircle, CheckCircle2, XCircle, ShieldAlert } from 'lucide-react';
+import { AlertCircle, CheckCircle2, XCircle, ShieldAlert, Clock } from 'lucide-react';
 import type { ChildImmunizationRecordRow, ImmunizationStatus } from '@/types/children';
-import { IMMUNIZATION_STATUS_LABELS } from '@/types/children';
 
 interface Props {
   childId: string;
@@ -20,19 +19,35 @@ const STATUS_OPTIONS: { value: ImmunizationStatus; label: string }[] = [
   { value: 'missing', label: 'Missing' },
 ];
 
-function StatusBadge({ status }: { status: ImmunizationStatus }) {
-  const config: Record<ImmunizationStatus, { icon: typeof CheckCircle2; color: string }> = {
-    current: { icon: CheckCircle2, color: 'text-green-600 bg-green-50 border-green-200' },
-    expired: { icon: AlertCircle, color: 'text-amber-600 bg-amber-50 border-amber-200' },
-    exempt_medical: { icon: ShieldAlert, color: 'text-blue-600 bg-blue-50 border-blue-200' },
-    exempt_religious: { icon: ShieldAlert, color: 'text-blue-600 bg-blue-50 border-blue-200' },
-    missing: { icon: XCircle, color: 'text-red-600 bg-red-50 border-red-200' },
+/** Returns true if expiration is within 30 days from now */
+function isExpiringSoon(expiresAt: string | null): boolean {
+  if (!expiresAt) return false;
+  const expiry = new Date(expiresAt);
+  const now = new Date();
+  const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  return expiry > now && expiry <= thirtyDaysFromNow;
+}
+
+type BadgeVariant = ImmunizationStatus | 'expiring_soon';
+
+function StatusBadge({ status, expiresAt }: { status: ImmunizationStatus; expiresAt?: string | null }) {
+  const expiringSoon = status === 'current' && isExpiringSoon(expiresAt ?? null);
+
+  const config: Record<BadgeVariant, { icon: typeof CheckCircle2; color: string; label: string }> = {
+    current: { icon: CheckCircle2, color: 'text-green-600 bg-green-50 border-green-200', label: 'Current' },
+    expiring_soon: { icon: Clock, color: 'text-amber-600 bg-amber-50 border-amber-200', label: 'Expiring Soon' },
+    expired: { icon: XCircle, color: 'text-red-600 bg-red-50 border-red-200', label: 'Expired' },
+    exempt_medical: { icon: ShieldAlert, color: 'text-blue-600 bg-blue-50 border-blue-200', label: 'Exempt (Medical)' },
+    exempt_religious: { icon: ShieldAlert, color: 'text-blue-600 bg-blue-50 border-blue-200', label: 'Exempt (Religious)' },
+    missing: { icon: AlertCircle, color: 'text-gray-500 bg-gray-50 border-gray-200', label: 'Missing' },
   };
-  const { icon: Icon, color } = config[status];
+
+  const variant: BadgeVariant = expiringSoon ? 'expiring_soon' : status;
+  const { icon: Icon, color, label } = config[variant];
   return (
     <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium border ${color}`}>
       <Icon className="h-4 w-4" />
-      {IMMUNIZATION_STATUS_LABELS[status]}
+      {label}
     </span>
   );
 }
@@ -88,7 +103,7 @@ export function ImmunizationPanel({ childId, record, onSave, saving }: Props) {
 
       <div className="flex items-center gap-3">
         <span className="text-sm font-medium text-gray-700">Current Status:</span>
-        <StatusBadge status={status} />
+        <StatusBadge status={status} expiresAt={record?.expires_at} />
       </div>
 
       <div>
