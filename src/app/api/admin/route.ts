@@ -1,30 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
-import { createClient } from '@supabase/supabase-js';
+import { checkAdmin } from '@/lib/admin-auth';
 import { z } from 'zod';
-
-async function checkAdmin(req: NextRequest) {
-  const authHeader = req.headers.get('Authorization');
-  const token = authHeader?.replace('Bearer ', '') || '';
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: `Bearer ${token}` } } }
-  );
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  // Use supabaseAdmin to check role from the parents table (trusted source, not user-writable)
-  const { data: parent } = await supabaseAdmin
-    .from('parents')
-    .select('id, role, is_admin')
-    .eq('id', user.id)
-    .single();
-
-  if (!parent || (parent.role !== 'admin' && !parent.is_admin)) return null;
-  return user;
-}
 
 // Validation for admin settings update
 const settingsUpdateSchema = z.object({

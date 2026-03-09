@@ -8,6 +8,10 @@ export interface AuthResult {
   userId: string;
   /** parents.id (PK) — the FK used in children.parent_id, etc. */
   parentId: string;
+  /** Role from parents table (e.g. 'parent' | 'admin') */
+  role: string;
+  /** Whether user has admin privileges (role='admin' OR is_admin=true) */
+  isAdmin: boolean;
 }
 
 /**
@@ -28,17 +32,20 @@ export async function authenticateRequest(req: NextRequest): Promise<AuthResult 
   if (!user) return null;
 
   // parents.id = auth.users.id — single canonical identity, no extra lookup needed
-  // Verify the parent row exists
+  // Verify the parent row exists and fetch role info
   const { data: parentRow, error: parentError } = await supabaseAdmin
     .from('parents')
-    .select('id')
+    .select('id, role, is_admin')
     .eq('id', user.id)
     .single();
 
   console.log(`[api-auth] parent lookup: found=${!!parentRow} error=${parentError?.message ?? 'none'}`);
   if (!parentRow) return null;
 
-  return { supabase, userId: user.id, parentId: user.id };
+  const role = parentRow.role ?? 'parent';
+  const isAdmin = role === 'admin' || parentRow.is_admin === true;
+
+  return { supabase, userId: user.id, parentId: user.id, role, isAdmin };
 }
 
 export function unauthorized() {

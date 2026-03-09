@@ -1,43 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
-import { createClient } from '@supabase/supabase-js';
+import { checkAdminId } from '@/lib/admin-auth';
 import { verifyPin } from '@/lib/pin-hash';
 import { rateLimit } from '@/lib/rate-limit';
 
 const MAX_PIN_ATTEMPTS = 3;
 const LOCKOUT_MINUTES = 15;
 
-function getUserClient(req: NextRequest) {
-  const authHeader = req.headers.get('Authorization');
-  const token = authHeader?.replace('Bearer ', '') || '';
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: `Bearer ${token}` } } }
-  );
-}
-
-async function verifyAdmin(req: NextRequest): Promise<string | null> {
-  const supabase = getUserClient(req);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data: profile } = await supabaseAdmin
-    .from('parents')
-    .select('id, role')
-    .eq('id', user.id)
-    .single();
-
-  if (!profile || profile.role !== 'admin') return null;
-  return user.id;
-}
-
 /**
  * GET /api/admin/pickup-verification
  * List children with their authorized pickups for the verification UI.
  */
 export async function GET(req: NextRequest) {
-  const adminId = await verifyAdmin(req);
+  const adminId = await checkAdminId(req);
   if (!adminId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -86,7 +61,7 @@ export async function POST(req: NextRequest) {
   const rateLimited = rateLimit(req, { windowMs: 60_000, max: 20 });
   if (rateLimited) return rateLimited;
 
-  const adminId = await verifyAdmin(req);
+  const adminId = await checkAdminId(req);
   if (!adminId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
