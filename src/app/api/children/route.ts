@@ -5,11 +5,15 @@ import { childBasicsSchema } from '@/lib/validation/children';
 export async function GET(req: NextRequest) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const { data, error } = await auth.supabase
     .from('children')
     .select('id, parent_id, first_name, last_name, date_of_birth, medical_notes, created_at, updated_at')
     .eq('parent_id', auth.parentId)
+    .eq('facility_id', auth.activeFacilityId)
+    .eq('facility_id', auth.activeFacilityId)
     .order('created_at', { ascending: true });
 
   if (error) return badRequest(error.message);
@@ -19,6 +23,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   let body;
   try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
@@ -36,6 +42,7 @@ export async function POST(req: NextRequest) {
       last_name: parsed.data.last_name,
       date_of_birth: parsed.data.date_of_birth,
       medical_notes: parsed.data.medical_notes || null,
+      facility_id: auth.activeFacilityId,
     })
     .select()
     .single();
@@ -47,6 +54,8 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   let body;
   try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
@@ -69,6 +78,8 @@ export async function PUT(req: NextRequest) {
     })
     .eq('id', id)
     .eq('parent_id', auth.parentId)
+    .eq('facility_id', auth.activeFacilityId)
+    .eq('facility_id', auth.activeFacilityId)
     .select()
     .single();
 
@@ -79,6 +90,8 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
@@ -88,7 +101,9 @@ export async function DELETE(req: NextRequest) {
     .from('children')
     .delete()
     .eq('id', id)
-    .eq('parent_id', auth.parentId);
+    .eq('parent_id', auth.parentId)
+    .eq('facility_id', auth.activeFacilityId)
+    .eq('facility_id', auth.activeFacilityId);
 
   if (error) return badRequest(error.message);
   return NextResponse.json({ success: true });

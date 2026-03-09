@@ -10,6 +10,8 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 export async function GET(req: NextRequest) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const { parentId } = auth;
 
@@ -17,7 +19,8 @@ export async function GET(req: NextRequest) {
   const { data: children, error: childError } = await supabaseAdmin
     .from('children')
     .select('id, first_name, last_name')
-    .eq('parent_id', parentId);
+    .eq('parent_id', parentId)
+    .eq('facility_id', auth.activeFacilityId);
 
   if (childError) {
     console.error('[api/reservations] children query error:', childError);
@@ -43,6 +46,7 @@ export async function GET(req: NextRequest) {
   const { data: reservations, error: resError } = await supabaseAdmin
     .from('reservations')
     .select('id, child_id, date, status, admin_override, overnight_block_id, created_at, updated_at')
+    .eq('facility_id', auth.activeFacilityId)
     .in('child_id', childIds)
     .order('date', { ascending: true });
 
@@ -60,6 +64,7 @@ export async function GET(req: NextRequest) {
     const { data: blocks } = await supabaseAdmin
       .from('overnight_blocks')
       .select('id, weekly_price_cents, status, plan_id')
+      .eq('facility_id', auth.activeFacilityId)
       .in('id', blockIds);
 
     if (blocks) {
@@ -118,6 +123,8 @@ export async function GET(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const { parentId } = auth;
   const { searchParams } = new URL(req.url);
@@ -132,6 +139,7 @@ export async function DELETE(req: NextRequest) {
     .from('reservations')
     .select('id, child_id, overnight_block_id, status')
     .eq('id', reservationId)
+    .eq('facility_id', auth.activeFacilityId)
     .single();
 
   if (!reservation) {
@@ -144,6 +152,7 @@ export async function DELETE(req: NextRequest) {
     .select('id')
     .eq('id', reservation.child_id)
     .eq('parent_id', parentId)
+    .eq('facility_id', auth.activeFacilityId)
     .single();
 
   if (!child) {
@@ -157,7 +166,8 @@ export async function DELETE(req: NextRequest) {
   const { error } = await supabaseAdmin
     .from('reservations')
     .update({ status: 'canceled', updated_at: new Date().toISOString() })
-    .eq('id', reservationId);
+    .eq('id', reservationId)
+    .eq('facility_id', auth.activeFacilityId);
 
   if (error) {
     console.error('[api/reservations] cancel error:', error);

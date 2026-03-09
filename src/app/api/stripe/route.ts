@@ -3,6 +3,7 @@ import { stripe, getOrCreateCustomer } from '@/lib/stripe';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { createClient } from '@supabase/supabase-js';
 import { rateLimit } from '@/lib/rate-limit';
+import { authenticateParentForFacility } from '@/lib/facility-auth';
 
 function getUserClient(req: NextRequest) {
   const authHeader = req.headers.get('Authorization');
@@ -25,6 +26,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' }, { status: 401 });
   }
 
+  const facilitySession = await authenticateParentForFacility(req);
+  if (!facilitySession?.activeFacilityId) {
+    return NextResponse.json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' }, { status: 401 });
+  }
+
   let body;
   try { body = await req.json(); } catch {
     return NextResponse.json({ error: 'Invalid request body', code: 'INVALID_PLAN_SELECTION' }, { status: 400 });
@@ -42,6 +48,7 @@ export async function POST(req: NextRequest) {
     .from('overnight_blocks')
     .select('id, weekly_price_cents, parent_id, nights_per_week, status')
     .eq('id', planId)
+    .eq('facility_id', facilitySession.activeFacilityId)
     .single();
 
   if (!block || blockError) {
@@ -56,6 +63,7 @@ export async function POST(req: NextRequest) {
     .from('parents')
     .select('id, email, first_name, last_name, stripe_customer_id')
     .eq('id', user.id)
+    .eq('facility_id', facilitySession.activeFacilityId)
     .single();
 
   if (!parentRow) {
@@ -115,6 +123,7 @@ export async function POST(req: NextRequest) {
       metadata: {
         overnight_block_id: planId,
         parent_id: parentRow.id,
+        facility_id: facilitySession.activeFacilityId,
       },
       success_url: `${appUrl}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/schedule`,

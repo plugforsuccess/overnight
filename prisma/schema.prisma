@@ -27,29 +27,98 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+
+  @@map("subscription_status")
+}
+
+enum SubscriptionTier {
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+
+  @@map("subscription_tier")
+}
+
+enum PlatformFeeType {
+  PERCENTAGE
+  FLAT
+
+  @@map("platform_fee_type")
+}
+
+enum PlatformRole {
+  PLATFORM_ADMIN
+  PLATFORM_SUPPORT
+  NONE
+
+  @@map("platform_role")
+}
+
+enum FacilityRole {
+  ADMIN
+  BILLING
+  STAFF
+  CAREGIVER
+  PARENT
+
+  @@map("facility_role")
+}
+
+enum PlatformAuditAction {
+  SUSPEND
+  REACTIVATE
+  ARCHIVE
+  RESTORE
+  TOGGLE_FEATURED
+  TOGGLE_PUBLISHED
+  IMPERSONATION_START
+  IMPERSONATION_STOP
+  UPDATE_SPONSORED_STATUS
+  UPDATE_SUBSCRIPTION
+  UPDATE_FACILITY
+
+  @@map("platform_audit_action")
+}
+
+enum PlatformResourceType {
+  FACILITY
+  LOCATION
+  SPONSORED_PLACEMENT
+  SUBSCRIPTION
+  USER
+
+  @@map("platform_resource_type")
 }
 
 // ─── centers ─────────────────────────────────────────────────────────────────
 // Physical childcare center. Even single-center deployments get one row.
 model Center {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name           String
-  slug           String   @unique
-  timezone       String   @default("America/New_York")
+  slug           String  @unique
+  timezone       String  @default("America/New_York")
   address_line_1 String?
   city           String?
   state          String?
   postal_code    String?
-  is_active      Boolean  @default(true)
+  is_active      Boolean @default(true)
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  programs          Program[]
+  programs           Program[]
   program_capacities ProgramCapacity[]
   capacity_overrides CapacityOverride[]
 
@@ -60,24 +129,27 @@ model Center {
 // A care offering at a center (e.g., "Overnight Care").
 // Pricing is handled separately via plans table.
 model Program {
-  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  center_id  String  @db.Uuid
-  name       String
-  care_type  String  @default("overnight") // CHECK: overnight | daycare | drop_in
-  start_time String  @default("21:00")
-  end_time   String  @default("07:00")
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id    String   @map("facility_id") @db.Uuid
+  facility       Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  center_id      String   @db.Uuid
+  name           String
+  care_type      String   @default("overnight") // CHECK: overnight | daycare | drop_in
+  start_time     String   @default("21:00")
+  end_time       String   @default("07:00")
   age_min_months Int? // minimum age in months
   age_max_months Int? // maximum age in months
-  is_active  Boolean @default(true)
+  is_active      Boolean  @default(true)
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  center             Center            @relation(fields: [center_id], references: [id], onDelete: Cascade)
+  center             Center             @relation(fields: [center_id], references: [id], onDelete: Cascade)
   program_capacities ProgramCapacity[]
   capacity_overrides CapacityOverride[]
 
+  @@index([facility_id], map: "idx_programs_facility_id")
   @@map("programs")
 }
 
@@ -85,25 +157,28 @@ model Program {
 // One row per program per date. Source of truth for night-level availability.
 // CHECK: status IN (open, full, closed)
 model ProgramCapacity {
-  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  center_id            String   @db.Uuid
-  program_id           String   @db.Uuid
-  care_date            DateTime @db.Date
-  capacity_total       Int
-  capacity_reserved    Int      @default(0)
-  capacity_waitlisted  Int      @default(0)
-  status               String   @default("open") // CHECK: open | full | closed
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id         String   @map("facility_id") @db.Uuid
+  facility            Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  center_id           String   @db.Uuid
+  program_id          String   @db.Uuid
+  care_date           DateTime @db.Date
+  capacity_total      Int
+  capacity_reserved   Int      @default(0)
+  capacity_waitlisted Int      @default(0)
+  status              String   @default("open") // CHECK: open | full | closed
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  center            Center            @relation(fields: [center_id], references: [id], onDelete: Cascade)
-  program           Program           @relation(fields: [program_id], references: [id], onDelete: Cascade)
+  center             Center             @relation(fields: [center_id], references: [id], onDelete: Cascade)
+  program            Program            @relation(fields: [program_id], references: [id], onDelete: Cascade)
   reservation_nights ReservationNight[]
 
   @@unique([program_id, care_date], map: "program_capacity_program_date_unique")
   @@index([care_date, status], map: "idx_program_capacity_date_status")
+  @@index([facility_id], map: "idx_program_capacity_facility_id")
   @@map("program_capacity")
 }
 
@@ -113,45 +188,50 @@ model ProgramCapacity {
 // CHECK: override_type IN (closed, reduced_capacity, reopened)
 // CHECK: reason_code IN (holiday, staff_shortage, weather, facility_issue, emergency_closure, low_demand, maintenance, other)
 model CapacityOverride {
-  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  center_id          String    @db.Uuid
-  program_id         String    @db.Uuid
-  care_date          DateTime  @db.Date
-  override_type      String    // closed | reduced_capacity | reopened
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id        String   @map("facility_id") @db.Uuid
+  facility           Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  center_id          String   @db.Uuid
+  program_id         String   @db.Uuid
+  care_date          DateTime @db.Date
+  override_type      String // closed | reduced_capacity | reopened
   capacity_override  Int?
-  reason_code        String    // holiday | staff_shortage | weather | facility_issue | emergency_closure | low_demand | maintenance | other
+  reason_code        String // holiday | staff_shortage | weather | facility_issue | emergency_closure | low_demand | maintenance | other
   reason_text        String?
-  is_active          Boolean   @default(true)
-  created_by_user_id String    @db.Uuid
-  updated_by_user_id String?   @db.Uuid
+  is_active          Boolean  @default(true)
+  created_by_user_id String   @db.Uuid
+  updated_by_user_id String?  @db.Uuid
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  center Center @relation(fields: [center_id], references: [id], onDelete: Cascade)
-  program Program @relation(fields: [program_id], references: [id], onDelete: Cascade)
+  center  Center                  @relation(fields: [center_id], references: [id], onDelete: Cascade)
+  program Program                 @relation(fields: [program_id], references: [id], onDelete: Cascade)
   events  CapacityOverrideEvent[]
 
   @@index([center_id, care_date], map: "idx_capacity_overrides_center_date")
   @@index([program_id, care_date], map: "idx_capacity_overrides_program_date")
   @@index([is_active, care_date], map: "idx_capacity_overrides_active")
   @@index([created_by_user_id], map: "idx_capacity_overrides_created_by")
+  @@index([facility_id], map: "idx_capacity_overrides_facility_id")
   @@map("capacity_overrides")
 }
 
 // ─── capacity_override_events ────────────────────────────────────────────────
 // Immutable audit trail for closure/reduction operator actions.
 model CapacityOverrideEvent {
-  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  capacity_override_id  String   @db.Uuid
-  center_id             String   @db.Uuid
-  program_id            String   @db.Uuid
-  care_date             DateTime @db.Date
-  actor_user_id         String   @db.Uuid
-  event_type            String
-  event_at              DateTime @default(now()) @db.Timestamptz(6)
-  metadata              Json     @default("{}") @db.JsonB
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id          String   @map("facility_id") @db.Uuid
+  facility             Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  capacity_override_id String   @db.Uuid
+  center_id            String   @db.Uuid
+  program_id           String   @db.Uuid
+  care_date            DateTime @db.Date
+  actor_user_id        String   @db.Uuid
+  event_type           String
+  event_at             DateTime @default(now()) @db.Timestamptz(6)
+  metadata             Json     @default("{}") @db.JsonB
 
   // Relations
   capacity_override CapacityOverride @relation(fields: [capacity_override_id], references: [id], onDelete: Cascade)
@@ -160,6 +240,7 @@ model CapacityOverrideEvent {
   @@index([center_id, care_date], map: "idx_override_events_center_date")
   @@index([event_type, event_at], map: "idx_override_events_type")
   @@index([actor_user_id], map: "idx_override_events_actor")
+  @@index([facility_id], map: "idx_capacity_override_events_facility_id")
   @@map("capacity_override_events")
 }
 
@@ -168,15 +249,17 @@ model CapacityOverrideEvent {
 // No default — ID comes from Supabase Auth, not auto-generated.
 model Parent {
   id                 String   @id @db.Uuid
+  facility_id        String   @map("facility_id") @db.Uuid
+  facility           Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
   first_name         String
   last_name          String
   email              String   @unique
   phone              String?
   address            String?
-  role               String   @default("parent")  // CHECK: parent | admin
+  role               String   @default("parent") // CHECK: parent | admin
   is_admin           Boolean  @default(false)
   stripe_customer_id String?  @unique
-  name               String?  // legacy column, nullable
+  name               String? // legacy column, nullable
   center_id          String?  @db.Uuid
   onboarding_status  String   @default("started") // CHECK: started | parent_profile_complete | child_created | medical_ack_complete | emergency_contact_added | complete
 
@@ -184,24 +267,27 @@ model Parent {
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  children         Child[]
-  overnight_blocks OvernightBlock[]
-  waitlist_entries WaitlistEntry[]
-  credits          Credit[]
-  payments         Payment[]
-  subscriptions    Subscription[]
-  audit_logs       AuditLog[]
-  pickup_verifications PickupEvent[] @relation("pickup_verifier")
-  settings        ParentSettings?
-  staff_memberships CenterStaffMembership[]
-  billing_ledger    BillingLedger[]
+  children             Child[]
+  overnight_blocks     OvernightBlock[]
+  waitlist_entries     WaitlistEntry[]
+  credits              Credit[]
+  payments             Payment[]
+  subscriptions        Subscription[]
+  audit_logs           AuditLog[]
+  pickup_verifications PickupEvent[]           @relation("pickup_verifier")
+  settings             ParentSettings?
+  staff_memberships    CenterStaffMembership[]
+  billing_ledger       BillingLedger[]
 
+  @@index([facility_id], map: "idx_parents_facility_id")
   @@map("parents")
 }
 
 // ─── children ─────────────────────────────────────────────────────────────────
 model Child {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id    String    @map("facility_id") @db.Uuid
+  facility       Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
   parent_id      String    @db.Uuid
   first_name     String
   last_name      String
@@ -209,8 +295,8 @@ model Child {
   preferred_name String?
   date_of_birth  DateTime? @db.Date
   gender         String?
-  name           String?   // legacy column, nullable
-  allergies      String?   // legacy text column
+  name           String? // legacy column, nullable
+  allergies      String? // legacy text column
   photo_url      String?
   medical_notes  String?
   notes          String?
@@ -222,25 +308,26 @@ model Child {
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  parent             Parent                @relation(fields: [parent_id], references: [id], onDelete: Cascade)
-  overnight_blocks   OvernightBlock[]
-  reservations       Reservation[]
-  waitlist_entries   WaitlistEntry[]
-  child_allergies    ChildAllergy[]
-  emergency_contacts ChildEmergencyContact[]
-  authorized_pickups ChildAuthorizedPickup[]
-  pickup_events         PickupEvent[]
-  medical_profile       ChildMedicalProfile?
-  events                ChildEvent[]
-  attendance_sessions   ChildAttendanceSession[]
-  incident_reports      IncidentReport[]
-  reservation_nights    ReservationNight[]
-  billing_ledger        BillingLedger[]
-  documents             ChildDocument[]
-  immunization_record   ChildImmunizationRecord?
+  parent                    Parent                    @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+  overnight_blocks          OvernightBlock[]
+  reservations              Reservation[]
+  waitlist_entries          WaitlistEntry[]
+  child_allergies           ChildAllergy[]
+  emergency_contacts        ChildEmergencyContact[]
+  authorized_pickups        ChildAuthorizedPickup[]
+  pickup_events             PickupEvent[]
+  medical_profile           ChildMedicalProfile?
+  events                    ChildEvent[]
+  attendance_sessions       ChildAttendanceSession[]
+  incident_reports          IncidentReport[]
+  reservation_nights        ReservationNight[]
+  billing_ledger            BillingLedger[]
+  documents                 ChildDocument[]
+  immunization_record       ChildImmunizationRecord?
   medication_authorizations MedicationAuthorization[]
 
   @@index([parent_id], map: "idx_children_parent_id")
+  @@index([facility_id], map: "idx_children_facility_id")
   @@map("children")
 }
 
@@ -252,10 +339,10 @@ model ChildDocument {
   id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   child_id      String    @db.Uuid
   center_id     String?   @db.Uuid
-  document_type String    // immunization_certificate | medication_authorization | photo_id | consent_form | physician_note | incident_attachment | other
+  document_type String // immunization_certificate | medication_authorization | photo_id | consent_form | physician_note | incident_attachment | other
   file_name     String
-  file_url      String    // Supabase Storage signed URL or path
-  storage_path  String?   // Server-constructed storage path for safe deletion
+  file_url      String // Supabase Storage signed URL or path
+  storage_path  String? // Server-constructed storage path for safe deletion
   file_size     Int?
   mime_type     String?
   uploaded_by   String    @db.Uuid
@@ -281,18 +368,18 @@ model ChildDocument {
 // (Certificate of Immunization) on file for every enrolled child.
 // CHECK: status IN (current, expired, exempt_medical, exempt_religious, missing)
 model ChildImmunizationRecord {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  child_id       String    @unique @db.Uuid
-  center_id      String?   @db.Uuid
-  status         String    @default("missing") // current | expired | exempt_medical | exempt_religious | missing
-  document_url   String?   // path in Supabase Storage (child-documents bucket)
-  document_path  String?   // storage key for deletion
-  issued_date    DateTime? @db.Date
-  expires_at     DateTime? @db.Date
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id         String    @unique @db.Uuid
+  center_id        String?   @db.Uuid
+  status           String    @default("missing") // current | expired | exempt_medical | exempt_religious | missing
+  document_url     String? // path in Supabase Storage (child-documents bucket)
+  document_path    String? // storage key for deletion
+  issued_date      DateTime? @db.Date
+  expires_at       DateTime? @db.Date
   exemption_reason String?
-  verified_by    String?   @db.Uuid
-  verified_at    DateTime? @db.Timestamptz(6)
-  notes          String?
+  verified_by      String?   @db.Uuid
+  verified_at      DateTime? @db.Timestamptz(6)
+  notes            String?
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
@@ -309,28 +396,28 @@ model ChildImmunizationRecord {
 // can be administered. Covers routine meds (antibiotics, ADHD, seizure, etc.)
 // that allergy action plans do not cover.
 model MedicationAuthorization {
-  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  child_id                String    @db.Uuid
-  center_id               String?   @db.Uuid
-  medication_name         String
-  dosage                  String
-  route                   String    // oral | topical | inhaled | injection | other
-  frequency               String    // e.g. "every 4 hours", "twice daily", "as needed"
-  start_date              DateTime  @db.Date
-  end_date                DateTime? @db.Date
-  special_instructions    String?
-  prescribing_physician   String?
-  parent_consent_name     String?   // name of consenting parent (typed signature)
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  child_id                 String    @db.Uuid
+  center_id                String?   @db.Uuid
+  medication_name          String
+  dosage                   String
+  route                    String // oral | topical | inhaled | injection | other
+  frequency                String // e.g. "every 4 hours", "twice daily", "as needed"
+  start_date               DateTime  @db.Date
+  end_date                 DateTime? @db.Date
+  special_instructions     String?
+  prescribing_physician    String?
+  parent_consent_name      String? // name of consenting parent (typed signature)
   parent_consent_signed_at DateTime? @db.Timestamptz(6)
-  document_url            String?   // signed authorization form upload
-  is_active               Boolean   @default(true)
+  document_url             String? // signed authorization form upload
+  is_active                Boolean   @default(true)
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  child                Child                        @relation(fields: [child_id], references: [id], onDelete: Cascade)
-  administration_logs  MedicationAdministrationLog[]
+  child               Child                         @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  administration_logs MedicationAdministrationLog[]
 
   @@index([child_id, is_active], map: "idx_med_auth_child_active")
   @@map("medication_authorizations")
@@ -362,20 +449,23 @@ model MedicationAdministrationLog {
 // allergen uses Postgres enum type `allergy_type`
 // severity uses Postgres enum type `allergy_severity`
 model ChildAllergy {
-  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  child_id     String  @db.Uuid
-  allergen     String  // DB enum: allergy_type
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id  String   @map("facility_id") @db.Uuid
+  facility     Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  child_id     String   @db.Uuid
+  allergen     String // DB enum: allergy_type
   custom_label String?
-  severity     String  @default("UNKNOWN") // DB enum: allergy_severity
+  severity     String   @default("UNKNOWN") // DB enum: allergy_severity
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  child       Child                  @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  child       Child                   @relation(fields: [child_id], references: [id], onDelete: Cascade)
   action_plan ChildAllergyActionPlan?
 
   @@unique([child_id, allergen, custom_label], map: "child_allergies_child_id_allergen_custom_label_unique")
+  @@index([facility_id], map: "idx_child_allergies_facility_id")
   @@map("child_allergies")
 }
 
@@ -406,9 +496,11 @@ model ChildAllergyActionPlan {
 // Stores child medical awareness without bloating the child record.
 // One-to-one with children (unique child_id).
 model ChildMedicalProfile {
-  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  child_id  String @unique @db.Uuid
-  center_id String? @db.Uuid
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id String   @map("facility_id") @db.Uuid
+  facility    Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  child_id    String   @unique @db.Uuid
+  center_id   String?  @db.Uuid
 
   has_allergies          Boolean @default(false)
   has_medications        Boolean @default(false)
@@ -430,24 +522,27 @@ model ChildMedicalProfile {
   // Relations
   child Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
 
+  @@index([facility_id], map: "idx_child_medical_profiles_facility_id")
   @@map("child_medical_profiles")
 }
 
 // ─── child_emergency_contacts ────────────────────────────────────────────────
 // DB trigger: enforce_max_two_emergency_contacts() limits to 2 per child
 model ChildEmergencyContact {
-  id                    String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  child_id              String  @db.Uuid
-  center_id             String? @db.Uuid
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id           String    @map("facility_id") @db.Uuid
+  facility              Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  child_id              String    @db.Uuid
+  center_id             String?   @db.Uuid
   first_name            String
   last_name             String
   relationship          String
   phone                 String
   phone_alt             String?
   email                 String?
-  is_primary            Boolean @default(false)
+  is_primary            Boolean   @default(false)
   priority              Int
-  authorized_for_pickup Boolean @default(false)
+  authorized_for_pickup Boolean   @default(false)
   archived_at           DateTime? @db.Timestamptz(6)
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
@@ -458,12 +553,15 @@ model ChildEmergencyContact {
 
   @@unique([child_id, priority], map: "child_emergency_contacts_child_id_priority_unique")
   @@unique([child_id, phone], map: "child_emergency_contacts_child_id_phone_unique")
+  @@index([facility_id], map: "idx_child_emergency_contacts_facility_id")
   @@map("child_emergency_contacts")
 }
 
 // ─── child_authorized_pickups ────────────────────────────────────────────────
 model ChildAuthorizedPickup {
   id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id          String    @map("facility_id") @db.Uuid
+  facility             Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
   child_id             String    @db.Uuid
   center_id            String?   @db.Uuid
   first_name           String
@@ -489,6 +587,7 @@ model ChildAuthorizedPickup {
   child         Child         @relation(fields: [child_id], references: [id], onDelete: Cascade)
   pickup_events PickupEvent[]
 
+  @@index([facility_id], map: "idx_child_authorized_pickups_facility_id")
   @@map("child_authorized_pickups")
 }
 
@@ -496,19 +595,22 @@ model ChildAuthorizedPickup {
 // Append-only child safety event ledger. Never update or delete.
 // Acts as an operational audit log for childcare operations.
 model ChildEvent {
-  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  child_id   String  @db.Uuid
-  center_id  String? @db.Uuid
-  event_type String  // e.g. child_checked_in, child_checked_out, medical_alert_triggered, etc.
-  event_data Json    @default("{}") @db.JsonB
-  created_by String? @db.Uuid
-  created_at DateTime @default(now()) @db.Timestamptz(6)
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id String   @map("facility_id") @db.Uuid
+  facility    Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  child_id    String   @db.Uuid
+  center_id   String?  @db.Uuid
+  event_type  String // e.g. child_checked_in, child_checked_out, medical_alert_triggered, etc.
+  event_data  Json     @default("{}") @db.JsonB
+  created_by  String?  @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
 
   // Relations
   child Child @relation(fields: [child_id], references: [id], onDelete: Cascade)
 
   @@index([child_id, created_at], map: "idx_child_events_child_created")
   @@index([event_type], map: "idx_child_events_type")
+  @@index([facility_id], map: "idx_child_events_facility_id")
   @@map("child_events")
 }
 
@@ -517,34 +619,37 @@ model ChildEvent {
 // Powers staff dashboards, billing calculations, incident reporting, pickup verification.
 // CHECK: status IN (scheduled, checked_in, in_care, ready_for_pickup, checked_out, cancelled)
 model ChildAttendanceSession {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  child_id        String    @db.Uuid
-  center_id       String?   @db.Uuid
-  reservation_id  String?   @db.Uuid
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id    String   @map("facility_id") @db.Uuid
+  facility       Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  child_id       String   @db.Uuid
+  center_id      String?  @db.Uuid
+  reservation_id String?  @db.Uuid
 
-  check_in_at     DateTime? @db.Timestamptz(6)
-  check_out_at    DateTime? @db.Timestamptz(6)
-  checked_in_by   String?   @db.Uuid
-  checked_out_by  String?   @db.Uuid
+  check_in_at    DateTime? @db.Timestamptz(6)
+  check_out_at   DateTime? @db.Timestamptz(6)
+  checked_in_by  String?   @db.Uuid
+  checked_out_by String?   @db.Uuid
 
-  pickup_person_name   String?
-  pickup_relationship  String?
-  pickup_verified      Boolean @default(false)
+  pickup_person_name  String?
+  pickup_relationship String?
+  pickup_verified     Boolean @default(false)
 
-  status String @default("scheduled") // CHECK: scheduled | checked_in | in_care | ready_for_pickup | checked_out | cancelled
+  status String  @default("scheduled") // CHECK: scheduled | checked_in | in_care | ready_for_pickup | checked_out | cancelled
   notes  String?
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  child            Child            @relation(fields: [child_id], references: [id], onDelete: Cascade)
-  reservation      Reservation?     @relation(fields: [reservation_id], references: [id], onDelete: SetNull)
-  incident_reports IncidentReport[]
+  child               Child               @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  reservation         Reservation?        @relation(fields: [reservation_id], references: [id], onDelete: SetNull)
+  incident_reports    IncidentReport[]
   pickup_verification PickupVerification?
 
   @@index([child_id, created_at], map: "idx_attendance_child_created")
   @@index([status], map: "idx_attendance_status")
+  @@index([facility_id], map: "idx_child_attendance_sessions_facility_id")
   @@map("child_attendance_sessions")
 }
 
@@ -552,11 +657,13 @@ model ChildAttendanceSession {
 // Append-only ledger tracking reservation lifecycle history.
 // Never update or delete — preserves booking history for billing disputes and audits.
 model ReservationEvent {
-  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  reservation_id String  @db.Uuid
-  event_type     String  // reservation_created, reservation_confirmed, reservation_cancelled, etc.
-  event_data     Json    @default("{}") @db.JsonB
-  created_by     String? @db.Uuid
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id    String   @map("facility_id") @db.Uuid
+  facility       Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  reservation_id String   @db.Uuid
+  event_type     String // reservation_created, reservation_confirmed, reservation_cancelled, etc.
+  event_data     Json     @default("{}") @db.JsonB
+  created_by     String?  @db.Uuid
   created_at     DateTime @default(now()) @db.Timestamptz(6)
 
   // Relations
@@ -564,6 +671,7 @@ model ReservationEvent {
 
   @@index([reservation_id, created_at], map: "idx_reservation_events_res_created")
   @@index([event_type], map: "idx_reservation_events_type")
+  @@index([facility_id], map: "idx_reservation_events_facility_id")
   @@map("reservation_events")
 }
 
@@ -573,13 +681,15 @@ model ReservationEvent {
 // CHECK: severity IN (low, medium, high, critical)
 // CHECK: status IN (open, investigating, resolved, closed)
 model IncidentReport {
-  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  child_id              String    @db.Uuid
-  attendance_session_id String?   @db.Uuid
-  center_id             String?   @db.Uuid
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id           String   @map("facility_id") @db.Uuid
+  facility              Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  child_id              String   @db.Uuid
+  attendance_session_id String?  @db.Uuid
+  center_id             String?  @db.Uuid
 
-  severity String  // CHECK: low | medium | high | critical
-  category String  // injury, illness, behavioral, medication_error, safety, other
+  severity String // CHECK: low | medium | high | critical
+  category String // injury, illness, behavioral, medication_error, safety, other
   summary  String
   details  String?
 
@@ -599,6 +709,7 @@ model IncidentReport {
   @@index([child_id, created_at], map: "idx_incident_reports_child_created")
   @@index([status], map: "idx_incident_reports_status")
   @@index([severity], map: "idx_incident_reports_severity")
+  @@index([facility_id], map: "idx_incident_reports_facility_id")
   @@map("incident_reports")
 }
 
@@ -607,11 +718,11 @@ model IncidentReport {
 // Replaces ad hoc role flags with explicit membership records.
 // CHECK: role IN (staff, admin, center_admin, super_admin)
 model CenterStaffMembership {
-  id        String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id   String  @db.Uuid
-  center_id String  @db.Uuid
-  role        String  // CHECK: staff | admin | center_admin | super_admin
-  active      Boolean @default(true)
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String    @db.Uuid
+  center_id   String    @db.Uuid
+  role        String // CHECK: staff | admin | center_admin | super_admin
+  active      Boolean   @default(true)
   archived_at DateTime? @db.Timestamptz(6)
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
@@ -630,21 +741,24 @@ model CenterStaffMembership {
 // High-risk enough to warrant first-class storage separate from attendance.
 // One-to-one with attendance session (one verification per session).
 model PickupVerification {
-  id                     String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  attendance_session_id  String  @unique @db.Uuid
-  authorized_pickup_id   String? @db.Uuid
-  verified_name          String
-  verified_relationship  String
-  verification_method    String  // pin, photo_id, parent_self
-  verified_by            String? @db.Uuid
-  verified_at            DateTime @default(now()) @db.Timestamptz(6)
-  notes                  String?
-  created_at             DateTime @default(now()) @db.Timestamptz(6)
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id           String   @map("facility_id") @db.Uuid
+  facility              Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  attendance_session_id String   @unique @db.Uuid
+  authorized_pickup_id  String?  @db.Uuid
+  verified_name         String
+  verified_relationship String
+  verification_method   String // pin, photo_id, parent_self
+  verified_by           String?  @db.Uuid
+  verified_at           DateTime @default(now()) @db.Timestamptz(6)
+  notes                 String?
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
 
   // Relations
   attendance_session ChildAttendanceSession @relation(fields: [attendance_session_id], references: [id], onDelete: Cascade)
 
   @@index([verified_at], map: "idx_pickup_verifications_verified_at")
+  @@index([facility_id], map: "idx_pickup_verifications_facility_id")
   @@map("pickup_verifications")
 }
 
@@ -652,11 +766,13 @@ model PickupVerification {
 // Catalog of available subscription tiers (3/4/5 nights).
 // CHECK: nights_per_week BETWEEN 1 AND 7
 model Plan {
-  id                 String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id        String   @map("facility_id") @db.Uuid
+  facility           Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
   name               String
   nights_per_week    Int
   weekly_price_cents Int
-  active             Boolean @default(true)
+  active             Boolean  @default(true)
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
@@ -665,6 +781,7 @@ model Plan {
   overnight_blocks OvernightBlock[]
 
   @@unique([nights_per_week], map: "uniq_plans_nights_per_week")
+  @@index([facility_id], map: "idx_plans_facility_id")
   @@map("plans")
 }
 
@@ -673,19 +790,21 @@ model Plan {
 // CHECK: status IN (active, cancelled, canceled_low_enrollment)
 // CHECK: payment_status IN (pending, confirmed, locked)
 model OvernightBlock {
-  id                       String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  week_start               DateTime @db.Date
-  parent_id                String  @db.Uuid
-  child_id                 String  @db.Uuid
-  plan_id                  String? @db.Uuid  // nullable — plan catalog may not be populated
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id              String    @map("facility_id") @db.Uuid
+  facility                 Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  week_start               DateTime  @db.Date
+  parent_id                String    @db.Uuid
+  child_id                 String    @db.Uuid
+  plan_id                  String?   @db.Uuid // nullable — plan catalog may not be populated
   nights_per_week          Int
   weekly_price_cents       Int
-  multi_child_discount_pct Int     @default(0)
-  status                   String  @default("active")
-  payment_status           String  @default("pending")
+  multi_child_discount_pct Int       @default(0)
+  status                   String    @default("active")
+  payment_status           String    @default("pending")
   stripe_subscription_id   String?
   stripe_invoice_id        String?
-  caregiver_notes          String?  // Parent-provided care instructions (max 500 chars)
+  caregiver_notes          String? // Parent-provided care instructions (max 500 chars)
   archived_at              DateTime? @db.Timestamptz(6)
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
@@ -702,6 +821,7 @@ model OvernightBlock {
   @@index([week_start], map: "idx_blocks_week_start")
   @@index([parent_id, week_start], map: "idx_blocks_parent_week")
   @@index([child_id, week_start], map: "idx_blocks_child_week")
+  @@index([facility_id], map: "idx_overnight_blocks_facility_id")
   @@map("overnight_blocks")
 }
 
@@ -711,12 +831,14 @@ model OvernightBlock {
 // is maintained in SQL — Prisma cannot express partial unique indexes.
 // CHECK: status IN (pending_payment, confirmed, locked, canceled, canceled_low_enrollment)
 model Reservation {
-  id                 String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  child_id           String  @db.Uuid
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id        String   @map("facility_id") @db.Uuid
+  facility           Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  child_id           String   @db.Uuid
   date               DateTime @db.Date
-  overnight_block_id String  @db.Uuid
-  status             String  @default("pending_payment")
-  admin_override     Boolean @default(false)
+  overnight_block_id String   @db.Uuid
+  status             String   @default("pending_payment")
+  admin_override     Boolean  @default(false)
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
@@ -724,12 +846,13 @@ model Reservation {
   // Relations
   child               Child                    @relation(fields: [child_id], references: [id], onDelete: Cascade)
   overnight_block     OvernightBlock           @relation(fields: [overnight_block_id], references: [id], onDelete: Cascade)
-  attendance_sessions  ChildAttendanceSession[]
-  reservation_events   ReservationEvent[]
-  reservation_nights   ReservationNight[]
+  attendance_sessions ChildAttendanceSession[]
+  reservation_events  ReservationEvent[]
+  reservation_nights  ReservationNight[]
 
   @@index([date], map: "idx_reservations_date")
   @@index([overnight_block_id], map: "idx_reservations_block")
+  @@index([facility_id], map: "idx_reservations_facility_id")
   @@map("reservations")
 }
 
@@ -753,13 +876,15 @@ model NightlyCapacity {
 // ─── waitlist ─────────────────────────────────────────────────────────────────
 // CHECK: status IN (waiting, offered, accepted, expired, removed)
 model WaitlistEntry {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  date       DateTime  @db.Date
-  child_id   String    @db.Uuid
-  parent_id  String    @db.Uuid
-  status     String    @default("waiting")
-  offered_at DateTime? @db.Timestamptz(6)
-  expires_at DateTime? @db.Timestamptz(6)
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id String    @map("facility_id") @db.Uuid
+  facility    Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  date        DateTime  @db.Date
+  child_id    String    @db.Uuid
+  parent_id   String    @db.Uuid
+  status      String    @default("waiting")
+  offered_at  DateTime? @db.Timestamptz(6)
+  expires_at  DateTime? @db.Timestamptz(6)
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
@@ -770,6 +895,7 @@ model WaitlistEntry {
 
   @@index([date, status, created_at], map: "idx_waitlist_fifo")
   @@index([parent_id], map: "idx_waitlist_parent")
+  @@index([facility_id], map: "idx_waitlist_entries_facility_id")
   @@map("waitlist")
 }
 
@@ -778,7 +904,7 @@ model WaitlistEntry {
 model Payment {
   id                       String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   parent_id                String  @db.Uuid
-  plan_id                  String? @db.Uuid  // FK to overnight_blocks
+  plan_id                  String? @db.Uuid // FK to overnight_blocks
   amount_cents             Int
   status                   String  @default("pending") // pending, succeeded, failed, refunded, comped
   description              String?
@@ -789,7 +915,7 @@ model Payment {
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  parent         Parent          @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+  parent          Parent          @relation(fields: [parent_id], references: [id], onDelete: Cascade)
   overnight_block OvernightBlock? @relation(fields: [plan_id], references: [id], onDelete: SetNull)
 
   @@index([parent_id], map: "idx_payments_parent_id")
@@ -814,9 +940,9 @@ model BillingLedger {
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
-  parent           Parent           @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+  parent            Parent            @relation(fields: [parent_id], references: [id], onDelete: Cascade)
   reservation_night ReservationNight? @relation(fields: [reservation_night_id], references: [id], onDelete: SetNull)
-  child            Child?           @relation(fields: [child_id], references: [id], onDelete: SetNull)
+  child             Child?            @relation(fields: [child_id], references: [id], onDelete: SetNull)
 
   @@index([parent_id], map: "idx_billing_ledger_parent")
   @@index([status], map: "idx_billing_ledger_status")
@@ -828,36 +954,39 @@ model BillingLedger {
 // ─── admin_settings ──────────────────────────────────────────────────────────
 // Global admin configuration. Single row expected.
 model AdminSettings {
-  id                   String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  max_capacity         Int    @default(6)
-  min_enrollment       Int    @default(4)
-  pricing_tiers        Json   @default("[{\"nights\":3,\"price_cents\":30000},{\"nights\":4,\"price_cents\":36000},{\"nights\":5,\"price_cents\":42500}]") @db.JsonB
-  operating_nights     Json   @default("[\"sunday\",\"monday\",\"tuesday\",\"wednesday\",\"thursday\"]") @db.JsonB
-  billing_day          String @default("friday")
-  billing_time         String @default("12:00")
-  waitlist_confirm_hours Int  @default(24)
-  overnight_start_time String @default("21:00")
-  overnight_end_time   String @default("07:00")
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id            String   @map("facility_id") @db.Uuid
+  facility               Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  max_capacity           Int      @default(6)
+  min_enrollment         Int      @default(4)
+  pricing_tiers          Json     @default("[{\"nights\":3,\"price_cents\":30000},{\"nights\":4,\"price_cents\":36000},{\"nights\":5,\"price_cents\":42500}]") @db.JsonB
+  operating_nights       Json     @default("[\"sunday\",\"monday\",\"tuesday\",\"wednesday\",\"thursday\"]") @db.JsonB
+  billing_day            String   @default("friday")
+  billing_time           String   @default("12:00")
+  waitlist_confirm_hours Int      @default(24)
+  overnight_start_time   String   @default("21:00")
+  overnight_end_time     String   @default("07:00")
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
+  @@index([facility_id], map: "idx_admin_settings_facility_id")
   @@map("admin_settings")
 }
 
 // ─── credits ──────────────────────────────────────────────────────────────────
 // CHECK: reason IN (canceled_low_enrollment, admin_manual, refund)
 model Credit {
-  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  parent_id                String    @db.Uuid
-  amount_cents             Int
-  reason                   String
-  related_block_id         String?   @db.Uuid
-  related_date             DateTime? @db.Date
+  id                        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parent_id                 String    @db.Uuid
+  amount_cents              Int
+  reason                    String
+  related_block_id          String?   @db.Uuid
+  related_date              DateTime? @db.Date
   source_weekly_price_cents Int?
-  source_plan_nights       Int?
-  applied                  Boolean   @default(false)
-  applied_at               DateTime? @db.Timestamptz(6)
+  source_plan_nights        Int?
+  applied                   Boolean   @default(false)
+  applied_at                DateTime? @db.Timestamptz(6)
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
@@ -873,12 +1002,14 @@ model Credit {
 
 // ─── audit_log ────────────────────────────────────────────────────────────────
 model AuditLog {
-  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  actor_id    String? @db.Uuid
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id String   @map("facility_id") @db.Uuid
+  facility    Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  actor_id    String?  @db.Uuid
   action      String
   entity_type String
-  entity_id   String? @db.Uuid
-  metadata    Json    @default("{}") @db.JsonB
+  entity_id   String?  @db.Uuid
+  metadata    Json     @default("{}") @db.JsonB
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
@@ -887,6 +1018,7 @@ model AuditLog {
 
   @@index([entity_type, entity_id], map: "idx_audit_log_entity")
   @@index([created_at], map: "idx_audit_log_created")
+  @@index([facility_id], map: "idx_audit_log_facility_id")
   @@map("audit_log")
 }
 
@@ -894,13 +1026,15 @@ model AuditLog {
 // Logs every child pickup for legal protection and parent notifications.
 // Created automatically when staff verifies a pickup via PIN or photo ID.
 model PickupEvent {
-  id                  String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  child_id            String   @db.Uuid
-  pickup_person_id    String?  @db.Uuid
-  verified_by_staff_id String? @db.Uuid
-  verification_method String   // 'pin' | 'photo_id' | 'parent_self'
-  notes               String?
-  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  id                   String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  facility_id          String   @map("facility_id") @db.Uuid
+  facility             Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  child_id             String   @db.Uuid
+  pickup_person_id     String?  @db.Uuid
+  verified_by_staff_id String?  @db.Uuid
+  verification_method  String // 'pin' | 'photo_id' | 'parent_self'
+  notes                String?
+  created_at           DateTime @default(now()) @db.Timestamptz(6)
 
   // Relations
   child         Child                  @relation(fields: [child_id], references: [id], onDelete: Cascade)
@@ -908,27 +1042,30 @@ model PickupEvent {
   verified_by   Parent?                @relation("pickup_verifier", fields: [verified_by_staff_id], references: [id])
 
   @@index([child_id, created_at], map: "idx_pickup_events_child")
+  @@index([facility_id], map: "idx_pickup_events_facility_id")
   @@map("pickup_events")
 }
 
 // ─── parent_settings ────────────────────────────────────────────────────────
 // Per-parent notification, safety, and preference settings.
 model ParentSettings {
-  id                       String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  parent_id                String   @unique @db.Uuid
-  email_notifications      Boolean  @default(true)
-  sms_notifications        Boolean  @default(false)
-  reservation_reminders    Boolean  @default(true)
-  billing_reminders        Boolean  @default(true)
-  emergency_alerts         Boolean  @default(true)
-  require_pickup_pin       Boolean  @default(true)
-  notify_on_check_in_out   Boolean  @default(true)
-  notify_on_pickup_changes Boolean  @default(true)
-  emergency_contact_reminder Boolean @default(true)
-  preferred_contact_method String?
-  preferred_reminder_timing String?
-  staff_notes              String?
-  language_preference      String?
+  id                         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  facility_id                String   @map("facility_id") @db.Uuid
+  facility                   Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  parent_id                  String   @unique @db.Uuid
+  email_notifications        Boolean  @default(true)
+  sms_notifications          Boolean  @default(false)
+  reservation_reminders      Boolean  @default(true)
+  billing_reminders          Boolean  @default(true)
+  emergency_alerts           Boolean  @default(true)
+  require_pickup_pin         Boolean  @default(true)
+  notify_on_check_in_out     Boolean  @default(true)
+  notify_on_pickup_changes   Boolean  @default(true)
+  emergency_contact_reminder Boolean  @default(true)
+  preferred_contact_method   String?
+  preferred_reminder_timing  String?
+  staff_notes                String?
+  language_preference        String?
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
@@ -936,11 +1073,141 @@ model ParentSettings {
   // Relations
   parent Parent @relation(fields: [parent_id], references: [id], onDelete: Cascade)
 
+  @@index([facility_id], map: "idx_parent_settings_facility_id")
   @@map("parent_settings")
 }
 
 // ─── config ───────────────────────────────────────────────────────────────────
 // Key-value application configuration.
+
+model Facility {
+  id                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                  String
+  slug                  String             @unique
+  ownerEmail            String?            @map("owner_email")
+  ownerName             String?            @map("owner_name")
+  ownerPhone            String?            @map("owner_phone")
+  addressLine1          String?            @map("address_line_1")
+  addressLine2          String?            @map("address_line_2")
+  city                  String?
+  state                 String?
+  postalCode            String?            @map("postal_code")
+  timezone              String             @default("America/New_York")
+  stripeCustomerId      String?            @map("stripe_customer_id")
+  stripeSubscriptionId  String?            @map("stripe_subscription_id")
+  subscriptionStatus    SubscriptionStatus @default(TRIALING) @map("subscription_status")
+  subscriptionTier      SubscriptionTier   @default(STARTER) @map("subscription_tier")
+  platformFeeEnabled    Boolean            @default(false) @map("platform_fee_enabled")
+  platformFeeType       PlatformFeeType?   @map("platform_fee_type")
+  platformFeePercentage Int?               @map("platform_fee_percentage")
+  platformFeeFlatCents  Int?               @map("platform_fee_flat_cents")
+  platformFeeMinCents   Int?               @map("platform_fee_min_cents")
+  platformFeeMaxCents   Int?               @map("platform_fee_max_cents")
+  isActive              Boolean            @default(true) @map("is_active")
+  suspendedAt           DateTime?          @map("suspended_at") @db.Timestamptz(6)
+  suspendedReason       String?            @map("suspended_reason")
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime           @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  memberships             FacilityMembership[]
+  platformAuditLogs       PlatformAuditLog[]
+  platformFeeRecords      PlatformFeeRecord[]
+  programs                Program[]
+  programCapacities       ProgramCapacity[]
+  capacityOverrides       CapacityOverride[]
+  capacityOverrideEvents  CapacityOverrideEvent[]
+  parents                 Parent[]
+  children                Child[]
+  childAllergies          ChildAllergy[]
+  childMedicalProfiles    ChildMedicalProfile[]
+  childEmergencyContacts  ChildEmergencyContact[]
+  childAuthorizedPickups  ChildAuthorizedPickup[]
+  childEvents             ChildEvent[]
+  childAttendanceSessions ChildAttendanceSession[]
+  reservationEvents       ReservationEvent[]
+  incidentReports         IncidentReport[]
+  pickupVerifications     PickupVerification[]
+  plans                   Plan[]
+  overnightBlocks         OvernightBlock[]
+  reservations            Reservation[]
+  waitlistEntries         WaitlistEntry[]
+  adminSettings           AdminSettings[]
+  auditLogs               AuditLog[]
+  pickupEvents            PickupEvent[]
+  parentSettings          ParentSettings[]
+  billingEvents           BillingEvent[]
+  reservationNights       ReservationNight[]
+  idempotencyKeys         IdempotencyKey[]
+  attendanceRecords       AttendanceRecord[]
+  attendanceEvents        AttendanceEvent[]
+  healthCheckRuns         HealthCheckRun[]
+  healthIssues            HealthIssue[]
+
+  @@index([subscriptionStatus], map: "idx_facilities_subscription_status")
+  @@index([isActive], map: "idx_facilities_is_active")
+  @@map("facilities")
+}
+
+model FacilityMembership {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facilityId String       @map("facility_id") @db.Uuid
+  userId     String       @map("user_id") @db.Uuid
+  role       FacilityRole
+  isActive   Boolean      @default(true) @map("is_active")
+  invitedBy  String?      @map("invited_by") @db.Uuid
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime     @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@unique([facilityId, userId], map: "facility_memberships_unique")
+  @@index([userId, isActive], map: "idx_facility_memberships_user_active")
+  @@index([facilityId, role, isActive], map: "idx_facility_memberships_facility_role_active")
+  @@map("facility_memberships")
+}
+
+model PlatformAuditLog {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorUserId        String?              @map("actor_user_id") @db.Uuid
+  actorEmail         String?              @map("actor_email")
+  actorPlatformRole  PlatformRole         @map("actor_platform_role")
+  action             PlatformAuditAction
+  resourceType       PlatformResourceType @map("resource_type")
+  resourceId         String?              @map("resource_id") @db.Uuid
+  facilityId         String?              @map("facility_id") @db.Uuid
+  metadata           Json                 @default("{}")
+  ipMasked           String?              @map("ip_masked")
+  userAgentTruncated String?              @map("user_agent_truncated")
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  facility Facility? @relation(fields: [facilityId], references: [id], onDelete: SetNull)
+
+  @@index([facilityId, createdAt(sort: Desc)], map: "idx_platform_audit_logs_facility_created")
+  @@index([action, createdAt(sort: Desc)], map: "idx_platform_audit_logs_action_created")
+  @@index([actorUserId, createdAt(sort: Desc)], map: "idx_platform_audit_logs_actor_created")
+  @@map("platform_audit_logs")
+}
+
+model PlatformFeeRecord {
+  id                       String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facilityId               String          @map("facility_id") @db.Uuid
+  paymentCycleId           String?         @map("payment_cycle_id") @db.Uuid
+  parentPaymentAmountCents Int             @map("parent_payment_amount_cents")
+  feeType                  PlatformFeeType @map("fee_type")
+  feeAmountCents           Int             @map("fee_amount_cents")
+  stripeTransferId         String?         @map("stripe_transfer_id")
+  stripePaymentIntentId    String?         @map("stripe_payment_intent_id")
+  settled                  Boolean         @default(false)
+  settledAt                DateTime?       @map("settled_at") @db.Timestamptz(6)
+  createdAt                DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  facility Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+
+  @@index([facilityId, settled, createdAt(sort: Desc)], map: "idx_platform_fee_records_facility_settled_created")
+  @@index([paymentCycleId], map: "idx_platform_fee_records_payment_cycle")
+  @@map("platform_fee_records")
+}
+
 model Config {
   key   String @id
   value String
@@ -953,7 +1220,7 @@ model Config {
 model StripePrice {
   tier       String
   price_id   String
-  mode       String   // 'test' | 'live'
+  mode       String // 'test' | 'live'
   updated_at DateTime @default(now()) @db.Timestamptz(6)
 
   @@unique([tier, mode])
@@ -1006,6 +1273,8 @@ model PendingPlanChange {
 // Stripe webhook idempotency. INSERT ON CONFLICT IGNORE pattern.
 model BillingEvent {
   id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id       String    @map("facility_id") @db.Uuid
+  facility          Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
   stripe_event_id   String    @unique
   event_type        String
   subscription_id   String?   @db.Uuid
@@ -1021,6 +1290,7 @@ model BillingEvent {
   // Relations
   subscription Subscription? @relation(fields: [subscription_id], references: [id])
 
+  @@index([facility_id], map: "idx_billing_events_facility_id")
   @@map("billing_events")
 }
 
@@ -1029,21 +1299,23 @@ model BillingEvent {
 // Each row represents one booked night. Links to program_capacity for availability tracking.
 // CHECK: status IN (pending, confirmed, cancelled, completed, waitlisted, no_show)
 model ReservationNight {
-  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  reservation_id       String   @db.Uuid
-  child_id             String   @db.Uuid
-  program_capacity_id  String?  @db.Uuid
-  care_date            DateTime @db.Date
-  status               String   @default("pending") // CHECK: pending | confirmed | cancelled | completed | waitlisted | no_show
-  capacity_snapshot    Int
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id         String   @map("facility_id") @db.Uuid
+  facility            Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  reservation_id      String   @db.Uuid
+  child_id            String   @db.Uuid
+  program_capacity_id String?  @db.Uuid
+  care_date           DateTime @db.Date
+  status              String   @default("pending") // CHECK: pending | confirmed | cancelled | completed | waitlisted | no_show
+  capacity_snapshot   Int
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  reservation      Reservation      @relation(fields: [reservation_id], references: [id], onDelete: Cascade)
-  child            Child            @relation(fields: [child_id], references: [id], onDelete: Cascade)
-  program_capacity ProgramCapacity? @relation(fields: [program_capacity_id], references: [id], onDelete: SetNull)
+  reservation       Reservation       @relation(fields: [reservation_id], references: [id], onDelete: Cascade)
+  child             Child             @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  program_capacity  ProgramCapacity?  @relation(fields: [program_capacity_id], references: [id], onDelete: SetNull)
   attendance_record AttendanceRecord?
   billing_ledger    BillingLedger[]
 
@@ -1051,6 +1323,7 @@ model ReservationNight {
   @@unique([child_id, care_date], map: "reservation_nights_child_date_unique")
   @@index([reservation_id], map: "idx_reservation_nights_reservation")
   @@index([care_date], map: "idx_reservation_nights_date")
+  @@index([facility_id], map: "idx_reservation_nights_facility_id")
   @@map("reservation_nights")
 }
 
@@ -1061,6 +1334,8 @@ model ReservationNight {
 // Managed by service role only — no user-facing RLS policies.
 model IdempotencyKey {
   key             String   @id
+  facility_id     String   @map("facility_id") @db.Uuid
+  facility        Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
   user_id         String?  @db.Uuid
   request_path    String
   response_status Int
@@ -1070,6 +1345,7 @@ model IdempotencyKey {
 
   @@index([expires_at], map: "idx_idempotency_keys_expires")
   @@index([user_id], map: "idx_idempotency_keys_user")
+  @@index([facility_id], map: "idx_idempotency_keys_facility_id")
   @@map("idempotency_keys")
 }
 
@@ -1078,51 +1354,54 @@ model IdempotencyKey {
 // One-to-one with reservation_nights. Tracks check-in, check-out, pickup
 // verification, no-show, and late arrival. All mutations emit attendance_events.
 model AttendanceRecord {
-  id                         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  reservation_night_id       String    @unique @db.Uuid
-  center_id                  String?   @db.Uuid
-  child_id                   String    @db.Uuid
-  parent_id                  String    @db.Uuid
-  care_date                  DateTime  @db.Date
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id          String   @map("facility_id") @db.Uuid
+  facility             Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  reservation_night_id String   @unique @db.Uuid
+  center_id            String?  @db.Uuid
+  child_id             String   @db.Uuid
+  parent_id            String   @db.Uuid
+  care_date            DateTime @db.Date
 
   // CHECK: expected | checked_in | checked_out | no_show | cancelled
-  attendance_status          String    @default("expected")
+  attendance_status String @default("expected")
 
   // Check-in fields
-  expected_arrival_at        DateTime? @db.Timestamptz(6)
-  checked_in_at              DateTime? @db.Timestamptz(6)
-  checked_in_by_user_id      String?   @db.Uuid
-  check_in_method            String?   // staff_manual | parent_acknowledged | system | override
-  arrival_notes              String?
+  expected_arrival_at   DateTime? @db.Timestamptz(6)
+  checked_in_at         DateTime? @db.Timestamptz(6)
+  checked_in_by_user_id String?   @db.Uuid
+  check_in_method       String? // staff_manual | parent_acknowledged | system | override
+  arrival_notes         String?
 
   // Check-out / pickup fields
   expected_departure_at      DateTime? @db.Timestamptz(6)
   checked_out_at             DateTime? @db.Timestamptz(6)
   checked_out_by_user_id     String?   @db.Uuid
-  check_out_method           String?   // staff_manual | parent_acknowledged | system | override
+  check_out_method           String? // staff_manual | parent_acknowledged | system | override
   checked_out_to_pickup_id   String?   @db.Uuid
-  pickup_verification_status String?   // not_applicable | pending | verified | failed | manual_override
+  pickup_verification_status String? // not_applicable | pending | verified | failed | manual_override
   departure_notes            String?
 
   // No-show fields
-  no_show_marked_at          DateTime? @db.Timestamptz(6)
-  no_show_marked_by_user_id  String?   @db.Uuid
+  no_show_marked_at         DateTime? @db.Timestamptz(6)
+  no_show_marked_by_user_id String?   @db.Uuid
 
   // Exception tracking
-  cancellation_after_cutoff  Boolean   @default(false)
-  late_arrival_minutes       Int       @default(0)
+  cancellation_after_cutoff Boolean @default(false)
+  late_arrival_minutes      Int     @default(0)
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
   // Relations
-  reservation_night ReservationNight @relation(fields: [reservation_night_id], references: [id], onDelete: Cascade)
+  reservation_night ReservationNight  @relation(fields: [reservation_night_id], references: [id], onDelete: Cascade)
   events            AttendanceEvent[]
 
   @@index([center_id, care_date], map: "idx_attendance_records_center_date")
   @@index([child_id, care_date], map: "idx_attendance_records_child_date")
   @@index([attendance_status, care_date], map: "idx_attendance_records_status_date")
   @@index([parent_id], map: "idx_attendance_records_parent")
+  @@index([facility_id], map: "idx_attendance_records_facility_id")
   @@map("attendance_records")
 }
 
@@ -1131,6 +1410,8 @@ model AttendanceRecord {
 // Provides full audit trail for check-in, check-out, no-show, corrections.
 model AttendanceEvent {
   id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id          String   @map("facility_id") @db.Uuid
+  facility             Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
   attendance_record_id String   @db.Uuid
   reservation_night_id String   @db.Uuid
   center_id            String?  @db.Uuid
@@ -1140,9 +1421,9 @@ model AttendanceEvent {
   // Event types: attendance_record_created | child_checked_in | late_arrival_recorded
   //   | child_checked_out | pickup_verified | pickup_verification_failed
   //   | no_show_marked | attendance_status_corrected | attendance_cancelled
-  event_type           String
-  event_at             DateTime @default(now()) @db.Timestamptz(6)
-  metadata             Json     @default("{}") @db.JsonB
+  event_type String
+  event_at   DateTime @default(now()) @db.Timestamptz(6)
+  metadata   Json     @default("{}") @db.JsonB
 
   // Relations
   attendance_record AttendanceRecord @relation(fields: [attendance_record_id], references: [id], onDelete: Cascade)
@@ -1151,6 +1432,7 @@ model AttendanceEvent {
   @@index([reservation_night_id, event_at], map: "idx_attendance_events_night")
   @@index([center_id, event_at], map: "idx_attendance_events_center")
   @@index([event_type, event_at], map: "idx_attendance_events_type")
+  @@index([facility_id], map: "idx_attendance_events_facility_id")
   @@map("attendance_events")
 }
 
@@ -1159,13 +1441,15 @@ model AttendanceEvent {
 // CHECK: run_type IN (manual, scheduled, startup, repair_followup)
 // CHECK: status IN (running, completed, failed)
 model HealthCheckRun {
-  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  run_type              String    // manual | scheduled | startup | repair_followup
-  started_at            DateTime  @default(now()) @db.Timestamptz(6)
-  completed_at          DateTime? @db.Timestamptz(6)
-  status                String    @default("running") // running | completed | failed
-  triggered_by_user_id  String?   @db.Uuid
-  summary               Json      @default("{}") @db.JsonB
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id          String    @map("facility_id") @db.Uuid
+  facility             Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  run_type             String // manual | scheduled | startup | repair_followup
+  started_at           DateTime  @default(now()) @db.Timestamptz(6)
+  completed_at         DateTime? @db.Timestamptz(6)
+  status               String    @default("running") // running | completed | failed
+  triggered_by_user_id String?   @db.Uuid
+  summary              Json      @default("{}") @db.JsonB
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
 
@@ -1174,6 +1458,7 @@ model HealthCheckRun {
 
   @@index([status, started_at], map: "idx_health_runs_status")
   @@index([triggered_by_user_id], map: "idx_health_runs_user")
+  @@index([facility_id], map: "idx_health_check_runs_facility_id")
   @@map("health_check_runs")
 }
 
@@ -1182,22 +1467,24 @@ model HealthCheckRun {
 // CHECK: severity IN (critical, warning, info)
 // CHECK: status IN (open, reviewed, resolved, ignored)
 model HealthIssue {
-  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  health_check_run_id   String    @db.Uuid
-  issue_type            String
-  severity              String    // critical | warning | info
-  status                String    @default("open") // open | reviewed | resolved | ignored
-  center_id             String?   @db.Uuid
-  program_id            String?   @db.Uuid
-  care_date             DateTime? @db.Date
-  reservation_night_id  String?   @db.Uuid
-  attendance_record_id  String?   @db.Uuid
-  child_id              String?   @db.Uuid
-  metadata              Json      @default("{}") @db.JsonB
-  detected_at           DateTime  @default(now()) @db.Timestamptz(6)
-  resolved_at           DateTime? @db.Timestamptz(6)
-  resolved_by_user_id   String?   @db.Uuid
-  resolution_notes      String?
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  facility_id          String    @map("facility_id") @db.Uuid
+  facility             Facility  @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  health_check_run_id  String    @db.Uuid
+  issue_type           String
+  severity             String // critical | warning | info
+  status               String    @default("open") // open | reviewed | resolved | ignored
+  center_id            String?   @db.Uuid
+  program_id           String?   @db.Uuid
+  care_date            DateTime? @db.Date
+  reservation_night_id String?   @db.Uuid
+  attendance_record_id String?   @db.Uuid
+  child_id             String?   @db.Uuid
+  metadata             Json      @default("{}") @db.JsonB
+  detected_at          DateTime  @default(now()) @db.Timestamptz(6)
+  resolved_at          DateTime? @db.Timestamptz(6)
+  resolved_by_user_id  String?   @db.Uuid
+  resolution_notes     String?
 
   // Relations
   health_check_run HealthCheckRun @relation(fields: [health_check_run_id], references: [id], onDelete: Cascade)
@@ -1206,5 +1493,6 @@ model HealthIssue {
   @@index([severity, status], map: "idx_health_issues_severity_status")
   @@index([issue_type, status], map: "idx_health_issues_type")
   @@index([care_date], map: "idx_health_issues_date")
+  @@index([facility_id], map: "idx_health_issues_facility_id")
   @@map("health_issues")
 }

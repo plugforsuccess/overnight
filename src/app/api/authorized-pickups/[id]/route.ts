@@ -12,6 +12,7 @@ export async function PATCH(
 ) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const pickupId = params.id;
 
@@ -71,6 +72,7 @@ export async function DELETE(
 ) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const pickupId = params.id;
 

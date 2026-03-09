@@ -11,6 +11,7 @@ export async function GET(
 ) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const { id: reservationId } = await params;
 

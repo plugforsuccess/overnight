@@ -12,6 +12,7 @@ import { OVERNIGHT_START } from '@/lib/constants';
 export async function GET(req: NextRequest) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const { supabase, parentId } = auth;
 

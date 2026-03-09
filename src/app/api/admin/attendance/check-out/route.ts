@@ -18,7 +18,7 @@ const checkOutSchema = z.object({
  */
 export async function POST(req: NextRequest) {
   const admin = await checkAdmin(req);
-  if (!admin) {
+  if (!admin?.activeFacilityId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

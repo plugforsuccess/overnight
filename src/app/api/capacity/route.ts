@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { createClient } from '@supabase/supabase-js';
+import { authenticateParentForFacility } from '@/lib/facility-auth';
 
 function getUserClient(req: NextRequest) {
   const authHeader = req.headers.get('Authorization');
@@ -26,6 +27,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const facilitySession = await authenticateParentForFacility(req);
+  if (!facilitySession?.activeFacilityId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
   const datesParam = searchParams.get('dates');
   if (!datesParam) {
@@ -41,6 +47,7 @@ export async function GET(req: NextRequest) {
   const { data: adminSettings } = await supabaseAdmin
     .from('admin_settings')
     .select('max_capacity')
+    .eq('facility_id', facilitySession.activeFacilityId)
     .limit(1)
     .single();
   const defaultCapacity = adminSettings?.max_capacity ?? 6;
@@ -49,6 +56,7 @@ export async function GET(req: NextRequest) {
   const { data: existingRows } = await supabaseAdmin
     .from('program_capacity')
     .select('care_date, capacity_total, capacity_reserved, capacity_waitlisted, status')
+    .eq('facility_id', facilitySession.activeFacilityId)
     .in('care_date', dates);
 
   const existingDates = new Set((existingRows ?? []).map((r: { care_date: string }) => r.care_date));
@@ -59,6 +67,7 @@ export async function GET(req: NextRequest) {
     const { data: defaultProgram } = await supabaseAdmin
       .from('programs')
       .select('id, center_id')
+      .eq('facility_id', facilitySession.activeFacilityId)
       .eq('care_type', 'overnight')
       .eq('is_active', true)
       .limit(1)
@@ -71,6 +80,7 @@ export async function GET(req: NextRequest) {
         capacity_reserved: 0,
         capacity_waitlisted: 0,
         status: 'open',
+        facility_id: facilitySession.activeFacilityId,
         center_id: defaultProgram.center_id,
         program_id: defaultProgram.id,
       }));
@@ -85,6 +95,7 @@ export async function GET(req: NextRequest) {
   const { data: allRows } = await supabaseAdmin
     .from('program_capacity')
     .select('care_date, capacity_total, capacity_reserved, capacity_waitlisted, status')
+    .eq('facility_id', facilitySession.activeFacilityId)
     .in('care_date', dates);
 
   // Build response

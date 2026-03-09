@@ -1,16 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
-import { createClient } from '@supabase/supabase-js';
-
-function getUserClient(req: NextRequest) {
-  const authHeader = req.headers.get('Authorization');
-  const token = authHeader?.replace('Bearer ', '') || '';
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: `Bearer ${token}` } } }
-  );
-}
+import { checkAdmin } from '@/lib/admin-auth';
 
 /**
  * POST /api/admin/waitlist-promote
@@ -26,22 +16,8 @@ function getUserClient(req: NextRequest) {
  * Returns the promoted reservation_night details, or null if no one waiting.
  */
 export async function POST(req: NextRequest) {
-  const supabase = getUserClient(req);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  // Verify admin
-  const { data: parent } = await supabaseAdmin
-    .from('parents')
-    .select('id, role, is_admin')
-    .eq('id', user.id)
-    .single();
-
-  if (!parent || (parent.role !== 'admin' && !parent.is_admin)) {
-    return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
-  }
+  const user = await checkAdmin(req);
+  if (!user?.id || !user.activeFacilityId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let body;
   try { body = await req.json(); } catch {
@@ -75,11 +51,17 @@ export async function POST(req: NextRequest) {
     .from('reservation_nights')
     .select('id, reservation_id, child_id, care_date, status, child:children(first_name, last_name)')
     .eq('id', promotedNightId)
+    .eq('facility_id', user.activeFacilityId)
     .single();
+
+  if (!promotedNight) {
+    return NextResponse.json({ error: 'Cross-facility promotion blocked' }, { status: 403 });
+  }
 
   // Log the admin action
   await supabaseAdmin.from('audit_log').insert({
     actor_id: user.id,
+    facility_id: user.activeFacilityId,
     action: 'waitlist_promoted',
     target_type: 'reservation_night',
     target_id: promotedNightId,

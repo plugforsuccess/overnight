@@ -6,6 +6,7 @@ import { DEFAULT_PRICING_TIERS, BOOKING_WINDOW_DAYS } from '@/lib/constants';
 import { rateLimit } from '@/lib/rate-limit';
 import { cancelSubscription } from '@/lib/stripe';
 import { checkIdempotencyKey, saveIdempotencyResult } from '@/lib/idempotency';
+import { authenticateParentForFacility } from '@/lib/facility-auth';
 
 // ─── Error codes ──────────────────────────────────────────────────────────────
 type ErrorCode =
@@ -64,12 +65,15 @@ export async function GET(req: NextRequest) {
 
   const parentId = await resolveParentId(user.id);
   if (!parentId) return errorResponse('AUTH_REQUIRED', 'Parent profile not found', 400);
+  const facilitySession = await authenticateParentForFacility(req);
+  if (!facilitySession?.activeFacilityId) return errorResponse('AUTH_REQUIRED', 'Facility membership required', 401);
 
   // Fetch overnight_blocks (the per-user booking records) instead of plans catalog
   const { data: blocks, error: blocksError } = await supabaseAdmin
     .from('overnight_blocks')
     .select('*, child:children(*)')
     .eq('parent_id', parentId)
+    .eq('facility_id', facilitySession.activeFacilityId)
     .order('created_at', { ascending: false });
 
   if (blocksError) {
@@ -81,7 +85,8 @@ export async function GET(req: NextRequest) {
   const { data: children } = await supabaseAdmin
     .from('children')
     .select('id')
-    .eq('parent_id', parentId);
+    .eq('parent_id', parentId)
+    .eq('facility_id', facilitySession.activeFacilityId);
 
   const childIds = (children || []).map((c: { id: string }) => c.id);
 
@@ -104,6 +109,7 @@ export async function GET(req: NextRequest) {
     .from('waitlist')
     .select('*, child:children(*)')
     .eq('parent_id', parentId)
+    .eq('facility_id', facilitySession.activeFacilityId)
     .in('status', ['waiting', 'offered']);
 
   return NextResponse.json({
@@ -129,6 +135,8 @@ export async function POST(req: NextRequest) {
 
   const parentId = await resolveParentId(user.id);
   if (!parentId) return errorResponse('AUTH_REQUIRED', 'Parent profile not found', 400);
+  const facilitySession = await authenticateParentForFacility(req);
+  if (!facilitySession?.activeFacilityId) return errorResponse('AUTH_REQUIRED', 'Facility membership required', 401);
   console.log(`[bookings POST] parent row found: true, parentId=${parentId}`);
 
   let body;
@@ -153,6 +161,7 @@ export async function POST(req: NextRequest) {
     .select('id, first_name, last_name, active')
     .eq('id', childId)
     .eq('parent_id', parentId)
+    .eq('facility_id', facilitySession.activeFacilityId)
     .single();
 
   if (!child) {
@@ -383,6 +392,7 @@ export async function POST(req: NextRequest) {
     const { data: createdRes } = await supabaseAdmin
       .from('reservations')
       .select('id')
+      .eq('facility_id', facilitySession.activeFacilityId)
       .eq('overnight_block_id', block.id)
       .in('date', availableNights);
 
@@ -393,6 +403,7 @@ export async function POST(req: NextRequest) {
         event_type: 'reservation_created',
         event_data: { block_id: block.id, child_id: childId },
         created_by: user.id,
+        facility_id: facilitySession.activeFacilityId,
       }));
       await supabaseAdmin.from('reservation_events').insert(eventRows);
 
@@ -416,6 +427,7 @@ export async function POST(req: NextRequest) {
             care_date: nightDate,
             status: 'pending',
             capacity_snapshot: maxCapacity,
+            facility_id: facilitySession.activeFacilityId,
           }));
           await supabaseAdmin.from('reservation_nights').insert(nightRows);
         } else {
@@ -467,6 +479,8 @@ export async function DELETE(req: NextRequest) {
 
   const parentId = await resolveParentId(user.id);
   if (!parentId) return errorResponse('AUTH_REQUIRED', 'Parent profile not found', 400);
+  const facilitySession = await authenticateParentForFacility(req);
+  if (!facilitySession?.activeFacilityId) return errorResponse('AUTH_REQUIRED', 'Facility membership required', 401);
 
   const { searchParams } = new URL(req.url);
   const reservationId = searchParams.get('id');
@@ -486,6 +500,7 @@ export async function DELETE(req: NextRequest) {
     .select('id')
     .eq('id', reservation.overnight_block_id)
     .eq('parent_id', parentId)
+    .eq('facility_id', facilitySession.activeFacilityId)
     .single();
 
   if (!ownerBlock) return errorResponse('CHILD_NOT_OWNED', 'Reservation does not belong to you', 403);
@@ -561,6 +576,8 @@ export async function PATCH(req: NextRequest) {
 
   const parentId = await resolveParentId(user.id);
   if (!parentId) return errorResponse('AUTH_REQUIRED', 'Parent profile not found', 400);
+  const facilitySession = await authenticateParentForFacility(req);
+  if (!facilitySession?.activeFacilityId) return errorResponse('AUTH_REQUIRED', 'Facility membership required', 401);
 
   let body;
   try { body = await req.json(); } catch { return errorResponse('INVALID_PLAN_SELECTION', 'Invalid request body', 400); }
@@ -580,6 +597,7 @@ export async function PATCH(req: NextRequest) {
     .select('id, parent_id, stripe_subscription_id, status')
     .eq('id', planId)
     .eq('parent_id', parentId)
+    .eq('facility_id', facilitySession.activeFacilityId)
     .single();
 
   if (!block) return errorResponse('INVALID_PLAN_SELECTION', 'Booking not found', 404);

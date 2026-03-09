@@ -22,6 +22,7 @@ export async function GET(
 ) {
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const { id: sessionId } = await params;
 
@@ -62,6 +63,7 @@ export async function POST(
 
   const auth = await authenticateRequest(req);
   if (!auth) return unauthorized();
+  if (!auth.activeFacilityId) return unauthorized();
 
   const { id: sessionId } = await params;
 

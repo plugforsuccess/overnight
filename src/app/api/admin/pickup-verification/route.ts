@@ -1,44 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
-import { createClient } from '@supabase/supabase-js';
 import { verifyPin } from '@/lib/pin-hash';
 import { rateLimit } from '@/lib/rate-limit';
+import { checkAdmin } from '@/lib/admin-auth';
 
 const MAX_PIN_ATTEMPTS = 3;
 const LOCKOUT_MINUTES = 15;
-
-function getUserClient(req: NextRequest) {
-  const authHeader = req.headers.get('Authorization');
-  const token = authHeader?.replace('Bearer ', '') || '';
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: `Bearer ${token}` } } }
-  );
-}
-
-async function verifyAdmin(req: NextRequest): Promise<string | null> {
-  const supabase = getUserClient(req);
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  const { data: profile } = await supabaseAdmin
-    .from('parents')
-    .select('id, role')
-    .eq('id', user.id)
-    .single();
-
-  if (!profile || profile.role !== 'admin') return null;
-  return user.id;
-}
 
 /**
  * GET /api/admin/pickup-verification
  * List children with their authorized pickups for the verification UI.
  */
 export async function GET(req: NextRequest) {
-  const adminId = await verifyAdmin(req);
-  if (!adminId) {
+  const admin = await checkAdmin(req);
+  if (!admin?.activeFacilityId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -51,6 +26,7 @@ export async function GET(req: NextRequest) {
       .from('children')
       .select('id, first_name, last_name, parent_id')
       .eq('id', childId)
+      .eq('facility_id', admin.activeFacilityId)
       .single();
 
     if (!child) {
@@ -61,6 +37,7 @@ export async function GET(req: NextRequest) {
       .from('child_authorized_pickups')
       .select('id, child_id, first_name, last_name, relationship, phone, id_verified, id_verified_at, id_verified_by, notes, created_at')
       .eq('child_id', childId)
+      .eq('facility_id', admin.activeFacilityId)
       .order('created_at', { ascending: true });
 
     return NextResponse.json({ child, pickups: pickups || [] });
@@ -70,6 +47,7 @@ export async function GET(req: NextRequest) {
   const { data: children } = await supabaseAdmin
     .from('children')
     .select('id, first_name, last_name, parent_id')
+    .eq('facility_id', admin.activeFacilityId)
     .order('first_name', { ascending: true });
 
   return NextResponse.json({ children: children || [] });
@@ -86,8 +64,8 @@ export async function POST(req: NextRequest) {
   const rateLimited = rateLimit(req, { windowMs: 60_000, max: 20 });
   if (rateLimited) return rateLimited;
 
-  const adminId = await verifyAdmin(req);
-  if (!adminId) {
+  const admin = await checkAdmin(req);
+  if (!admin?.activeFacilityId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -110,6 +88,7 @@ export async function POST(req: NextRequest) {
     .from('child_authorized_pickups')
     .select('id, child_id, first_name, last_name, pickup_pin_hash')
     .eq('id', pickupId)
+    .eq('facility_id', admin.activeFacilityId)
     .single();
 
   if (!pickup) {
@@ -129,7 +108,7 @@ export async function POST(req: NextRequest) {
   if ((recentFailures ?? 0) >= MAX_PIN_ATTEMPTS) {
     // Log the locked attempt
     await supabaseAdmin.from('audit_log').insert({
-      actor_id: adminId,
+      actor_id: admin.id,
       action: 'pin_verification_locked',
       entity_type: 'pickup_verification',
       entity_id: pickupId,
@@ -147,7 +126,7 @@ export async function POST(req: NextRequest) {
 
   // Log the verification attempt
   await supabaseAdmin.from('audit_log').insert({
-    actor_id: adminId,
+    actor_id: admin.id,
     action: isValid ? 'pin_verification_success' : 'pin_verification_failed',
     entity_type: 'pickup_verification',
     entity_id: pickupId,
@@ -164,7 +143,7 @@ export async function POST(req: NextRequest) {
       .update({
         id_verified: true,
         id_verified_at: new Date().toISOString(),
-        id_verified_by: adminId,
+        id_verified_by: admin.id,
       })
       .eq('id', pickupId);
 
@@ -172,7 +151,7 @@ export async function POST(req: NextRequest) {
     await supabaseAdmin.from('pickup_events').insert({
       child_id: pickup.child_id,
       pickup_person_id: pickupId,
-      verified_by_staff_id: adminId,
+      verified_by_staff_id: admin.id,
       verification_method: 'pin',
     }).then(() => {}, () => {
       // pickup_events table may not exist yet — fail silently

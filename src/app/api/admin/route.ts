@@ -1,30 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
-import { createClient } from '@supabase/supabase-js';
+import { checkAdmin } from '@/lib/admin-auth';
 import { z } from 'zod';
-
-async function checkAdmin(req: NextRequest) {
-  const authHeader = req.headers.get('Authorization');
-  const token = authHeader?.replace('Bearer ', '') || '';
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: `Bearer ${token}` } } }
-  );
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-
-  // Use supabaseAdmin to check role from the parents table (trusted source, not user-writable)
-  const { data: parent } = await supabaseAdmin
-    .from('parents')
-    .select('id, role, is_admin')
-    .eq('id', user.id)
-    .single();
-
-  if (!parent || (parent.role !== 'admin' && !parent.is_admin)) return null;
-  return user;
-}
 
 // Validation for admin settings update
 const settingsUpdateSchema = z.object({
@@ -40,7 +17,7 @@ const settingsUpdateSchema = z.object({
 // GET: Admin dashboard data
 export async function GET(req: NextRequest) {
   const user = await checkAdmin(req);
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!user?.activeFacilityId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const view = searchParams.get('view');
@@ -51,6 +28,7 @@ export async function GET(req: NextRequest) {
       .from('reservations')
       .select('*, child:children(id, first_name, last_name, date_of_birth), parent:parents(id, first_name, last_name, email, phone)')
       .eq('date', nightDate)
+      .eq('facility_id', user.activeFacilityId)
       .eq('status', 'confirmed');
 
     return NextResponse.json({ reservations: reservations || [] });
@@ -60,6 +38,7 @@ export async function GET(req: NextRequest) {
     const { data: plans } = await supabaseAdmin
       .from('plans')
       .select('*, child:children(id, first_name, last_name), parent:parents(id, first_name, last_name, email)')
+      .eq('facility_id', user.activeFacilityId)
       .eq('status', 'active')
       .order('created_at', { ascending: false });
 
@@ -72,6 +51,7 @@ export async function GET(req: NextRequest) {
     const { data: waitlist } = await supabaseAdmin
       .from('waitlist')
       .select('*, child:children(id, first_name, last_name), parent:parents(id, first_name, last_name, email)')
+      .eq('facility_id', user.activeFacilityId)
       .in('status', ['waiting', 'offered'])
       .order('date', { ascending: true })
       .order('position', { ascending: true });
@@ -83,6 +63,7 @@ export async function GET(req: NextRequest) {
     const { data: settings } = await supabaseAdmin
       .from('admin_settings')
       .select('id, max_capacity, operating_nights, pricing_tiers, created_at, updated_at')
+      .eq('facility_id', user.activeFacilityId)
       .limit(1)
       .single();
 
@@ -93,10 +74,12 @@ export async function GET(req: NextRequest) {
   const { data: activePlans } = await supabaseAdmin
     .from('plans')
     .select('id, price_cents', { count: 'exact' })
+    .eq('facility_id', user.activeFacilityId)
     .eq('status', 'active');
 
   const { count: totalChildren } = await supabaseAdmin
     .from('children')
+    .eq('facility_id', user.activeFacilityId)
     .select('id', { count: 'exact', head: true });
 
   const totalRevenue = activePlans?.reduce((sum, p) => sum + p.price_cents, 0) ?? 0;
@@ -111,7 +94,7 @@ export async function GET(req: NextRequest) {
 // PUT: Update admin settings
 export async function PUT(req: NextRequest) {
   const user = await checkAdmin(req);
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!user?.activeFacilityId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   let body;
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Invalid request body' }, { status: 400 }); }
@@ -135,6 +118,7 @@ export async function PUT(req: NextRequest) {
       .from('admin_settings')
       .update(updatePayload)
       .eq('id', id)
+      .eq('facility_id', user.activeFacilityId)
       .select()
       .single();
 
@@ -150,7 +134,8 @@ export async function PUT(req: NextRequest) {
     const { error } = await supabaseAdmin
       .from('reservations')
       .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-      .eq('id', reservationId);
+      .eq('id', reservationId)
+      .eq('facility_id', user.activeFacilityId);
 
     if (error) return NextResponse.json({ error: 'Failed to cancel reservation' }, { status: 400 });
     return NextResponse.json({ success: true });
@@ -167,6 +152,7 @@ export async function PUT(req: NextRequest) {
         child_id: childId,
         parent_id: parentId,
         plan_id: planId,
+        facility_id: user.activeFacilityId,
         date: nightDate,
         status: 'confirmed',
       })
@@ -187,6 +173,7 @@ export async function PUT(req: NextRequest) {
       .from('waitlist')
       .select('id, child_id, parent_id, date, position, status')
       .eq('id', waitlistId)
+      .eq('facility_id', user.activeFacilityId)
       .single();
 
     if (!entry) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -194,12 +181,14 @@ export async function PUT(req: NextRequest) {
     await supabaseAdmin
       .from('waitlist')
       .update({ status: 'confirmed' })
-      .eq('id', waitlistId);
+      .eq('id', waitlistId)
+      .eq('facility_id', user.activeFacilityId);
 
     const { data: plan } = await supabaseAdmin
       .from('plans')
       .select('id')
       .eq('child_id', entry.child_id)
+      .eq('facility_id', user.activeFacilityId)
       .eq('status', 'active')
       .limit(1)
       .single();
@@ -210,6 +199,7 @@ export async function PUT(req: NextRequest) {
         child_id: entry.child_id,
         parent_id: entry.parent_id,
         plan_id: plan?.id || entry.id,
+        facility_id: user.activeFacilityId,
         date: entry.date,
         status: 'confirmed',
       })
@@ -221,6 +211,7 @@ export async function PUT(req: NextRequest) {
     // Emit waitlist_promoted event
     await supabaseAdmin.from('reservation_events').insert({
       reservation_id: reservation.id,
+      facility_id: user.activeFacilityId,
       event_type: 'waitlist_promoted',
       event_data: { waitlist_id: waitlistId, child_id: entry.child_id },
     });
