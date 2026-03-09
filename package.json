@@ -25,6 +25,7 @@
     "preflight": "npx tsx scripts/preflight-production-check.ts",
     "ops:capacity-check": "npx tsx scripts/ops-capacity-check.ts",
     "smoke-test": "npx tsx scripts/smoke-test.ts",
+    "launch-check": "npx tsx scripts/launch-check.ts",
     "audit:migrations": "tsx scripts/audit-migrations.ts"
   },
   "dependencies": {

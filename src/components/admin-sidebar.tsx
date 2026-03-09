@@ -39,6 +39,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/admin/safety', label: 'Safety', icon: ShieldAlert, section: 'operations' },
   { href: '/admin/incidents', label: 'Incidents', icon: AlertTriangle, section: 'operations' },
   { href: '/admin/revenue', label: 'Revenue', icon: DollarSign, section: 'operations' },
+  { href: '/admin/ops', label: 'Ops Health', icon: Activity, section: 'operations' },
   { href: '/admin/roster', label: 'Roster', icon: Calendar, section: 'management' },
   { href: '/admin/plans', label: 'Plans', icon: List, section: 'management' },
   { href: '/admin/waitlist', label: 'Waitlist', icon: Clock, section: 'management' },
