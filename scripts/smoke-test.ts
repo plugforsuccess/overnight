@@ -160,6 +160,7 @@ async function step2_createChild(): Promise<boolean> {
     .from('children')
     .insert({
       facility_id: activeFacilityId,
+      parent_id: testParentId,
       first_name: 'SmokeChild',
       last_name: 'Test',
       date_of_birth: '2020-01-15',
