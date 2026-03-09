@@ -12,6 +12,7 @@ import {
   List,
   Clock,
   ShieldCheck,
+  Settings,
   LayoutDashboard,
   ChevronLeft,
   ChevronRight,
@@ -43,12 +44,14 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/admin/plans', label: 'Plans', icon: List, section: 'management' },
   { href: '/admin/waitlist', label: 'Waitlist', icon: Clock, section: 'management' },
   { href: '/admin/pickup-verification', label: 'Pickup PIN', icon: ShieldCheck, section: 'management' },
+  { href: '/admin/settings', label: 'Settings', icon: Settings, section: 'settings' },
 ];
 
 const SECTION_LABELS: Record<string, string> = {
   overview: '',
   operations: 'Operations',
   management: 'Management',
+  settings: 'Settings',
 };
 
 export function AdminSidebar() {
