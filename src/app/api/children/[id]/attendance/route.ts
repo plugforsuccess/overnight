@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 import { z } from 'zod';
 import { VALID_ATTENDANCE_TRANSITIONS } from '@/types/children';
 import { checkIdempotencyKey, saveIdempotencyResult } from '@/lib/idempotency';
+import { writeCareEvent } from '@/lib/care-events';
 
 const VALID_STATUSES = ['scheduled', 'checked_in', 'in_care', 'ready_for_pickup', 'checked_out', 'cancelled'] as const;
 
@@ -122,13 +123,16 @@ export async function POST(
 
   if (error) return badRequest(error.message);
 
-  // Log event
-  await supabaseAdmin.from('child_events').insert({
-    facility_id: auth.activeFacilityId,
-    child_id: childId,
-    event_type: 'attendance_session_created',
-    event_data: { session_id: session.id, status: session.status },
-    created_by: auth.userId,
+  await writeCareEvent({
+    eventType: 'attendance_scheduled',
+    actorType: 'PARENT',
+    actorUserId: auth.userId,
+    facilityId: auth.activeFacilityId,
+    childId,
+    parentId: auth.parentId,
+    attendanceSessionId: session.id,
+    reservationId: session.reservation_id,
+    metadata: { status: session.status },
   });
 
   const responseBody = { session };

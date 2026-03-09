@@ -3,6 +3,7 @@ import { authenticateRequest, unauthorized, badRequest } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { z } from 'zod';
 import { checkIdempotencyKey, saveIdempotencyResult } from '@/lib/idempotency';
+import { writeCareEvent } from '@/lib/care-events';
 
 const createIncidentSchema = z.object({
   attendance_session_id: z.string().uuid().optional().nullable(),
@@ -114,16 +115,70 @@ export async function POST(
 
   if (error) return badRequest(error.message);
 
-  // Log to child event ledger
-  await supabaseAdmin.from('child_events').insert({
-    facility_id: auth.activeFacilityId,
-    child_id: childId,
-    event_type: 'incident_reported',
-    event_data: { incident_id: incident.id, severity: incident.severity, category: incident.category },
-    created_by: auth.userId,
+  await writeCareEvent({
+    eventType: 'incident_created',
+    actorType: 'PARENT',
+    actorUserId: auth.userId,
+    facilityId: auth.activeFacilityId,
+    childId,
+    parentId: auth.parentId,
+    incidentId: incident.id,
+    attendanceSessionId: incident.attendance_session_id,
+    metadata: { severity: incident.severity, category: incident.category },
   });
 
   const responseBody = { incident };
   await saveIdempotencyResult(req, auth.userId, 201, responseBody);
   return NextResponse.json(responseBody, { status: 201 });
+}
+
+
+const updateIncidentSchema = z.object({
+  incident_id: z.string().uuid(),
+  summary: z.string().min(1).max(500).optional(),
+  details: z.string().max(5000).optional().nullable(),
+  status: z.enum(['open','investigating','resolved','closed']).optional(),
+});
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const auth = await authenticateRequest(req);
+  if (!auth || !auth.activeFacilityId) return unauthorized();
+  const { id: childId } = await params;
+
+  let body;
+  try { body = await req.json(); } catch { return badRequest('Invalid request body'); }
+  const parsed = updateIncidentSchema.safeParse(body);
+  if (!parsed.success) return badRequest(parsed.error.issues.map(e => e.message).join(', '));
+
+  const updates: Record<string, any> = {};
+  if (parsed.data.summary !== undefined) updates.summary = parsed.data.summary;
+  if (parsed.data.details !== undefined) updates.details = parsed.data.details;
+  if (parsed.data.status !== undefined) updates.status = parsed.data.status;
+
+  const { data: incident, error } = await supabaseAdmin
+    .from('incident_reports')
+    .update(updates)
+    .eq('id', parsed.data.incident_id)
+    .eq('child_id', childId)
+    .eq('facility_id', auth.activeFacilityId)
+    .select()
+    .single();
+
+  if (error || !incident) return badRequest('Failed to update incident');
+
+  await writeCareEvent({
+    eventType: parsed.data.status === 'resolved' ? 'incident_resolved' : 'incident_updated',
+    actorType: 'PARENT',
+    actorUserId: auth.userId,
+    facilityId: auth.activeFacilityId,
+    childId,
+    parentId: auth.parentId,
+    incidentId: incident.id,
+    metadata: { status: incident.status },
+  });
+
+  return NextResponse.json({ incident });
 }

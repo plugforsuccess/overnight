@@ -8,6 +8,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import { cancelSubscription } from '@/lib/stripe';
 import { checkIdempotencyKey, saveIdempotencyResult } from '@/lib/idempotency';
 import { authenticateParentForFacility } from '@/lib/facility-auth';
+import { writeCareEvent } from '@/lib/care-events';
 
 // ─── Error codes ──────────────────────────────────────────────────────────────
 type ErrorCode =
@@ -138,6 +139,7 @@ export async function POST(req: NextRequest) {
   if (!parentId) return errorResponse('AUTH_REQUIRED', 'Parent profile not found', 400);
   const facilitySession = await authenticateParentForFacility(req);
   if (!facilitySession?.activeFacilityId) return errorResponse('AUTH_REQUIRED', 'Facility membership required', 401);
+  const facilityId = facilitySession.activeFacilityId;
   console.log(`[bookings POST] parent row found: true, parentId=${parentId}`);
 
   let body;
@@ -388,6 +390,20 @@ export async function POST(req: NextRequest) {
       }));
       await supabaseAdmin.from('reservation_events').insert(eventRows);
 
+      const careEventRows = createdRes.map((r: { id: string }) =>
+        writeCareEvent({
+          eventType: 'reservation_created',
+          actorType: 'PARENT',
+          actorUserId: user.id,
+          facilityId,
+          childId,
+          parentId,
+          reservationId: r.id,
+          metadata: { block_id: block.id },
+        })
+      );
+      await Promise.all(careEventRows);
+
       // Atomically create reservation_nights with row-level locking on program_capacity.
       // This prevents overbooking under concurrent writes.
       for (const res of createdRes) {
@@ -416,6 +432,18 @@ export async function POST(req: NextRequest) {
         }
 
         // Only call once per block (not once per reservation)
+        for (const careDate of availableNights) {
+          await writeCareEvent({
+            eventType: 'reservation_night_created',
+            actorType: 'PARENT',
+            actorUserId: user.id,
+            facilityId,
+            childId,
+            parentId,
+            reservationId: resId,
+            metadata: { care_date: careDate },
+          });
+        }
         break;
       }
     }
@@ -524,6 +552,27 @@ export async function DELETE(req: NextRequest) {
     event_data: { cancelled_by: user.id, nights_cancelled: linkedNights?.length ?? 0 },
     created_by: user.id,
   });
+
+  await writeCareEvent({
+    eventType: 'reservation_cancelled',
+    actorType: 'PARENT',
+    actorUserId: user.id,
+    facilityId,
+    reservationId,
+    metadata: { nights_cancelled: linkedNights?.length ?? 0 },
+  });
+
+  for (const night of linkedNights || []) {
+    await writeCareEvent({
+      eventType: 'reservation_night_cancelled',
+      actorType: 'PARENT',
+      actorUserId: user.id,
+      facilityId,
+      reservationId,
+      reservationNightId: (night as { id: string }).id,
+      metadata: {},
+    });
+  }
 
   // Auto-promote waitlisted entries for freed dates.
   // Each cancelled confirmed/pending night may open a slot.

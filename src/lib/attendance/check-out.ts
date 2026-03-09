@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { ensureAttendanceRecord } from './ensure-attendance-record';
+import { writeCareEvent } from '@/lib/care-events';
 
 export interface CheckOutInput {
   reservationNightId: string;
@@ -71,6 +72,39 @@ export async function checkOutChild(
       departure_notes: input.departureNotes || null,
     },
   });
+
+
+  await writeCareEvent({
+    eventType: 'child_ready_for_pickup',
+    actorType: 'STAFF',
+    actorUserId: input.actorUserId,
+    facilityId: updated.facility_id,
+    childId: updated.child_id,
+    reservationNightId: input.reservationNightId,
+    metadata: { pickup_verification_status: verificationStatus },
+  });
+
+  await writeCareEvent({
+    eventType: 'child_checked_out',
+    actorType: 'STAFF',
+    actorUserId: input.actorUserId,
+    facilityId: updated.facility_id,
+    childId: updated.child_id,
+    reservationNightId: input.reservationNightId,
+    metadata: { check_out_method: method },
+  });
+
+  if (verificationStatus === 'manual_override') {
+    await writeCareEvent({
+      eventType: 'pickup_override_used',
+      actorType: 'FACILITY_ADMIN',
+      actorUserId: input.actorUserId,
+      facilityId: updated.facility_id,
+      childId: updated.child_id,
+      reservationNightId: input.reservationNightId,
+      metadata: { reason: 'manual_override' },
+    });
+  }
 
   // Emit pickup verification event if pickup was specified
   if (input.pickupId && verificationStatus === 'verified') {

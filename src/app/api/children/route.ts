@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, unauthorized, badRequest } from '@/lib/api-auth';
 import { childBasicsSchema } from '@/lib/validation/children';
+import { writeCareEvent } from '@/lib/care-events';
 
 export async function GET(req: NextRequest) {
   const auth = await authenticateRequest(req);
@@ -48,6 +49,17 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) return badRequest(error.message);
+
+  await writeCareEvent({
+    eventType: 'child_created',
+    actorType: 'PARENT',
+    actorUserId: auth.userId,
+    facilityId: auth.activeFacilityId,
+    childId: data.id,
+    parentId: auth.parentId,
+    metadata: { first_name: data.first_name, last_name: data.last_name },
+  });
+
   return NextResponse.json({ child: data });
 }
 
@@ -84,6 +96,17 @@ export async function PUT(req: NextRequest) {
     .single();
 
   if (error) return badRequest(error.message);
+
+  await writeCareEvent({
+    eventType: 'child_profile_updated',
+    actorType: 'PARENT',
+    actorUserId: auth.userId,
+    facilityId: auth.activeFacilityId,
+    childId: data.id,
+    parentId: auth.parentId,
+    metadata: { updated_fields: ['first_name', 'last_name', 'date_of_birth', 'medical_notes'] },
+  });
+
   return NextResponse.json({ child: data });
 }
 
@@ -96,6 +119,16 @@ export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get('id');
   if (!id) return badRequest('Child ID is required');
+
+  await writeCareEvent({
+    eventType: 'record_archived',
+    actorType: 'PARENT',
+    actorUserId: auth.userId,
+    facilityId: auth.activeFacilityId,
+    childId: id,
+    parentId: auth.parentId,
+    metadata: { entity: 'child' },
+  });
 
   const { error } = await auth.supabase
     .from('children')
