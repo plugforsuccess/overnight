@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
-import { DEFAULT_PRICING_TIERS } from '@/lib/constants';
+import { DEFAULT_PRICING_TIERS, BOOKING_WINDOW_DAYS } from '@/lib/constants';
 import { rateLimit } from '@/lib/rate-limit';
 import { cancelSubscription } from '@/lib/stripe';
 import { checkIdempotencyKey, saveIdempotencyResult } from '@/lib/idempotency';
@@ -223,6 +223,22 @@ export async function POST(req: NextRequest) {
 
   console.log(`[bookings POST] plan tier: planId=${planId} planName=${planName} priceCents=${priceCents}`);
 
+  // Validate booking window (28 days ahead)
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const maxBookingDate = new Date(today);
+  maxBookingDate.setDate(maxBookingDate.getDate() + BOOKING_WINDOW_DAYS);
+
+  for (const nightDate of selectedNights) {
+    const d = new Date(nightDate + 'T00:00:00');
+    if (d < today) {
+      return errorResponse('INVALID_PLAN_SELECTION', `Cannot book a night in the past: ${nightDate}`, 400);
+    }
+    if (d > maxBookingDate) {
+      return errorResponse('INVALID_PLAN_SELECTION', `Cannot book more than ${BOOKING_WINDOW_DAYS} days ahead: ${nightDate}`, 400);
+    }
+  }
+
   // Validate night count matches plan
   if (selectedNights.length !== nightsPerWeek) {
     return errorResponse(
@@ -232,31 +248,82 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Check capacity for each night (server-side)
-  const maxCapacity = 6; // default
-  const { data: capacityData } = await supabaseAdmin
-    .from('nightly_capacity')
-    .select('date, capacity')
-    .in('date', selectedNights);
+  // ── Capacity check via program_capacity (sole source of truth) ──────────────
+  // If rows don't exist for requested dates, lazily create them from admin settings defaults.
+  // The actual atomic lock+book happens via atomic_book_nights().
+
+  // Fetch admin settings for default capacity
+  const { data: adminSettings } = await supabaseAdmin
+    .from('admin_settings')
+    .select('max_capacity')
+    .limit(1)
+    .single();
+  const maxCapacity = adminSettings?.max_capacity ?? 6;
+
+  // Fetch existing program_capacity rows
+  const { data: existingCapRows } = await supabaseAdmin
+    .from('program_capacity')
+    .select('id, care_date, capacity_total, capacity_reserved, capacity_waitlisted, status')
+    .in('care_date', selectedNights);
+
+  const existingDates = new Set((existingCapRows ?? []).map((r: { care_date: string }) => r.care_date));
+  const missingDates = selectedNights.filter((d: string) => !existingDates.has(d));
+
+  // Lazy-create missing program_capacity rows from defaults.
+  // Uses center_id and program_id from the first existing row, or creates without them.
+  if (missingDates.length > 0) {
+    // Try to find an active program to link to
+    const { data: defaultProgram } = await supabaseAdmin
+      .from('programs')
+      .select('id, center_id')
+      .eq('care_type', 'overnight')
+      .eq('is_active', true)
+      .limit(1)
+      .single();
+
+    const seedRows = missingDates.map((dateStr: string) => ({
+      care_date: dateStr,
+      capacity_total: maxCapacity,
+      capacity_reserved: 0,
+      capacity_waitlisted: 0,
+      status: 'open',
+      ...(defaultProgram ? { center_id: defaultProgram.center_id, program_id: defaultProgram.id } : {}),
+    }));
+
+    const { error: seedError } = await supabaseAdmin
+      .from('program_capacity')
+      .upsert(seedRows, { onConflict: 'program_id,care_date', ignoreDuplicates: true });
+
+    if (seedError) {
+      console.warn(`[bookings POST] capacity seed failed for ${missingDates.length} dates:`, seedError);
+    } else {
+      console.log(`[bookings POST] seeded ${missingDates.length} program_capacity rows`);
+    }
+  }
+
+  // Re-fetch all capacity rows (including newly seeded ones)
+  const { data: programCapData } = await supabaseAdmin
+    .from('program_capacity')
+    .select('id, care_date, capacity_total, capacity_reserved, capacity_waitlisted, status')
+    .in('care_date', selectedNights);
 
   const fullNights: string[] = [];
+
   for (const nightDate of selectedNights) {
-    // Use nightly_capacity table if available, otherwise count reservations
-    const capRow = capacityData?.find((c: { date: string; capacity: number }) => c.date === nightDate);
-    const nightCapacity = capRow?.capacity ?? maxCapacity;
-
-    const { count } = await supabaseAdmin
-      .from('reservations')
-      .select('*', { count: 'exact', head: true })
-      .eq('date', nightDate)
-      .eq('status', 'confirmed');
-
-    if ((count ?? 0) >= nightCapacity) {
+    const pcRow = (programCapData ?? []).find((c: { care_date: string }) => c.care_date === nightDate);
+    if (pcRow) {
+      const remaining = pcRow.capacity_total - pcRow.capacity_reserved;
+      if (remaining <= 0 || pcRow.status === 'full' || pcRow.status === 'closed') {
+        fullNights.push(nightDate);
+      }
+    } else {
+      // No row even after seeding — treat as unavailable (fail safe)
+      console.error(`[bookings POST] no program_capacity row for ${nightDate} after seeding attempt`);
       fullNights.push(nightDate);
     }
   }
 
-  console.log(`[bookings POST] capacity check: fullNights=${JSON.stringify(fullNights)}`);
+  console.log(`[bookings POST] capacity pre-check: fullNights=${JSON.stringify(fullNights)}`);
 
   // Create an overnight_block (the per-user booking record)
   const blockInsert: Record<string, unknown> = {
@@ -320,6 +387,7 @@ export async function POST(req: NextRequest) {
       .in('date', availableNights);
 
     if (createdRes && createdRes.length > 0) {
+      // Emit reservation_events
       const eventRows = createdRes.map((r: { id: string }) => ({
         reservation_id: r.id,
         event_type: 'reservation_created',
@@ -327,6 +395,36 @@ export async function POST(req: NextRequest) {
         created_by: user.id,
       }));
       await supabaseAdmin.from('reservation_events').insert(eventRows);
+
+      // Atomically create reservation_nights with row-level locking on program_capacity.
+      // This prevents overbooking under concurrent writes.
+      for (const res of createdRes) {
+        const resId = (res as { id: string }).id;
+        const { data: atomicResult, error: atomicError } = await supabaseAdmin.rpc('atomic_book_nights', {
+          p_reservation_id: resId,
+          p_child_id: childId,
+          p_night_dates: availableNights,
+          p_default_capacity: maxCapacity,
+        });
+
+        if (atomicError) {
+          console.warn(`[bookings POST] atomic_book_nights failed (non-blocking):`, atomicError);
+          // Fallback: create reservation_nights without atomicity
+          const nightRows = availableNights.map((nightDate: string) => ({
+            reservation_id: resId,
+            child_id: childId,
+            care_date: nightDate,
+            status: 'pending',
+            capacity_snapshot: maxCapacity,
+          }));
+          await supabaseAdmin.from('reservation_nights').insert(nightRows);
+        } else {
+          console.log(`[bookings POST] atomic_book_nights result:`, JSON.stringify(atomicResult));
+        }
+
+        // Only call once per block (not once per reservation)
+        break;
+      }
     }
   }
 
@@ -399,13 +497,59 @@ export async function DELETE(req: NextRequest) {
 
   if (error) return errorResponse('DB_INSERT_FAILED', 'Failed to cancel reservation', 400, error.message);
 
+  // Cancel linked reservation_nights atomically (decrements capacity counters)
+  const { data: linkedNights } = await supabaseAdmin
+    .from('reservation_nights')
+    .select('id')
+    .eq('reservation_id', reservationId)
+    .neq('status', 'cancelled');
+
+  if (linkedNights && linkedNights.length > 0) {
+    for (const night of linkedNights) {
+      const { error: cancelError } = await supabaseAdmin.rpc('atomic_cancel_night', {
+        p_reservation_night_id: (night as { id: string }).id,
+      });
+      if (cancelError) {
+        console.warn(`[bookings DELETE] atomic_cancel_night failed for ${(night as { id: string }).id}:`, cancelError);
+        // Fallback: direct update without counter decrement
+        await supabaseAdmin
+          .from('reservation_nights')
+          .update({ status: 'cancelled' })
+          .eq('id', (night as { id: string }).id);
+      }
+    }
+    console.log(`[bookings DELETE] cancelled ${linkedNights.length} reservation_nights for reservation=${reservationId}`);
+  }
+
   // Emit reservation_cancelled event
   await supabaseAdmin.from('reservation_events').insert({
     reservation_id: reservationId,
     event_type: 'reservation_cancelled',
-    event_data: { cancelled_by: user.id },
+    event_data: { cancelled_by: user.id, nights_cancelled: linkedNights?.length ?? 0 },
     created_by: user.id,
   });
+
+  // Auto-promote waitlisted entries for freed dates.
+  // Each cancelled confirmed/pending night may open a slot.
+  if (linkedNights && linkedNights.length > 0) {
+    const { data: cancelledNightDetails } = await supabaseAdmin
+      .from('reservation_nights')
+      .select('care_date')
+      .eq('reservation_id', reservationId)
+      .eq('status', 'cancelled');
+
+    const freedDates = Array.from(new Set((cancelledNightDetails ?? []).map((n: { care_date: string }) => n.care_date)));
+    for (const careDate of freedDates) {
+      const { data: promotedId, error: promoteError } = await supabaseAdmin.rpc('promote_waitlist', {
+        p_care_date: careDate,
+      });
+      if (promoteError) {
+        console.warn(`[bookings DELETE] auto-promote failed for ${careDate}:`, promoteError);
+      } else if (promotedId) {
+        console.log(`[bookings DELETE] auto-promoted waitlist night=${promotedId} for date=${careDate}`);
+      }
+    }
+  }
 
   return NextResponse.json({ success: true });
 }

@@ -5,7 +5,7 @@ import { z } from 'zod';
 
 const eventSchema = z.object({
   event_type: z.string().min(1, 'Event type is required').max(100),
-  event_data: z.record(z.unknown()).default({}),
+  event_data: z.record(z.string(), z.unknown()).default({}),
 });
 
 /**

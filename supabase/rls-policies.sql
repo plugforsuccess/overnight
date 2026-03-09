@@ -829,3 +829,517 @@ BEGIN
   RETURN deleted_count;
 END;
 $$;
+
+-- ============================================================
+-- RESERVATION CALENDAR HARDENING
+-- ============================================================
+
+-- ── centers ───────────────────────────────────────────────────
+ALTER TABLE public.centers ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS centers_select_authenticated ON public.centers;
+CREATE POLICY centers_select_authenticated ON public.centers
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS admins_manage_centers ON public.centers;
+CREATE POLICY admins_manage_centers ON public.centers
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+-- ── programs ──────────────────────────────────────────────────
+ALTER TABLE public.programs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS programs_select_authenticated ON public.programs;
+CREATE POLICY programs_select_authenticated ON public.programs
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS admins_manage_programs ON public.programs;
+CREATE POLICY admins_manage_programs ON public.programs
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+ALTER TABLE public.programs DROP CONSTRAINT IF EXISTS chk_programs_care_type;
+ALTER TABLE public.programs ADD CONSTRAINT chk_programs_care_type
+  CHECK (care_type IN ('overnight', 'daycare', 'drop_in'));
+
+-- ── program_capacity ──────────────────────────────────────────
+ALTER TABLE public.program_capacity ENABLE ROW LEVEL SECURITY;
+
+-- Parents can read capacity for calendar rendering
+DROP POLICY IF EXISTS program_capacity_select_authenticated ON public.program_capacity;
+CREATE POLICY program_capacity_select_authenticated ON public.program_capacity
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+-- Only admins / service role can mutate capacity
+DROP POLICY IF EXISTS admins_manage_program_capacity ON public.program_capacity;
+CREATE POLICY admins_manage_program_capacity ON public.program_capacity
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+ALTER TABLE public.program_capacity DROP CONSTRAINT IF EXISTS chk_program_capacity_status;
+ALTER TABLE public.program_capacity ADD CONSTRAINT chk_program_capacity_status
+  CHECK (status IN ('open', 'full', 'closed'));
+
+ALTER TABLE public.program_capacity DROP CONSTRAINT IF EXISTS chk_program_capacity_reserved_nonneg;
+ALTER TABLE public.program_capacity ADD CONSTRAINT chk_program_capacity_reserved_nonneg
+  CHECK (capacity_reserved >= 0);
+
+ALTER TABLE public.program_capacity DROP CONSTRAINT IF EXISTS chk_program_capacity_waitlisted_nonneg;
+ALTER TABLE public.program_capacity ADD CONSTRAINT chk_program_capacity_waitlisted_nonneg
+  CHECK (capacity_waitlisted >= 0);
+
+ALTER TABLE public.program_capacity DROP CONSTRAINT IF EXISTS chk_program_capacity_reserved_lte_total;
+ALTER TABLE public.program_capacity ADD CONSTRAINT chk_program_capacity_reserved_lte_total
+  CHECK (capacity_reserved <= capacity_total);
+
+ALTER TABLE public.program_capacity DROP CONSTRAINT IF EXISTS chk_program_capacity_total_positive;
+ALTER TABLE public.program_capacity ADD CONSTRAINT chk_program_capacity_total_positive
+  CHECK (capacity_total > 0);
+
+-- ── reservation_nights ────────────────────────────────────────
+ALTER TABLE public.reservation_nights ENABLE ROW LEVEL SECURITY;
+
+-- Parents can read their own reservation_nights via child ownership
+DROP POLICY IF EXISTS parents_select_reservation_nights ON public.reservation_nights;
+CREATE POLICY parents_select_reservation_nights ON public.reservation_nights
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.children c WHERE c.id = child_id AND c.parent_id = auth.uid())
+  );
+
+-- Only service role / admin can insert/update/delete
+DROP POLICY IF EXISTS admins_manage_reservation_nights ON public.reservation_nights;
+CREATE POLICY admins_manage_reservation_nights ON public.reservation_nights
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+  );
+
+ALTER TABLE public.reservation_nights DROP CONSTRAINT IF EXISTS chk_reservation_nights_status;
+ALTER TABLE public.reservation_nights ADD CONSTRAINT chk_reservation_nights_status
+  CHECK (status IN ('pending', 'confirmed', 'cancelled', 'completed', 'waitlisted', 'no_show'));
+
+ALTER TABLE public.reservation_nights DROP CONSTRAINT IF EXISTS chk_reservation_nights_capacity_snapshot;
+ALTER TABLE public.reservation_nights ADD CONSTRAINT chk_reservation_nights_capacity_snapshot
+  CHECK (capacity_snapshot > 0);
+
+-- Partial unique index: prevent duplicate active bookings for same child on same date
+DROP INDEX IF EXISTS uniq_reservation_nights_child_date_active;
+CREATE UNIQUE INDEX uniq_reservation_nights_child_date_active
+  ON public.reservation_nights (child_id, care_date)
+  WHERE status NOT IN ('cancelled');
+
+-- ── update_timestamp triggers for new tables ──────────────────
+
+DROP TRIGGER IF EXISTS centers_update_timestamp ON public.centers;
+CREATE TRIGGER centers_update_timestamp
+  BEFORE UPDATE ON public.centers
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
+
+DROP TRIGGER IF EXISTS programs_update_timestamp ON public.programs;
+CREATE TRIGGER programs_update_timestamp
+  BEFORE UPDATE ON public.programs
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
+
+DROP TRIGGER IF EXISTS program_capacity_update_timestamp ON public.program_capacity;
+CREATE TRIGGER program_capacity_update_timestamp
+  BEFORE UPDATE ON public.program_capacity
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
+
+DROP TRIGGER IF EXISTS reservation_nights_update_timestamp ON public.reservation_nights;
+CREATE TRIGGER reservation_nights_update_timestamp
+  BEFORE UPDATE ON public.reservation_nights
+  FOR EACH ROW EXECUTE FUNCTION public.update_timestamp();
+
+-- ── Atomic booking function ───────────────────────────────────
+-- Called by the booking API to lock capacity rows, verify availability,
+-- and atomically create reservation_nights + increment counters.
+-- Returns JSON with confirmed and waitlisted night IDs.
+CREATE OR REPLACE FUNCTION public.atomic_book_nights(
+  p_reservation_id UUID,
+  p_child_id UUID,
+  p_night_dates TEXT[],
+  p_default_capacity INT DEFAULT 6
+)
+RETURNS JSONB LANGUAGE plpgsql AS $$
+DECLARE
+  v_date TEXT;
+  v_pc RECORD;
+  v_confirmed TEXT[] := '{}';
+  v_waitlisted TEXT[] := '{}';
+  v_cap INT;
+  v_reserved INT;
+BEGIN
+  -- Process each requested date
+  FOREACH v_date IN ARRAY p_night_dates LOOP
+    -- Lock the program_capacity row (or use fallback)
+    SELECT id, capacity_total, capacity_reserved, status
+      INTO v_pc
+      FROM public.program_capacity
+      WHERE care_date = v_date::DATE
+      FOR UPDATE;
+
+    IF v_pc IS NOT NULL THEN
+      -- Use program_capacity
+      v_cap := v_pc.capacity_total;
+      v_reserved := v_pc.capacity_reserved;
+
+      IF v_reserved < v_cap AND v_pc.status NOT IN ('full', 'closed') THEN
+        -- Available: create confirmed night
+        INSERT INTO public.reservation_nights
+          (reservation_id, child_id, program_capacity_id, care_date, status, capacity_snapshot)
+        VALUES
+          (p_reservation_id, p_child_id, v_pc.id, v_date::DATE, 'pending', v_cap);
+
+        UPDATE public.program_capacity
+        SET capacity_reserved = capacity_reserved + 1,
+            status = CASE WHEN capacity_reserved + 1 >= capacity_total THEN 'full' ELSE 'open' END
+        WHERE id = v_pc.id;
+
+        v_confirmed := array_append(v_confirmed, v_date);
+      ELSE
+        -- Full: create waitlisted night
+        INSERT INTO public.reservation_nights
+          (reservation_id, child_id, program_capacity_id, care_date, status, capacity_snapshot)
+        VALUES
+          (p_reservation_id, p_child_id, v_pc.id, v_date::DATE, 'waitlisted', v_cap);
+
+        UPDATE public.program_capacity
+        SET capacity_waitlisted = capacity_waitlisted + 1
+        WHERE id = v_pc.id;
+
+        v_waitlisted := array_append(v_waitlisted, v_date);
+      END IF;
+    ELSE
+      -- Fallback: count reservations for this date
+      SELECT COUNT(*) INTO v_reserved
+        FROM public.reservations
+        WHERE date = v_date::DATE AND status = 'confirmed';
+
+      v_cap := p_default_capacity;
+
+      IF v_reserved < v_cap THEN
+        INSERT INTO public.reservation_nights
+          (reservation_id, child_id, care_date, status, capacity_snapshot)
+        VALUES
+          (p_reservation_id, p_child_id, v_date::DATE, 'pending', v_cap);
+        v_confirmed := array_append(v_confirmed, v_date);
+      ELSE
+        INSERT INTO public.reservation_nights
+          (reservation_id, child_id, care_date, status, capacity_snapshot)
+        VALUES
+          (p_reservation_id, p_child_id, v_date::DATE, 'waitlisted', v_cap);
+        v_waitlisted := array_append(v_waitlisted, v_date);
+      END IF;
+    END IF;
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'confirmed', to_jsonb(v_confirmed),
+    'waitlisted', to_jsonb(v_waitlisted)
+  );
+END;
+$$;
+
+-- ── Atomic cancellation function ──────────────────────────────
+-- Cancels a reservation_night and decrements capacity counters.
+CREATE OR REPLACE FUNCTION public.atomic_cancel_night(
+  p_reservation_night_id UUID
+)
+RETURNS VOID LANGUAGE plpgsql AS $$
+DECLARE
+  v_night RECORD;
+BEGIN
+  -- Lock the reservation_night row
+  SELECT id, program_capacity_id, status
+    INTO v_night
+    FROM public.reservation_nights
+    WHERE id = p_reservation_night_id
+    FOR UPDATE;
+
+  IF v_night IS NULL THEN
+    RAISE EXCEPTION 'Reservation night not found: %', p_reservation_night_id;
+  END IF;
+
+  IF v_night.status = 'cancelled' THEN
+    RETURN; -- Already cancelled, idempotent
+  END IF;
+
+  -- Update the night status
+  UPDATE public.reservation_nights
+  SET status = 'cancelled'
+  WHERE id = p_reservation_night_id;
+
+  -- Decrement counter on program_capacity if linked
+  IF v_night.program_capacity_id IS NOT NULL THEN
+    IF v_night.status IN ('pending', 'confirmed', 'completed') THEN
+      UPDATE public.program_capacity
+      SET capacity_reserved = GREATEST(capacity_reserved - 1, 0),
+          status = CASE WHEN capacity_reserved - 1 < capacity_total THEN 'open' ELSE status END
+      WHERE id = v_night.program_capacity_id;
+    ELSIF v_night.status = 'waitlisted' THEN
+      UPDATE public.program_capacity
+      SET capacity_waitlisted = GREATEST(capacity_waitlisted - 1, 0)
+      WHERE id = v_night.program_capacity_id;
+    END IF;
+  END IF;
+END;
+$$;
+
+-- ── Capacity reconciliation function ──────────────────────────
+-- Compares counters to actual reservation_nights. Run nightly or on demand.
+CREATE OR REPLACE FUNCTION public.reconcile_program_capacity()
+RETURNS TABLE(
+  program_capacity_id UUID,
+  care_date DATE,
+  counter_reserved INT,
+  actual_reserved BIGINT,
+  counter_waitlisted INT,
+  actual_waitlisted BIGINT,
+  drift_reserved BIGINT,
+  drift_waitlisted BIGINT
+) LANGUAGE sql AS $$
+  SELECT
+    pc.id AS program_capacity_id,
+    pc.care_date,
+    pc.capacity_reserved AS counter_reserved,
+    COALESCE(r.actual_reserved, 0) AS actual_reserved,
+    pc.capacity_waitlisted AS counter_waitlisted,
+    COALESCE(w.actual_waitlisted, 0) AS actual_waitlisted,
+    pc.capacity_reserved - COALESCE(r.actual_reserved, 0) AS drift_reserved,
+    pc.capacity_waitlisted - COALESCE(w.actual_waitlisted, 0) AS drift_waitlisted
+  FROM public.program_capacity pc
+  LEFT JOIN (
+    SELECT program_capacity_id, COUNT(*) AS actual_reserved
+    FROM public.reservation_nights
+    WHERE status IN ('pending', 'confirmed', 'completed')
+    GROUP BY program_capacity_id
+  ) r ON r.program_capacity_id = pc.id
+  LEFT JOIN (
+    SELECT program_capacity_id, COUNT(*) AS actual_waitlisted
+    FROM public.reservation_nights
+    WHERE status = 'waitlisted'
+    GROUP BY program_capacity_id
+  ) w ON w.program_capacity_id = pc.id
+  WHERE pc.capacity_reserved != COALESCE(r.actual_reserved, 0)
+     OR pc.capacity_waitlisted != COALESCE(w.actual_waitlisted, 0);
+$$;
+
+
+-- ============================================================
+-- RESERVATION NIGHT STATUS TRANSITIONS
+-- ============================================================
+-- Enforces a valid state machine on reservation_nights.status:
+--   pending → confirmed | cancelled | waitlisted
+--   confirmed → completed | cancelled | no_show
+--   waitlisted → confirmed | cancelled
+--   completed → (terminal)
+--   cancelled → (terminal)
+--   no_show → (terminal)
+
+CREATE OR REPLACE FUNCTION public.enforce_reservation_night_transition()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  valid boolean := false;
+BEGIN
+  IF TG_OP = 'INSERT' THEN RETURN NEW; END IF;
+  IF OLD.status = NEW.status THEN RETURN NEW; END IF;
+
+  CASE OLD.status
+    WHEN 'pending' THEN
+      valid := NEW.status IN ('confirmed', 'cancelled', 'waitlisted');
+    WHEN 'confirmed' THEN
+      valid := NEW.status IN ('completed', 'cancelled', 'no_show');
+    WHEN 'waitlisted' THEN
+      valid := NEW.status IN ('confirmed', 'cancelled');
+    WHEN 'completed' THEN
+      valid := false;
+    WHEN 'cancelled' THEN
+      valid := false;
+    WHEN 'no_show' THEN
+      valid := false;
+    ELSE
+      valid := false;
+  END CASE;
+
+  IF NOT valid THEN
+    RAISE EXCEPTION 'Invalid reservation_night transition: % -> %', OLD.status, NEW.status;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_enforce_reservation_night_transition ON public.reservation_nights;
+CREATE TRIGGER trg_enforce_reservation_night_transition
+  BEFORE UPDATE ON public.reservation_nights
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_reservation_night_transition();
+
+
+-- ============================================================
+-- RESERVATION LIFECYCLE EVENT LOGGING
+-- ============================================================
+-- Automatically emits immutable reservation_events when
+-- reservation_nights.status changes. Covers the full lifecycle.
+
+CREATE OR REPLACE FUNCTION public.emit_reservation_night_event()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE
+  v_event_type TEXT;
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    v_event_type := 'reservation_night_created';
+  ELSIF TG_OP = 'UPDATE' AND OLD.status IS DISTINCT FROM NEW.status THEN
+    CASE NEW.status
+      WHEN 'confirmed' THEN
+        IF OLD.status = 'waitlisted' THEN
+          v_event_type := 'waitlist_promoted';
+        ELSE
+          v_event_type := 'reservation_night_confirmed';
+        END IF;
+      WHEN 'cancelled' THEN
+        v_event_type := 'reservation_night_cancelled';
+      WHEN 'completed' THEN
+        v_event_type := 'reservation_night_completed';
+      WHEN 'waitlisted' THEN
+        v_event_type := 'reservation_night_waitlisted';
+      WHEN 'no_show' THEN
+        v_event_type := 'no_show_marked';
+      ELSE
+        v_event_type := 'reservation_night_status_changed';
+    END CASE;
+  ELSE
+    RETURN NEW;
+  END IF;
+
+  INSERT INTO public.reservation_events (
+    reservation_id,
+    event_type,
+    event_data,
+    created_by
+  ) VALUES (
+    NEW.reservation_id,
+    v_event_type,
+    jsonb_build_object(
+      'reservation_night_id', NEW.id,
+      'care_date', NEW.care_date,
+      'child_id', NEW.child_id,
+      'old_status', CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE OLD.status END,
+      'new_status', NEW.status,
+      'capacity_snapshot', NEW.capacity_snapshot,
+      'program_capacity_id', NEW.program_capacity_id
+    ),
+    '00000000-0000-0000-0000-000000000000'::UUID -- system actor
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_emit_reservation_night_event ON public.reservation_nights;
+CREATE TRIGGER trg_emit_reservation_night_event
+  AFTER INSERT OR UPDATE ON public.reservation_nights
+  FOR EACH ROW EXECUTE FUNCTION public.emit_reservation_night_event();
+
+
+-- ============================================================
+-- WAITLIST PROMOTION
+-- ============================================================
+-- Atomically promotes the highest-priority waitlisted reservation_night
+-- for a given care_date. Called when a slot opens (cancellation, etc.).
+--
+-- Priority: FIFO by created_at.
+-- Locks program_capacity + the waitlisted night row.
+-- Returns the promoted reservation_night ID, or NULL if no one is waiting.
+
+CREATE OR REPLACE FUNCTION public.promote_waitlist(
+  p_care_date DATE
+)
+RETURNS UUID LANGUAGE plpgsql AS $$
+DECLARE
+  v_pc RECORD;
+  v_night RECORD;
+BEGIN
+  -- Lock the capacity row
+  SELECT id, capacity_total, capacity_reserved, capacity_waitlisted, status
+    INTO v_pc
+    FROM public.program_capacity
+    WHERE care_date = p_care_date
+    FOR UPDATE;
+
+  IF v_pc IS NULL THEN
+    RETURN NULL; -- No capacity row for this date
+  END IF;
+
+  -- Check if there's actually a slot
+  IF v_pc.capacity_reserved >= v_pc.capacity_total THEN
+    RETURN NULL; -- Still full
+  END IF;
+
+  -- Find the next waitlisted night (FIFO)
+  SELECT id, reservation_id, child_id
+    INTO v_night
+    FROM public.reservation_nights
+    WHERE care_date = p_care_date
+      AND status = 'waitlisted'
+    ORDER BY created_at ASC
+    LIMIT 1
+    FOR UPDATE;
+
+  IF v_night IS NULL THEN
+    RETURN NULL; -- No one waiting
+  END IF;
+
+  -- Promote: waitlisted → confirmed
+  UPDATE public.reservation_nights
+  SET status = 'confirmed'
+  WHERE id = v_night.id;
+
+  -- Update counters
+  UPDATE public.program_capacity
+  SET capacity_reserved = capacity_reserved + 1,
+      capacity_waitlisted = GREATEST(capacity_waitlisted - 1, 0),
+      status = CASE WHEN capacity_reserved + 1 >= capacity_total THEN 'full' ELSE 'open' END
+  WHERE id = v_pc.id;
+
+  RETURN v_night.id;
+END;
+$$;
+
+
+-- ============================================================
+-- CAPACITY LAZY-CREATE FUNCTION
+-- ============================================================
+-- Ensures program_capacity rows exist for a list of dates.
+-- Creates missing rows from defaults. Called by booking & capacity APIs.
+
+CREATE OR REPLACE FUNCTION public.ensure_capacity_rows(
+  p_dates DATE[],
+  p_default_capacity INT DEFAULT 6
+)
+RETURNS VOID LANGUAGE plpgsql AS $$
+DECLARE
+  v_program_id UUID;
+  v_center_id UUID;
+  v_date DATE;
+BEGIN
+  -- Find the default overnight program
+  SELECT id, center_id INTO v_program_id, v_center_id
+    FROM public.programs
+    WHERE care_type = 'overnight' AND is_active = true
+    LIMIT 1;
+
+  IF v_program_id IS NULL THEN
+    RETURN; -- No program configured yet
+  END IF;
+
+  FOREACH v_date IN ARRAY p_dates LOOP
+    INSERT INTO public.program_capacity
+      (center_id, program_id, care_date, capacity_total, capacity_reserved, capacity_waitlisted, status)
+    VALUES
+      (v_center_id, v_program_id, v_date, p_default_capacity, 0, 0, 'open')
+    ON CONFLICT (program_id, care_date) DO NOTHING;
+  END LOOP;
+END;
+$$;

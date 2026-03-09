@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Calendar, Users, DollarSign, Clock, Settings, List, CreditCard, ShieldCheck } from 'lucide-react';
+import { Calendar, Users, DollarSign, Clock, Settings, List, CreditCard, ShieldCheck, Moon, TrendingUp, BarChart3, Ban, Activity } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { formatCents, DEFAULT_CAPACITY, DEFAULT_OPERATING_NIGHTS, DAY_LABELS } from '@/lib/constants';
 import { getWeekNights, getCurrentWeekStart } from '@/lib/utils';
@@ -172,6 +172,35 @@ export default function AdminPage() {
               <div className="text-sm text-red-600">Failed</div>
             </div>
           </div>
+        </div>
+
+        {/* Operations */}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+          <Link href="/admin/tonight" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-navy-600">
+            <Moon className="h-10 w-10 text-navy-700 mx-auto mb-3" />
+            <div className="font-semibold text-gray-900">Tonight&apos;s Attendance</div>
+            <div className="text-sm text-gray-500">Check-ins, no-shows, alerts</div>
+          </Link>
+          <Link href="/admin/waitlist-ops" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-amber-500">
+            <TrendingUp className="h-10 w-10 text-amber-600 mx-auto mb-3" />
+            <div className="font-semibold text-gray-900">Waitlist Queue</div>
+            <div className="text-sm text-gray-500">Demand pressure & promotions</div>
+          </Link>
+          <Link href="/admin/capacity" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-green-500">
+            <BarChart3 className="h-10 w-10 text-green-600 mx-auto mb-3" />
+            <div className="font-semibold text-gray-900">Capacity Planner</div>
+            <div className="text-sm text-gray-500">4-week utilization view</div>
+          </Link>
+          <Link href="/admin/closures" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-red-500">
+            <Ban className="h-10 w-10 text-red-600 mx-auto mb-3" />
+            <div className="font-semibold text-gray-900">Closures &amp; Capacity</div>
+            <div className="text-sm text-gray-500">Close, reduce, reopen nights</div>
+          </Link>
+          <Link href="/admin/health" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-purple-500">
+            <Activity className="h-10 w-10 text-purple-600 mx-auto mb-3" />
+            <div className="font-semibold text-gray-900">System Health</div>
+            <div className="text-sm text-gray-500">Data integrity &amp; reconciliation</div>
+          </Link>
         </div>
 
         {/* Navigation */}

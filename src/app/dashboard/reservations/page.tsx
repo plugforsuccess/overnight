@@ -3,11 +3,13 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
-  ArrowLeft, Calendar, CheckCircle, Clock, AlertCircle, XCircle,
-  ChevronDown, ChevronUp, CalendarCheck, AlertTriangle,
+  ArrowLeft, Moon, CalendarCheck, CheckCircle, AlertTriangle, AlertCircle,
+  ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { OVERNIGHT_START, OVERNIGHT_END } from '@/lib/constants';
+import { StatusBadge } from '@/components/ui/StatusBadge';
+import { EmptyStateCard } from '@/components/ui/EmptyStateCard';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -36,51 +38,6 @@ interface ReservationData {
 }
 
 type Tab = 'upcoming' | 'past';
-
-// ─── Status Badge ───────────────────────────────────────────────────────────
-
-function StatusBadge({ status }: { status: string }) {
-  const config: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
-    confirmed: {
-      label: 'Confirmed',
-      className: 'bg-green-50 text-green-700 border border-green-200',
-      icon: <CheckCircle className="h-3 w-3" />,
-    },
-    pending_payment: {
-      label: 'Pending',
-      className: 'bg-yellow-50 text-yellow-700 border border-yellow-200',
-      icon: <Clock className="h-3 w-3" />,
-    },
-    locked: {
-      label: 'Locked In',
-      className: 'bg-navy-50 text-navy-700 border border-navy-200',
-      icon: <CheckCircle className="h-3 w-3" />,
-    },
-    canceled: {
-      label: 'Cancelled',
-      className: 'bg-gray-50 text-gray-500 border border-gray-200',
-      icon: <XCircle className="h-3 w-3" />,
-    },
-    canceled_low_enrollment: {
-      label: 'Cancelled (Low Enrollment)',
-      className: 'bg-orange-50 text-orange-700 border border-orange-200',
-      icon: <AlertTriangle className="h-3 w-3" />,
-    },
-  };
-
-  const c = config[status] || {
-    label: status,
-    className: 'bg-gray-50 text-gray-600 border border-gray-200',
-    icon: null,
-  };
-
-  return (
-    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${c.className}`}>
-      {c.icon}
-      {c.label}
-    </span>
-  );
-}
 
 // ─── Reservation Card ────────────────────────────────────────────────────────
 
@@ -112,7 +69,7 @@ function ReservationCard({
   const canCancel = ['confirmed', 'pending_payment'].includes(reservation.status);
 
   return (
-    <div className="card p-0 overflow-hidden">
+    <div className="rounded-2xl border border-gray-200 bg-white shadow-soft-sm overflow-hidden">
       {/* Main row */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -120,9 +77,9 @@ function ReservationCard({
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
-            {/* Date circle */}
-            <div className="flex-shrink-0 h-12 w-12 rounded-xl bg-navy-50 flex flex-col items-center justify-center">
-              <span className="text-xs font-semibold text-navy-600 leading-none">
+            {/* Date block */}
+            <div className="flex-shrink-0 h-12 w-12 rounded-xl bg-navy-100 flex flex-col items-center justify-center">
+              <span className="text-[10px] font-semibold text-navy-600 leading-none uppercase">
                 {dateObj.toLocaleDateString('en-US', { month: 'short' })}
               </span>
               <span className="text-lg font-bold text-navy-800 leading-tight">
@@ -161,14 +118,14 @@ function ReservationCard({
 
       {/* Expanded details */}
       {expanded && (
-        <div className="border-t border-[#E2E8F0] bg-gray-50/50 px-4 sm:px-5 py-4">
+        <div className="border-t border-gray-100 bg-gray-50/50 px-4 sm:px-5 py-4">
           <div className="grid sm:grid-cols-2 gap-3 text-sm">
             <div>
               <span className="text-gray-500 block text-xs font-medium uppercase tracking-wide mb-0.5">Date</span>
               <span className="text-gray-900">{dateLabel}</span>
             </div>
             <div>
-              <span className="text-gray-500 block text-xs font-medium uppercase tracking-wide mb-0.5">Check-in / Check-out</span>
+              <span className="text-gray-500 block text-xs font-medium uppercase tracking-wide mb-0.5">Dropoff / Pickup</span>
               <span className="text-gray-900">{OVERNIGHT_START} &ndash; {OVERNIGHT_END}</span>
             </div>
             <div>
@@ -180,7 +137,7 @@ function ReservationCard({
               <StatusBadge status={reservation.status} />
             </div>
             <div>
-              <span className="text-gray-500 block text-xs font-medium uppercase tracking-wide mb-0.5">Booked On</span>
+              <span className="text-gray-500 block text-xs font-medium uppercase tracking-wide mb-0.5">Booked on</span>
               <span className="text-gray-900">
                 {new Date(reservation.created_at).toLocaleDateString('en-US', {
                   month: 'short',
@@ -191,14 +148,22 @@ function ReservationCard({
             </div>
             {reservation.weekly_price_cents != null && (
               <div>
-                <span className="text-gray-500 block text-xs font-medium uppercase tracking-wide mb-0.5">Weekly Plan</span>
+                <span className="text-gray-500 block text-xs font-medium uppercase tracking-wide mb-0.5">Weekly plan</span>
                 <span className="text-gray-900">${(reservation.weekly_price_cents / 100).toFixed(0)}/week</span>
               </div>
             )}
           </div>
 
-          {canCancel && (
-            <div className="mt-4 pt-3 border-t border-[#E2E8F0]">
+          <div className="flex items-center gap-3 mt-4 pt-3 border-t border-gray-200">
+            {reservation.overnight_block_id && (
+              <Link
+                href={`/dashboard/reservations/${reservation.overnight_block_id}`}
+                className="text-sm text-accent-600 hover:text-accent-700 font-medium"
+              >
+                View booking details
+              </Link>
+            )}
+            {canCancel && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -207,12 +172,12 @@ function ReservationCard({
                   }
                 }}
                 disabled={cancelling === reservation.id}
-                className="text-sm text-red-600 hover:text-red-700 font-medium disabled:opacity-50"
+                className="text-sm text-red-600 hover:text-red-700 font-medium disabled:opacity-50 ml-auto"
               >
-                {cancelling === reservation.id ? 'Cancelling...' : 'Cancel Reservation'}
+                {cancelling === reservation.id ? 'Cancelling...' : 'Cancel'}
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -276,7 +241,6 @@ export default function ReservationsPage() {
         throw new Error(body.error || 'Failed to cancel');
       }
 
-      // Update local state
       setData(prev => {
         if (!prev) return prev;
         const updateStatus = (list: ReservationItem[]) =>
@@ -303,10 +267,9 @@ export default function ReservationsPage() {
     }
   }
 
-  // ── Loading skeleton ──────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="py-12">
+      <div className="py-8 sm:py-12">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="mb-8">
             <div className="h-8 bg-gray-200 rounded w-48 animate-pulse mb-2" />
@@ -327,12 +290,11 @@ export default function ReservationsPage() {
     );
   }
 
-  // ── Error state ───────────────────────────────────────────────────
   if (error && !data) {
     return (
       <div className="py-12">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg flex items-start gap-2">
+          <div className="bg-red-50 text-red-700 px-4 py-3 rounded-xl flex items-start gap-2">
             <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
             <div>
               <p className="font-medium">Unable to load reservations</p>
@@ -355,7 +317,7 @@ export default function ReservationsPage() {
   const activeList = activeTab === 'upcoming' ? data.upcoming : data.past;
 
   return (
-    <div className="py-12">
+    <div className="py-8 sm:py-12">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Toast */}
         {toast && (
@@ -366,7 +328,7 @@ export default function ReservationsPage() {
 
         {/* Inline error */}
         {error && data && (
-          <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg mb-6 flex items-start gap-2">
+          <div className="bg-red-50 text-red-700 px-4 py-3 rounded-xl mb-6 flex items-start gap-2">
             <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
             {error}
             <button onClick={() => setError('')} className="ml-auto text-red-500 hover:text-red-700">&times;</button>
@@ -375,18 +337,18 @@ export default function ReservationsPage() {
 
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
-          <Link href="/dashboard" className="text-gray-500 hover:text-gray-700">
+          <Link href="/dashboard" className="p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors">
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <div className="flex-1">
-            <h1 className="text-3xl font-bold text-gray-900">Reservations</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Reservations</h1>
             <p className="text-gray-500 text-sm mt-1">
-              View your child care bookings, upcoming nights, and recent stay history.
+              View your child care bookings and stay history.
             </p>
           </div>
           <Link href="/schedule" className="btn-primary hidden sm:flex items-center gap-2 text-sm">
-            <Calendar className="h-4 w-4" />
-            Request Care
+            <Moon className="h-4 w-4" />
+            Book Overnight Care
           </Link>
         </div>
 
@@ -416,7 +378,7 @@ export default function ReservationsPage() {
         </div>
 
         {/* Tab control */}
-        <div className="flex border-b border-[#E2E8F0] mb-6">
+        <div className="flex border-b border-gray-200 mb-6">
           <button
             onClick={() => setActiveTab('upcoming')}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -441,29 +403,21 @@ export default function ReservationsPage() {
 
         {/* Reservation list */}
         {activeList.length === 0 ? (
-          <div className="card text-center py-12">
-            {activeTab === 'upcoming' ? (
-              <>
-                <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No upcoming reservations</h3>
-                <p className="text-gray-500 mb-6 max-w-sm mx-auto">
-                  You don&apos;t have any upcoming overnight stays booked. Reserve nights to get started.
-                </p>
-                <Link href="/schedule" className="btn-primary inline-flex items-center gap-2">
-                  <Calendar className="h-4 w-4" />
-                  Reserve Nights
-                </Link>
-              </>
-            ) : (
-              <>
-                <CheckCircle className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">No past reservations</h3>
-                <p className="text-gray-500 max-w-sm mx-auto">
-                  Your completed stays will appear here after your first overnight booking.
-                </p>
-              </>
-            )}
-          </div>
+          activeTab === 'upcoming' ? (
+            <EmptyStateCard
+              icon={<Moon className="h-8 w-8" />}
+              title="No upcoming overnights yet"
+              description="Book your child's first overnight stay."
+              actionLabel="Book Overnight Care"
+              actionHref="/schedule"
+            />
+          ) : (
+            <EmptyStateCard
+              icon={<CheckCircle className="h-8 w-8" />}
+              title="No past reservations"
+              description="Your completed stays will appear here after your first overnight booking."
+            />
+          )
         ) : (
           <div className="space-y-3">
             {activeList.map(reservation => (
@@ -480,8 +434,8 @@ export default function ReservationsPage() {
         {/* Mobile CTA */}
         <div className="sm:hidden mt-6">
           <Link href="/schedule" className="btn-primary w-full flex items-center justify-center gap-2">
-            <Calendar className="h-4 w-4" />
-            Reserve Nights
+            <Moon className="h-4 w-4" />
+            Book Overnight Care
           </Link>
         </div>
       </div>

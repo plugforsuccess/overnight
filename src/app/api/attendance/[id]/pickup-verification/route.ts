@@ -28,11 +28,15 @@ export async function GET(
   // Verify session belongs to parent's child
   const { data: session } = await auth.supabase
     .from('child_attendance_sessions')
-    .select('id, child_id')
+    .select('id, child_id, children!inner(parent_id)')
     .eq('id', sessionId)
     .single();
 
   if (!session) return badRequest('Attendance session not found');
+
+  if ((session as any).children?.parent_id !== auth.parentId) {
+    return unauthorized();
+  }
 
   const { data: verification, error } = await auth.supabase
     .from('pickup_verifications')
@@ -64,11 +68,15 @@ export async function POST(
   // Verify session exists and belongs to parent's child
   const { data: session } = await auth.supabase
     .from('child_attendance_sessions')
-    .select('id, child_id, status')
+    .select('id, child_id, status, children!inner(parent_id)')
     .eq('id', sessionId)
     .single();
 
   if (!session) return badRequest('Attendance session not found');
+
+  if ((session as any).children?.parent_id !== auth.parentId) {
+    return unauthorized();
+  }
 
   if (!['ready_for_pickup', 'checked_out'].includes(session.status)) {
     return badRequest('Pickup verification only allowed for sessions in ready_for_pickup or checked_out status');

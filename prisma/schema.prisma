@@ -32,6 +32,137 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// ─── centers ─────────────────────────────────────────────────────────────────
+// Physical childcare center. Even single-center deployments get one row.
+model Center {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String
+  slug           String   @unique
+  timezone       String   @default("America/New_York")
+  address_line_1 String?
+  city           String?
+  state          String?
+  postal_code    String?
+  is_active      Boolean  @default(true)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  programs          Program[]
+  program_capacities ProgramCapacity[]
+  capacity_overrides CapacityOverride[]
+
+  @@map("centers")
+}
+
+// ─── programs ────────────────────────────────────────────────────────────────
+// A care offering at a center (e.g., "Overnight Care").
+// Pricing is handled separately via plans table.
+model Program {
+  id         String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  center_id  String  @db.Uuid
+  name       String
+  care_type  String  @default("overnight") // CHECK: overnight | daycare | drop_in
+  start_time String  @default("21:00")
+  end_time   String  @default("07:00")
+  age_min_months Int? // minimum age in months
+  age_max_months Int? // maximum age in months
+  is_active  Boolean @default(true)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  center             Center            @relation(fields: [center_id], references: [id], onDelete: Cascade)
+  program_capacities ProgramCapacity[]
+  capacity_overrides CapacityOverride[]
+
+  @@map("programs")
+}
+
+// ─── program_capacity ────────────────────────────────────────────────────────
+// One row per program per date. Source of truth for night-level availability.
+// CHECK: status IN (open, full, closed)
+model ProgramCapacity {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  center_id            String   @db.Uuid
+  program_id           String   @db.Uuid
+  care_date            DateTime @db.Date
+  capacity_total       Int
+  capacity_reserved    Int      @default(0)
+  capacity_waitlisted  Int      @default(0)
+  status               String   @default("open") // CHECK: open | full | closed
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  center            Center            @relation(fields: [center_id], references: [id], onDelete: Cascade)
+  program           Program           @relation(fields: [program_id], references: [id], onDelete: Cascade)
+  reservation_nights ReservationNight[]
+
+  @@unique([program_id, care_date], map: "program_capacity_program_date_unique")
+  @@index([care_date, status], map: "idx_program_capacity_date_status")
+  @@map("program_capacity")
+}
+
+// ─── capacity_overrides ──────────────────────────────────────────────────────
+// Operator-managed per-date overrides for closures and reduced capacity.
+// Partial unique index: one active override per (program_id, care_date).
+// CHECK: override_type IN (closed, reduced_capacity, reopened)
+// CHECK: reason_code IN (holiday, staff_shortage, weather, facility_issue, emergency_closure, low_demand, maintenance, other)
+model CapacityOverride {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  center_id          String    @db.Uuid
+  program_id         String    @db.Uuid
+  care_date          DateTime  @db.Date
+  override_type      String    // closed | reduced_capacity | reopened
+  capacity_override  Int?
+  reason_code        String    // holiday | staff_shortage | weather | facility_issue | emergency_closure | low_demand | maintenance | other
+  reason_text        String?
+  is_active          Boolean   @default(true)
+  created_by_user_id String    @db.Uuid
+  updated_by_user_id String?   @db.Uuid
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  center Center @relation(fields: [center_id], references: [id], onDelete: Cascade)
+  program Program @relation(fields: [program_id], references: [id], onDelete: Cascade)
+  events  CapacityOverrideEvent[]
+
+  @@index([center_id, care_date], map: "idx_capacity_overrides_center_date")
+  @@index([program_id, care_date], map: "idx_capacity_overrides_program_date")
+  @@index([is_active, care_date], map: "idx_capacity_overrides_active")
+  @@index([created_by_user_id], map: "idx_capacity_overrides_created_by")
+  @@map("capacity_overrides")
+}
+
+// ─── capacity_override_events ────────────────────────────────────────────────
+// Immutable audit trail for closure/reduction operator actions.
+model CapacityOverrideEvent {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  capacity_override_id  String   @db.Uuid
+  center_id             String   @db.Uuid
+  program_id            String   @db.Uuid
+  care_date             DateTime @db.Date
+  actor_user_id         String   @db.Uuid
+  event_type            String
+  event_at              DateTime @default(now()) @db.Timestamptz(6)
+  metadata              Json     @default("{}") @db.JsonB
+
+  // Relations
+  capacity_override CapacityOverride @relation(fields: [capacity_override_id], references: [id], onDelete: Cascade)
+
+  @@index([capacity_override_id, event_at], map: "idx_override_events_override")
+  @@index([center_id, care_date], map: "idx_override_events_center_date")
+  @@index([event_type, event_at], map: "idx_override_events_type")
+  @@index([actor_user_id], map: "idx_override_events_actor")
+  @@map("capacity_override_events")
+}
+
 // ─── parents ──────────────────────────────────────────────────────────────────
 // parents.id is set to auth.users.id by the handle_new_user() trigger.
 // No default — ID comes from Supabase Auth, not auto-generated.
@@ -63,6 +194,7 @@ model Parent {
   pickup_verifications PickupEvent[] @relation("pickup_verifier")
   settings        ParentSettings?
   staff_memberships CenterStaffMembership[]
+  billing_ledger    BillingLedger[]
 
   @@map("parents")
 }
@@ -102,6 +234,8 @@ model Child {
   events                ChildEvent[]
   attendance_sessions   ChildAttendanceSession[]
   incident_reports      IncidentReport[]
+  reservation_nights    ReservationNight[]
+  billing_ledger        BillingLedger[]
 
   @@index([parent_id], map: "idx_children_parent_id")
   @@map("children")
@@ -434,6 +568,7 @@ model OvernightBlock {
   payment_status           String  @default("pending")
   stripe_subscription_id   String?
   stripe_invoice_id        String?
+  caregiver_notes          String?  // Parent-provided care instructions (max 500 chars)
   archived_at              DateTime? @db.Timestamptz(6)
 
   created_at DateTime @default(now()) @db.Timestamptz(6)
@@ -472,8 +607,9 @@ model Reservation {
   // Relations
   child               Child                    @relation(fields: [child_id], references: [id], onDelete: Cascade)
   overnight_block     OvernightBlock           @relation(fields: [overnight_block_id], references: [id], onDelete: Cascade)
-  attendance_sessions ChildAttendanceSession[]
-  reservation_events  ReservationEvent[]
+  attendance_sessions  ChildAttendanceSession[]
+  reservation_events   ReservationEvent[]
+  reservation_nights   ReservationNight[]
 
   @@index([date], map: "idx_reservations_date")
   @@index([overnight_block_id], map: "idx_reservations_block")
@@ -542,6 +678,34 @@ model Payment {
   @@index([parent_id], map: "idx_payments_parent_id")
   @@index([status], map: "idx_payments_status")
   @@map("payments")
+}
+
+// ─── billing_ledger ──────────────────────────────────────────────────────────
+// Canonical per-night billing line items for revenue tracking.
+model BillingLedger {
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parent_id                String    @db.Uuid
+  reservation_night_id     String?   @db.Uuid
+  child_id                 String?   @db.Uuid
+  amount_cents             Int       @default(0)
+  status                   String    @default("pending") // pending, paid, failed, refunded, comped
+  payment_provider         String?   @default("stripe")
+  stripe_payment_intent_id String?
+  description              String?
+  care_date                DateTime? @db.Date
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  parent           Parent           @relation(fields: [parent_id], references: [id], onDelete: Cascade)
+  reservation_night ReservationNight? @relation(fields: [reservation_night_id], references: [id], onDelete: SetNull)
+  child            Child?           @relation(fields: [child_id], references: [id], onDelete: SetNull)
+
+  @@index([parent_id], map: "idx_billing_ledger_parent")
+  @@index([status], map: "idx_billing_ledger_status")
+  @@index([care_date], map: "idx_billing_ledger_care_date")
+  @@index([reservation_night_id], map: "idx_billing_ledger_night")
+  @@map("billing_ledger")
 }
 
 // ─── admin_settings ──────────────────────────────────────────────────────────
@@ -743,6 +907,36 @@ model BillingEvent {
   @@map("billing_events")
 }
 
+// ─── reservation_nights ──────────────────────────────────────────────────────
+// Per-night booking records linked to a reservation, child, and program capacity.
+// Each row represents one booked night. Links to program_capacity for availability tracking.
+// CHECK: status IN (pending, confirmed, cancelled, completed, waitlisted, no_show)
+model ReservationNight {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_id       String   @db.Uuid
+  child_id             String   @db.Uuid
+  program_capacity_id  String?  @db.Uuid
+  care_date            DateTime @db.Date
+  status               String   @default("pending") // CHECK: pending | confirmed | cancelled | completed | waitlisted | no_show
+  capacity_snapshot    Int
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  reservation      Reservation      @relation(fields: [reservation_id], references: [id], onDelete: Cascade)
+  child            Child            @relation(fields: [child_id], references: [id], onDelete: Cascade)
+  program_capacity ProgramCapacity? @relation(fields: [program_capacity_id], references: [id], onDelete: SetNull)
+  attendance_record AttendanceRecord?
+  billing_ledger    BillingLedger[]
+
+  @@unique([reservation_id, care_date], map: "reservation_nights_reservation_date_unique")
+  @@unique([child_id, care_date], map: "reservation_nights_child_date_unique")
+  @@index([reservation_id], map: "idx_reservation_nights_reservation")
+  @@index([care_date], map: "idx_reservation_nights_date")
+  @@map("reservation_nights")
+}
+
 // ─── idempotency_keys ────────────────────────────────────────────────────────
 // Stores idempotency keys for critical POST/PATCH APIs.
 // Keys expire after 24 hours. Clients send Idempotency-Key header;
@@ -760,4 +954,140 @@ model IdempotencyKey {
   @@index([expires_at], map: "idx_idempotency_keys_expires")
   @@index([user_id], map: "idx_idempotency_keys_user")
   @@map("idempotency_keys")
+}
+
+// ─── attendance_records ─────────────────────────────────────────────────────
+// Canonical attendance state for a single child on a single reserved night.
+// One-to-one with reservation_nights. Tracks check-in, check-out, pickup
+// verification, no-show, and late arrival. All mutations emit attendance_events.
+model AttendanceRecord {
+  id                         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_night_id       String    @unique @db.Uuid
+  center_id                  String?   @db.Uuid
+  child_id                   String    @db.Uuid
+  parent_id                  String    @db.Uuid
+  care_date                  DateTime  @db.Date
+
+  // CHECK: expected | checked_in | checked_out | no_show | cancelled
+  attendance_status          String    @default("expected")
+
+  // Check-in fields
+  expected_arrival_at        DateTime? @db.Timestamptz(6)
+  checked_in_at              DateTime? @db.Timestamptz(6)
+  checked_in_by_user_id      String?   @db.Uuid
+  check_in_method            String?   // staff_manual | parent_acknowledged | system | override
+  arrival_notes              String?
+
+  // Check-out / pickup fields
+  expected_departure_at      DateTime? @db.Timestamptz(6)
+  checked_out_at             DateTime? @db.Timestamptz(6)
+  checked_out_by_user_id     String?   @db.Uuid
+  check_out_method           String?   // staff_manual | parent_acknowledged | system | override
+  checked_out_to_pickup_id   String?   @db.Uuid
+  pickup_verification_status String?   // not_applicable | pending | verified | failed | manual_override
+  departure_notes            String?
+
+  // No-show fields
+  no_show_marked_at          DateTime? @db.Timestamptz(6)
+  no_show_marked_by_user_id  String?   @db.Uuid
+
+  // Exception tracking
+  cancellation_after_cutoff  Boolean   @default(false)
+  late_arrival_minutes       Int       @default(0)
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  // Relations
+  reservation_night ReservationNight @relation(fields: [reservation_night_id], references: [id], onDelete: Cascade)
+  events            AttendanceEvent[]
+
+  @@index([center_id, care_date], map: "idx_attendance_records_center_date")
+  @@index([child_id, care_date], map: "idx_attendance_records_child_date")
+  @@index([attendance_status, care_date], map: "idx_attendance_records_status_date")
+  @@index([parent_id], map: "idx_attendance_records_parent")
+  @@map("attendance_records")
+}
+
+// ─── attendance_events ──────────────────────────────────────────────────────
+// Immutable event log for attendance actions. Never update or delete rows.
+// Provides full audit trail for check-in, check-out, no-show, corrections.
+model AttendanceEvent {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  attendance_record_id String   @db.Uuid
+  reservation_night_id String   @db.Uuid
+  center_id            String?  @db.Uuid
+  child_id             String   @db.Uuid
+  actor_user_id        String?  @db.Uuid
+
+  // Event types: attendance_record_created | child_checked_in | late_arrival_recorded
+  //   | child_checked_out | pickup_verified | pickup_verification_failed
+  //   | no_show_marked | attendance_status_corrected | attendance_cancelled
+  event_type           String
+  event_at             DateTime @default(now()) @db.Timestamptz(6)
+  metadata             Json     @default("{}") @db.JsonB
+
+  // Relations
+  attendance_record AttendanceRecord @relation(fields: [attendance_record_id], references: [id], onDelete: Cascade)
+
+  @@index([attendance_record_id, event_at], map: "idx_attendance_events_record")
+  @@index([reservation_night_id, event_at], map: "idx_attendance_events_night")
+  @@index([center_id, event_at], map: "idx_attendance_events_center")
+  @@index([event_type, event_at], map: "idx_attendance_events_type")
+  @@map("attendance_events")
+}
+
+// ─── health_check_runs ───────────────────────────────────────────────────────
+// Tracks executions of reconciliation sweeps.
+// CHECK: run_type IN (manual, scheduled, startup, repair_followup)
+// CHECK: status IN (running, completed, failed)
+model HealthCheckRun {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  run_type              String    // manual | scheduled | startup | repair_followup
+  started_at            DateTime  @default(now()) @db.Timestamptz(6)
+  completed_at          DateTime? @db.Timestamptz(6)
+  status                String    @default("running") // running | completed | failed
+  triggered_by_user_id  String?   @db.Uuid
+  summary               Json      @default("{}") @db.JsonB
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  // Relations
+  issues HealthIssue[]
+
+  @@index([status, started_at], map: "idx_health_runs_status")
+  @@index([triggered_by_user_id], map: "idx_health_runs_user")
+  @@map("health_check_runs")
+}
+
+// ─── health_issues ───────────────────────────────────────────────────────────
+// Stores current and historical detected integrity issues.
+// CHECK: severity IN (critical, warning, info)
+// CHECK: status IN (open, reviewed, resolved, ignored)
+model HealthIssue {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  health_check_run_id   String    @db.Uuid
+  issue_type            String
+  severity              String    // critical | warning | info
+  status                String    @default("open") // open | reviewed | resolved | ignored
+  center_id             String?   @db.Uuid
+  program_id            String?   @db.Uuid
+  care_date             DateTime? @db.Date
+  reservation_night_id  String?   @db.Uuid
+  attendance_record_id  String?   @db.Uuid
+  child_id              String?   @db.Uuid
+  metadata              Json      @default("{}") @db.JsonB
+  detected_at           DateTime  @default(now()) @db.Timestamptz(6)
+  resolved_at           DateTime? @db.Timestamptz(6)
+  resolved_by_user_id   String?   @db.Uuid
+  resolution_notes      String?
+
+  // Relations
+  health_check_run HealthCheckRun @relation(fields: [health_check_run_id], references: [id], onDelete: Cascade)
+
+  @@index([health_check_run_id], map: "idx_health_issues_run")
+  @@index([severity, status], map: "idx_health_issues_severity_status")
+  @@index([issue_type, status], map: "idx_health_issues_type")
+  @@index([care_date], map: "idx_health_issues_date")
+  @@map("health_issues")
 }

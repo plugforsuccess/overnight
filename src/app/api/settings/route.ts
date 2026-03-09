@@ -117,7 +117,7 @@ export async function PATCH(req: NextRequest) {
       const parsed = profileSchema.safeParse(data);
       if (!parsed.success) {
         return NextResponse.json({
-          error: parsed.error.errors.map((e: { message: string }) => e.message).join(', '),
+          error: parsed.error.issues.map((e: { message: string }) => e.message).join(', '),
         }, { status: 400 });
       }
 
@@ -148,7 +148,7 @@ export async function PATCH(req: NextRequest) {
       const parsed = passwordSchema.safeParse(data);
       if (!parsed.success) {
         return NextResponse.json({
-          error: parsed.error.errors.map((e: { message: string }) => e.message).join(', '),
+          error: parsed.error.issues.map((e: { message: string }) => e.message).join(', '),
         }, { status: 400 });
       }
 
@@ -171,7 +171,7 @@ export async function PATCH(req: NextRequest) {
       const parsed = notificationSchema.safeParse(data);
       if (!parsed.success) {
         return NextResponse.json({
-          error: parsed.error.errors.map((e: { message: string }) => e.message).join(', '),
+          error: parsed.error.issues.map((e: { message: string }) => e.message).join(', '),
         }, { status: 400 });
       }
 
@@ -197,7 +197,7 @@ export async function PATCH(req: NextRequest) {
       const parsed = safetySchema.safeParse(data);
       if (!parsed.success) {
         return NextResponse.json({
-          error: parsed.error.errors.map((e: { message: string }) => e.message).join(', '),
+          error: parsed.error.issues.map((e: { message: string }) => e.message).join(', '),
         }, { status: 400 });
       }
 
@@ -223,7 +223,7 @@ export async function PATCH(req: NextRequest) {
       const parsed = preferencesSchema.safeParse(data);
       if (!parsed.success) {
         return NextResponse.json({
-          error: parsed.error.errors.map((e: { message: string }) => e.message).join(', '),
+          error: parsed.error.issues.map((e: { message: string }) => e.message).join(', '),
         }, { status: 400 });
       }
 

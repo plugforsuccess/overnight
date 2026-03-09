@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Calendar, Users, Phone, Shield } from 'lucide-react';
+import { Moon, Users, Phone, Shield } from 'lucide-react';
 
 interface Props {
   hasChildren: boolean;
@@ -9,9 +9,9 @@ interface Props {
 
 const actions = [
   {
-    label: 'Reserve Nights',
+    label: 'Book Overnight Care',
     href: '/schedule',
-    icon: Calendar,
+    icon: Moon,
     primary: true,
   },
   {

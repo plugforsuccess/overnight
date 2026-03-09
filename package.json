@@ -20,7 +20,11 @@
     "prisma:pull": "prisma db pull",
     "prisma:studio": "prisma studio",
     "prisma:validate": "prisma validate",
-    "test": "NODE_ENV=test jest --forceExit --detectOpenHandles"
+    "test": "NODE_ENV=test jest --forceExit --detectOpenHandles",
+    "audit:routes": "npx tsx scripts/audit-route-hardening.ts",
+    "preflight": "npx tsx scripts/preflight-production-check.ts",
+    "ops:capacity-check": "npx tsx scripts/ops-capacity-check.ts",
+    "smoke-test": "npx tsx scripts/smoke-test.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",

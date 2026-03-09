@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSupabaseMiddlewareClient } from '@/lib/supabase-middleware';
 
-const PROTECTED_ROUTES = ['/dashboard', '/schedule', '/account'];
+const PROTECTED_ROUTES = ['/dashboard', '/schedule', '/admin'];
 const AUTH_ROUTES = ['/login', '/signup'];
 
 const SECURITY_HEADERS = {

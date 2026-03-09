@@ -2,16 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Calendar, Users, CreditCard, Clock, AlertCircle, Check, Shield } from 'lucide-react';
+import { Calendar, Users, CreditCard, Clock, AlertCircle, Check, Shield, Moon } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { formatCents } from '@/lib/constants';
 import type { DashboardData } from '@/types/dashboard';
 
-import { ChildSnapshotCard } from '@/components/dashboard/ChildSnapshotCard';
 import { NextReservationCard } from '@/components/dashboard/NextReservationCard';
+import { BookOvernightCTA } from '@/components/dashboard/BookOvernightCTA';
+import { UpcomingWeekCard } from '@/components/dashboard/UpcomingWeekCard';
 import { QuickActions } from '@/components/dashboard/QuickActions';
 import { TodoAlertsFeed } from '@/components/dashboard/TodoAlertsFeed';
 import { BillingSummaryCard } from '@/components/dashboard/BillingSummaryCard';
+import { ChildSafetyCard } from '@/components/ui/ChildSafetyCard';
+import { SafetyChipRow } from '@/components/ui/SafetyChipRow';
+import { NotificationBannerStack } from '@/components/ui/NotificationBanner';
 
 /**
  * Dashboard page — client component for interactivity.
@@ -87,7 +91,7 @@ export default function DashboardPage() {
   // Loading state with skeleton cards
   if (loading) {
     return (
-      <div className="py-12">
+      <div className="py-8 sm:py-12">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Header skeleton */}
           <div className="mb-8">
@@ -95,29 +99,15 @@ export default function DashboardPage() {
             <div className="h-5 bg-gray-100 rounded w-48 animate-pulse" />
           </div>
 
-          {/* Stats skeleton */}
-          <div className="grid sm:grid-cols-4 gap-4 mb-8">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="card animate-pulse">
-                <div className="flex items-center gap-3">
-                  <div className="h-8 w-8 bg-gray-200 rounded" />
-                  <div>
-                    <div className="h-6 w-12 bg-gray-200 rounded mb-1" />
-                    <div className="h-4 w-24 bg-gray-100 rounded" />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Row A skeleton */}
-          <div className="grid lg:grid-cols-2 gap-6 mb-8">
+          {/* Hero 3-card skeleton */}
+          <div className="grid lg:grid-cols-3 gap-4 mb-8">
             <div className="card animate-pulse h-48" />
             <div className="card animate-pulse h-48" />
+            <div className="rounded-xl bg-navy-800 animate-pulse h-48" />
           </div>
 
           {/* Quick actions skeleton */}
-          <div className="grid grid-cols-4 gap-3 mb-8">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
             {[1, 2, 3, 4].map(i => (
               <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse" />
             ))}
@@ -142,33 +132,30 @@ export default function DashboardPage() {
 
   if (!data) return null;
 
-  const { profile, children, nextReservation, subscriptions, weeklyTotalCents, upcomingReservationsCount, waitlistCount, profileCompleteness } = data;
-  const selectedChild = children.find(c => c.id === selectedChildId) || children[0] || null;
+  const { profile, children, nextReservation, upcomingNights, subscriptions, notifications = [], weeklyTotalCents, upcomingReservationsCount, waitlistCount, profileCompleteness } = data;
+  const selectedChild = children.find((c: typeof children[0]) => c.id === selectedChildId) || children[0] || null;
   const hasChildren = children.length > 0;
 
   // Check if reservation should be blocked (missing safety info)
-  // Emergency contacts + medical acknowledgement required
   const canReserve = selectedChild
     ? selectedChild.emergency_contacts_count >= 1 && selectedChild.has_medical_profile
     : false;
 
-  const isOnboardingComplete = profile.onboarding_status === 'complete';
-
   // Profile completion checklist items
   const checklistItems = hasChildren ? [
     { label: 'Child profile added', done: true, href: '/dashboard/children' },
-    { label: 'Medical acknowledgement', done: children.some(c => c.has_medical_profile), href: '/dashboard/children' },
-    { label: 'Emergency contact added', done: children.some(c => c.emergency_contacts_count > 0), href: '/dashboard/children' },
-    { label: 'Authorized pickup added', done: children.some(c => c.authorized_pickups_count > 0), href: '/dashboard/children' },
+    { label: 'Medical acknowledgement', done: children.some((c: typeof children[0]) => c.has_medical_profile), href: '/dashboard/children' },
+    { label: 'Emergency contact added', done: children.some((c: typeof children[0]) => c.emergency_contacts_count > 0), href: '/dashboard/children' },
+    { label: 'Authorized pickup added', done: children.some((c: typeof children[0]) => c.authorized_pickups_count > 0), href: '/dashboard/children' },
   ] : [];
 
   return (
-    <div className="py-12">
+    <div className="py-8 sm:py-12">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header with personalization */}
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-8">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
               Welcome back, {profile.first_name}
             </h1>
             <p className="text-gray-500 text-sm mt-1">
@@ -187,7 +174,7 @@ export default function DashboardPage() {
                 onChange={(e) => setSelectedChildId(e.target.value)}
                 className="input-field pr-8 text-sm font-medium min-w-[180px]"
               >
-                {children.map(child => (
+                {children.map((child: typeof children[0]) => (
                   <option key={child.id} value={child.id}>
                     {child.first_name} {child.last_name}
                   </option>
@@ -199,7 +186,7 @@ export default function DashboardPage() {
 
         {/* Profile Completion Banner */}
         {hasChildren && profileCompleteness < 100 && (
-          <div className="card mb-8 border-l-4 border-l-accent-500">
+          <div className="card mb-6 border-l-4 border-l-accent-500">
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
@@ -236,37 +223,12 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Quick Stats */}
-        <div className="grid sm:grid-cols-4 gap-4 mb-8">
-          <div className="card flex items-center gap-3">
-            <Calendar className="h-8 w-8 text-navy-700" />
-            <div>
-              <div className="text-2xl font-bold">{upcomingReservationsCount}</div>
-              <div className="text-sm text-gray-500">Upcoming Nights</div>
-            </div>
+        {/* Notification banners */}
+        {notifications.length > 0 && (
+          <div className="mb-6">
+            <NotificationBannerStack notifications={notifications} />
           </div>
-          <div className="card flex items-center gap-3">
-            <Users className="h-8 w-8 text-accent-600" />
-            <div>
-              <div className="text-2xl font-bold">{children.length}</div>
-              <div className="text-sm text-gray-500">Children</div>
-            </div>
-          </div>
-          <div className="card flex items-center gap-3">
-            <CreditCard className="h-8 w-8 text-green-600" />
-            <div>
-              <div className="text-2xl font-bold">{formatCents(weeklyTotalCents)}</div>
-              <div className="text-sm text-gray-500">Weekly Total</div>
-            </div>
-          </div>
-          <div className="card flex items-center gap-3">
-            <Clock className="h-8 w-8 text-yellow-600" />
-            <div>
-              <div className="text-2xl font-bold">{waitlistCount}</div>
-              <div className="text-sm text-gray-500">On Waitlist</div>
-            </div>
-          </div>
-        </div>
+        )}
 
         {/* Empty state for new parents */}
         {!hasChildren && (
@@ -298,51 +260,119 @@ export default function DashboardPage() {
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="h-5 w-5 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-xs font-bold">4</span>
-                  Reserve nights
+                  Book overnight care
                 </li>
               </ol>
             </div>
           </div>
         )}
 
-        {/* Row A — Child Snapshot + Next Reservation */}
-        {hasChildren && selectedChild && (
-          <div className="grid lg:grid-cols-2 gap-6 mb-8">
-            <ChildSnapshotCard child={selectedChild} />
+        {/* ── Hero Row: 3-card Brightwheel-style layout ── */}
+        {hasChildren && (
+          <div className="grid lg:grid-cols-3 gap-4 mb-6">
+            {/* Card 1: Next Overnight (hero) */}
             <NextReservationCard reservation={nextReservation} />
-          </div>
-        )}
 
-        {/* Row B — Quick Actions */}
-        {hasChildren && (
-          <div className="mb-8">
-            <QuickActions hasChildren={hasChildren} />
-            {!canReserve && selectedChild && (
-              <div className="mt-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800 flex items-start gap-2">
-                <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                <span>
-                  Reservations require{' '}
-                  {selectedChild.emergency_contacts_count < 1 && 'at least 1 emergency contact'}
-                  {selectedChild.emergency_contacts_count < 1 && !selectedChild.has_medical_profile && ' and '}
-                  {!selectedChild.has_medical_profile && 'medical safety acknowledgement'}
-                  {' '}for {selectedChild.first_name}.{' '}
-                  <Link href="/dashboard/children" className="font-medium underline">Complete profile</Link>
-                </span>
+            {/* Card 2: Quick Stats */}
+            <div className="card">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="h-10 w-10 rounded-xl bg-navy-50 flex items-center justify-center">
+                  <Calendar className="h-5 w-5 text-navy-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900">At a Glance</h3>
               </div>
-            )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <div className="text-2xl font-bold text-navy-800">{upcomingReservationsCount}</div>
+                  <div className="text-xs text-gray-500">Upcoming</div>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <div className="text-2xl font-bold text-navy-800">{children.length}</div>
+                  <div className="text-xs text-gray-500">Children</div>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <div className="text-2xl font-bold text-green-700">{formatCents(weeklyTotalCents)}</div>
+                  <div className="text-xs text-gray-500">Weekly</div>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <div className="text-2xl font-bold text-amber-600">{waitlistCount}</div>
+                  <div className="text-xs text-gray-500">Waitlisted</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 3: Book Overnight Care CTA */}
+            <BookOvernightCTA
+              canReserve={canReserve}
+              childName={!canReserve && selectedChild ? selectedChild.first_name : undefined}
+            />
           </div>
         )}
 
-        {/* Row C — To-do / Alerts Feed */}
+        {/* Safety warning if can't reserve */}
+        {hasChildren && !canReserve && selectedChild && (
+          <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800 flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <span>
+              Reservations require{' '}
+              {selectedChild.emergency_contacts_count < 1 && 'at least 1 emergency contact'}
+              {selectedChild.emergency_contacts_count < 1 && !selectedChild.has_medical_profile && ' and '}
+              {!selectedChild.has_medical_profile && 'medical safety acknowledgement'}
+              {' '}for {selectedChild.first_name}.{' '}
+              <Link href="/dashboard/children" className="font-medium underline">Complete profile</Link>
+            </span>
+          </div>
+        )}
+
+        {/* ── Safety chips ── */}
+        {hasChildren && selectedChild && (
+          <div className="mb-4">
+            <SafetyChipRow
+              emergencyContactsCount={selectedChild.emergency_contacts_count}
+              authorizedPickupsCount={selectedChild.authorized_pickups_count}
+              hasMedicalProfile={selectedChild.has_medical_profile}
+              hasAllergyInfo={selectedChild.allergies.length > 0}
+            />
+          </div>
+        )}
+
+        {/* ── Row B: Upcoming Nights (grouped by week) + Child Safety Card ── */}
+        {hasChildren && selectedChild && (
+          <div className="grid lg:grid-cols-2 gap-4 mb-6">
+            <UpcomingWeekCard nights={upcomingNights || []} />
+            <ChildSafetyCard
+              child={{
+                id: selectedChild.id,
+                first_name: selectedChild.first_name,
+                last_name: selectedChild.last_name,
+                date_of_birth: selectedChild.date_of_birth,
+                allergies: selectedChild.allergies,
+                emergency_contacts_count: selectedChild.emergency_contacts_count,
+                authorized_pickups_count: selectedChild.authorized_pickups_count,
+                has_medical_profile: selectedChild.has_medical_profile,
+                has_medical_notes: selectedChild.has_medical_notes,
+              }}
+            />
+          </div>
+        )}
+
+        {/* ── Row C: Quick Actions ── */}
         {hasChildren && (
-          <div className="mb-8">
+          <div className="mb-6">
+            <QuickActions hasChildren={hasChildren} />
+          </div>
+        )}
+
+        {/* ── Row D: To-do / Alerts Feed ── */}
+        {hasChildren && (
+          <div className="mb-6">
             <TodoAlertsFeed childrenList={children} />
           </div>
         )}
 
-        {/* Row D — Billing + Plan */}
+        {/* ── Row E: Billing + Plan ── */}
         {hasChildren && (
-          <div className="mb-8">
+          <div className="mb-6">
             <BillingSummaryCard
               subscriptions={subscriptions}
               weeklyTotalCents={weeklyTotalCents}
@@ -351,27 +381,27 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* Row E — Navigation Links */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
-          <Link href="/dashboard/children" className="card hover:shadow-md transition-shadow text-center">
+        {/* ── Row F: Navigation Links ── */}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+          <Link href="/dashboard/children" className="card hover:shadow-soft-md transition-shadow text-center">
             <Users className="h-8 w-8 text-navy-700 mx-auto mb-2" />
             <div className="font-semibold">Manage Children</div>
             <div className="text-sm text-gray-500">Add/edit child profiles</div>
           </Link>
-          <Link href="/dashboard/reservations" className="card hover:shadow-md transition-shadow text-center">
+          <Link href="/dashboard/reservations" className="card hover:shadow-soft-md transition-shadow text-center">
             <Calendar className="h-8 w-8 text-navy-700 mx-auto mb-2" />
             <div className="font-semibold">Reservations</div>
-            <div className="text-sm text-gray-500">View bookings & history</div>
+            <div className="text-sm text-gray-500">View bookings &amp; history</div>
           </Link>
-          <Link href="/dashboard/payments" className="card hover:shadow-md transition-shadow text-center">
+          <Link href="/dashboard/payments" className="card hover:shadow-soft-md transition-shadow text-center">
             <CreditCard className="h-8 w-8 text-navy-700 mx-auto mb-2" />
             <div className="font-semibold">Payment History</div>
-            <div className="text-sm text-gray-500">View invoices & payments</div>
+            <div className="text-sm text-gray-500">View invoices &amp; payments</div>
           </Link>
-          <Link href="/schedule" className="card hover:shadow-md transition-shadow text-center">
-            <Calendar className="h-8 w-8 text-navy-700 mx-auto mb-2" />
-            <div className="font-semibold">Reserve Nights</div>
-            <div className="text-sm text-gray-500">Book for next week</div>
+          <Link href="/schedule" className="card hover:shadow-soft-md transition-shadow text-center">
+            <Moon className="h-8 w-8 text-navy-700 mx-auto mb-2" />
+            <div className="font-semibold">Book Overnight Care</div>
+            <div className="text-sm text-gray-500">Select nights on calendar</div>
           </Link>
         </div>
       </div>
