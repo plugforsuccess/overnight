@@ -10,7 +10,7 @@ export interface AuthResult {
   parentId: string;
   /** Role from parents table (e.g. 'parent' | 'admin') */
   role: string;
-  /** Whether user has admin privileges (role='admin' OR is_admin=true) */
+  /** Whether user has admin privileges (role='admin') */
   isAdmin: boolean;
 }
 
@@ -35,7 +35,7 @@ export async function authenticateRequest(req: NextRequest): Promise<AuthResult 
   // Verify the parent row exists and fetch role info
   const { data: parentRow, error: parentError } = await supabaseAdmin
     .from('parents')
-    .select('id, role, is_admin')
+    .select('id, role')
     .eq('id', user.id)
     .single();
 
@@ -43,7 +43,7 @@ export async function authenticateRequest(req: NextRequest): Promise<AuthResult 
   if (!parentRow) return null;
 
   const role = parentRow.role ?? 'parent';
-  const isAdmin = role === 'admin' || parentRow.is_admin === true;
+  const isAdmin = role === 'admin';
 
   return { supabase, userId: user.id, parentId: user.id, role, isAdmin };
 }

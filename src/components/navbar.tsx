@@ -14,7 +14,6 @@ interface UserProfile {
   last_name: string;
   email: string;
   role?: string;
-  is_admin?: boolean;
 }
 
 export function Navbar() {
@@ -28,7 +27,7 @@ export function Navbar() {
   const loadProfile = useCallback(async (userId: string) => {
     const { data } = await supabase
       .from('parents')
-      .select('first_name, last_name, email, role, is_admin')
+      .select('first_name, last_name, email, role')
       .eq('id', userId)
       .single();
     if (data) setProfile(data);
@@ -85,7 +84,7 @@ export function Navbar() {
   }
 
   const isAuthenticated = !!user && !!profile;
-  const isAdmin = profile?.role === 'admin' || profile?.is_admin === true;
+  const isAdmin = profile?.role === 'admin';
 
   const initials = profile
     ? `${profile.first_name.charAt(0)}${profile.last_name.charAt(0)}`.toUpperCase()

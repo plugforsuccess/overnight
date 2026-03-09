@@ -20,7 +20,6 @@ create table public.parents (
   phone              text,
   address            text,
   role               text not null default 'parent',
-  is_admin           boolean not null default false,
   stripe_customer_id text unique,
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now()

@@ -18,6 +18,7 @@ export interface Parent {
   phone: string | null;
   address: string | null;
   role: string;
+  /** @deprecated Use role === 'admin' instead. Column will be dropped in a future migration. */
   is_admin: boolean;
   stripe_customer_id: string | null;
   created_at: Date;

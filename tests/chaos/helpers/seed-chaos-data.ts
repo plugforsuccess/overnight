@@ -137,7 +137,6 @@ export async function seedChaosScenario(opts: {
         last_name: suffix,
         email,
         role: 'parent',
-        is_admin: false,
         onboarding_status: 'complete',
       })
       .select('id')

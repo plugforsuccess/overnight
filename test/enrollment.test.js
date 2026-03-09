@@ -30,8 +30,8 @@ beforeEach(async () => {
   child3Id = crypto.randomUUID();
 
   await db('parents').insert([
-    { id: parentId, name: 'Alice', email: 'alice@test.com', phone: '+1111', is_admin: false },
-    { id: parent2Id, name: 'Bob', email: 'bob@test.com', phone: '+2222', is_admin: false },
+    { id: parentId, name: 'Alice', email: 'alice@test.com', phone: '+1111', role: 'parent' },
+    { id: parent2Id, name: 'Bob', email: 'bob@test.com', phone: '+2222', role: 'parent' },
   ]);
   await db('children').insert([
     { id: childId, parent_id: parentId, name: 'Charlie' },

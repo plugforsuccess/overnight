@@ -81,8 +81,9 @@ const AUTH_PAGE_PATHS = ['/login', '/signup'];
 // Patterns to detect auth mechanisms
 const ADMIN_AUTH_PATTERNS = [
   /checkAdmin\s*\(/,
+  /checkAdminId\s*\(/,
+  /checkStaffOrAdmin\s*\(/,
   /requireAdmin\s*\(/,
-  /is_admin/,
   /role\s*!==\s*['"]admin['"]/,
   /role\s*===\s*['"]admin['"]/,
   /parent\.role/,
@@ -297,7 +298,7 @@ function checkNamespaceCorrectness(route: RouteInfo, findings: Finding[]) {
   // Admin-like route outside admin namespace
   if (routeType !== 'admin_api' && routeType !== 'admin_page') {
     const hasAdminAuth = matchesAny(content, [/checkAdmin\s*\(/, /requireAdmin\s*\(/]);
-    const hasInlineAdminCheck = /role\s*!==\s*['"]admin['"]/.test(content) && /is_admin/.test(content);
+    const hasInlineAdminCheck = /role\s*!==\s*['"]admin['"]/.test(content) || /role\s*===\s*['"]admin['"]/.test(content);
 
     if (hasAdminAuth) {
       findings.push({
@@ -318,7 +319,7 @@ function checkNamespaceCorrectness(route: RouteInfo, findings: Finding[]) {
         severity: 'warning',
         issueType: 'inline_admin_auth',
         summary: `Route has inline admin auth check instead of using checkAdmin() helper.`,
-        evidence: ['Inline role/is_admin check found', `Route path: ${routePath}`],
+        evidence: ['Inline role check found', `Route path: ${routePath}`],
         recommendedFix: 'Refactor to use checkAdmin() and consider moving under /api/admin/* namespace.',
       });
     }
@@ -354,7 +355,7 @@ function checkAuthGuard(route: RouteInfo, findings: Finding[]) {
         severity: 'critical',
         issueType: 'missing_auth_gate',
         summary: `Admin API route has no detectable admin authentication check.`,
-        evidence: ['No checkAdmin(), requireAdmin(), role/is_admin check found'],
+        evidence: ['No checkAdmin(), requireAdmin(), role check found'],
         recommendedFix: 'Add checkAdmin(req) call at the start of each handler.',
       });
     }
@@ -370,7 +371,7 @@ function checkAuthGuard(route: RouteInfo, findings: Finding[]) {
         severity: 'warning',
         issueType: 'inline_admin_auth',
         summary: `Admin API uses inline auth check instead of shared checkAdmin() helper.`,
-        evidence: ['Inline role/is_admin verification found', 'checkAdmin() import not detected'],
+        evidence: ['Inline role verification found', 'checkAdmin() import not detected'],
         recommendedFix: 'Refactor to use the shared checkAdmin() helper from @/lib/admin-auth for consistency.',
       });
     }

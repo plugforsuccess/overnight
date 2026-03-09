@@ -12,12 +12,14 @@
 | Column     | Type        | Default    | Constraint                    |
 |------------|-------------|------------|-------------------------------|
 | `role`     | VARCHAR(255)| `'parent'` | CHECK `('parent', 'admin')`   |
-| `is_admin` | BOOLEAN     | `false`    | —                             |
 
-Both fields are checked for admin access. A user is considered admin when:
+Admin access is determined by a single canonical check:
 ```
-parent.role === 'admin' OR parent.is_admin === true
+parent.role === 'admin'
 ```
+
+> **Note:** The `is_admin` boolean column has been deprecated and removed via
+> migration `20260309000001_drop_is_admin_column`. All code now uses `role` only.
 
 ### Secondary: `center_staff_memberships` table
 
@@ -162,7 +164,7 @@ Two admin routes (`/api/admin/route.ts`, `/api/admin/pickup-verification/route.t
 | Route | Parent | Staff | Admin | Enforcement |
 |-------|--------|-------|-------|-------------|
 | `/dashboard/*` | Yes | — | Yes (not redirected) | Layout SSR: JWT + parent exists |
-| `/admin/*` | No | No | Yes | Layout SSR: JWT + `role='admin' \|\| is_admin` |
+| `/admin/*` | No | No | Yes | Layout SSR: JWT + `role='admin'` |
 | `/schedule` | Yes | — | Yes | Middleware: JWT only |
 | `/login`, `/signup` | Unauth only | — | Unauth only | Middleware redirect |
 | `/pricing`, `/policies` | Public | Public | Public | No auth |
@@ -224,16 +226,16 @@ Two admin routes (`/api/admin/route.ts`, `/api/admin/pickup-verification/route.t
 
 ## 6. Gaps and Inconsistencies
 
-### GAP-1: Duplicated admin check logic (LOW risk)
+### GAP-1: Duplicated admin check logic — RESOLVED
 **Files:** `src/app/api/admin/route.ts`, `src/app/api/admin/pickup-verification/route.ts`, `src/app/api/admin/waitlist-promote/route.ts`
-**Issue:** These files define local `checkAdmin()`/`verifyAdmin()` functions identical to `src/lib/admin-auth.ts` instead of importing the shared helper.
-**Risk:** If the shared helper is updated (e.g., to add staff support), these routes won't pick up the change.
-**Fix:** Refactor to import from `@/lib/admin-auth`.
+**Issue:** These files defined local `checkAdmin()`/`verifyAdmin()` functions instead of importing the shared helper.
+**Resolution:** Refactored all three routes to import from `@/lib/admin-auth`.
 
-### GAP-2: Dual admin flag (`role` + `is_admin`) (LOW risk)
-**Issue:** Admin status is determined by `role = 'admin' OR is_admin = true`. These can diverge (e.g., `role='parent', is_admin=true`).
-**Risk:** Confusing, could lead to accidental admin grants.
-**Recommendation:** Consolidate to a single `role` field. Deprecate `is_admin` in a future migration when safe.
+### GAP-2: Dual admin flag (`role` + `is_admin`) — RESOLVED
+**Issue:** Admin status was determined by `role = 'admin' OR is_admin = true`, which could diverge.
+**Resolution:** Consolidated to `role = 'admin'` as the single source of truth.
+Migration `20260309000001_drop_is_admin_column` backfills any `is_admin=true` rows
+to `role='admin'` and drops the `is_admin` column.
 
 ### GAP-3: Staff role not enforced (INFO — not a vulnerability)
 **Issue:** `center_staff_memberships` table exists with `staff`, `admin`, `center_admin`, `super_admin` roles, but no middleware, auth helper, or API route reads from it.
@@ -245,9 +247,9 @@ Two admin routes (`/api/admin/route.ts`, `/api/admin/pickup-verification/route.t
 **Risk:** If a new API route is added without calling `authenticateRequest()` or `checkAdmin()`, it's unprotected.
 **Recommendation:** Consider a shared API middleware wrapper or lint rule to catch unprotected routes.
 
-### GAP-5: `authenticateRequest()` does not return role (LOW risk)
-**Issue:** `authenticateRequest()` returns `{ userId, parentId }` but not the user's role. If a parent-facing API ever needs to allow admin override, it must re-query.
-**Recommendation:** Optionally extend `AuthResult` to include `role` and `isAdmin`.
+### GAP-5: `authenticateRequest()` does not return role — RESOLVED
+**Issue:** `authenticateRequest()` returned `{ userId, parentId }` without role info.
+**Resolution:** Extended `AuthResult` to include `role` and `isAdmin` fields.
 
 ### GAP-6: Custom auth patterns in bookings/capacity/stripe (LOW risk)
 **Issue:** These routes use manual auth (`getUserClient()` + `resolveParentId()`) instead of `authenticateRequest()`.
@@ -255,7 +257,7 @@ Two admin routes (`/api/admin/route.ts`, `/api/admin/pickup-verification/route.t
 **Recommendation:** Migrate to `authenticateRequest()` when refactoring.
 
 ### GAP-7: RLS policies don't include staff role (FUTURE risk)
-**Issue:** All admin RLS policies check `role = 'admin' OR is_admin`. When staff is implemented, RLS will need updating.
+**Issue:** All admin RLS policies check `role = 'admin'`. When staff is implemented, RLS will need updating.
 **Recommendation:** When adding staff, update RLS to include `center_staff_memberships` checks for appropriate tables.
 
 ---
@@ -295,15 +297,13 @@ Parents cannot see admin links. Admin sidebar is protected by server-side layout
 
 ## 9. Recommendations
 
-### v1 — Minimal hardening (do now)
+### v1 — Minimal hardening — COMPLETED
 
-1. **Consolidate duplicated admin checks** — Refactor `src/app/api/admin/route.ts`, `pickup-verification/route.ts`, and `waitlist-promote/route.ts` to import `checkAdmin()` from `@/lib/admin-auth`.
-
-2. **Add `checkStaffOrAdmin()` helper** — Create a forward-looking helper in `src/lib/admin-auth.ts` that checks admin status (same as today) but is named to signal future staff inclusion. This is additive and non-breaking.
-
-3. **Extend `AuthResult` with role** — Add `role` and `isAdmin` to the `authenticateRequest()` return type so callers don't need separate lookups.
-
-4. **Add route protection lint/test** — Create a test that scans API route files and verifies they import either `authenticateRequest` or `checkAdmin`.
+1. **Consolidated duplicated admin checks** — All admin routes now import from `@/lib/admin-auth`.
+2. **Added `checkStaffOrAdmin()` helper** — Forward-looking helper in `src/lib/admin-auth.ts`.
+3. **Extended `AuthResult` with role** — `authenticateRequest()` now returns `role` and `isAdmin`.
+4. **Added route protection test** — `test/route-auth-audit.test.js` scans for unprotected routes.
+5. **Consolidated to single role field** — `is_admin` column dropped; `parents.role` is sole source of truth.
 
 ### v2 — Staff support (when needed)
 
@@ -313,21 +313,21 @@ Parents cannot see admin links. Admin sidebar is protected by server-side layout
 4. **Add staff navigation** in sidebar (subset of admin routes)
 5. **Keep `parents.role` as `'parent' | 'admin'`** — staff role is stored in `center_staff_memberships`, not the parent table
 
-### v3 — Schema consolidation (optional, later)
+### v3 — Schema refinement (optional, later)
 
-1. **Deprecate `is_admin`** column — migrate all admins to `role = 'admin'` and remove the boolean
-2. **Consider `role` enum migration** — replace VARCHAR CHECK with a Postgres enum for type safety
-3. **Evaluate `center_staff_memberships` RLS** — consider per-center data scoping when multi-center is active
+1. **Consider `role` enum migration** — replace VARCHAR CHECK with a Postgres enum for type safety
+2. **Evaluate `center_staff_memberships` RLS** — consider per-center data scoping when multi-center is active
 
 ---
 
 ## 10. Conclusion
 
-The current role model is **sound for v1**:
-- Two active roles: `parent` (default) and `admin`
-- Admin access is enforced server-side at multiple layers (middleware, layout, API, RLS)
-- Parent ownership is consistently verified across all parent-facing APIs
+The role model is **hardened and consolidated**:
+- Single canonical role field: `parents.role` (`'parent' | 'admin'`)
+- `is_admin` column removed — no more dual-flag drift risk
+- Admin access enforced server-side at multiple layers (middleware, layout, API, RLS)
+- Parent ownership consistently verified across all parent-facing APIs
 - Staff infrastructure exists in schema but is correctly non-functional (no accidental access)
 - Navigation properly hides admin links from non-admin users
-
-The main improvement areas are code consistency (consolidating duplicated admin checks) and preparing for future staff support with a shared helper pattern.
+- All admin routes use shared `checkAdmin()` helper from `@/lib/admin-auth`
+- Automated route protection test catches unprotected API routes

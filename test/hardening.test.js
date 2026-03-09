@@ -47,8 +47,8 @@ beforeEach(async () => {
   child3Id = crypto.randomUUID();
 
   await db('parents').insert([
-    { id: parentId, name: 'Alice', email: 'alice@h.com', phone: '+1111', is_admin: false },
-    { id: parent2Id, name: 'Bob', email: 'bob@h.com', phone: '+2222', is_admin: false },
+    { id: parentId, name: 'Alice', email: 'alice@h.com', phone: '+1111', role: 'parent' },
+    { id: parent2Id, name: 'Bob', email: 'bob@h.com', phone: '+2222', role: 'parent' },
   ]);
   await db('children').insert([
     { id: childId, parent_id: parentId, name: 'Charlie' },
@@ -112,7 +112,7 @@ describe('Hardening: capacity cannot be oversold', () => {
     for (let i = 0; i < 3; i++) {
       const pId = crypto.randomUUID();
       const cId = crypto.randomUUID();
-      await db('parents').insert({ id: pId, name: `P${i}`, email: `p${i}@h.com`, is_admin: false });
+      await db('parents').insert({ id: pId, name: `P${i}`, email: `p${i}@h.com`, role: 'parent' });
       await db('children').insert({ id: cId, parent_id: pId, name: `C${i}` });
       parents.push(pId);
       children.push(cId);

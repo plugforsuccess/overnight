@@ -378,7 +378,7 @@ CREATE POLICY parents_delete_child_allergies ON public.child_allergies
 DROP POLICY IF EXISTS admins_manage_child_allergies ON public.child_allergies;
 CREATE POLICY admins_manage_child_allergies ON public.child_allergies
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 -- ── child_allergy_action_plans ──────────────────────────────
@@ -425,7 +425,7 @@ CREATE POLICY parents_delete_action_plans ON public.child_allergy_action_plans
 DROP POLICY IF EXISTS admins_manage_action_plans ON public.child_allergy_action_plans;
 CREATE POLICY admins_manage_action_plans ON public.child_allergy_action_plans
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 -- ── child_emergency_contacts ────────────────────────────────
@@ -456,7 +456,7 @@ CREATE POLICY parents_delete_emergency_contacts ON public.child_emergency_contac
 DROP POLICY IF EXISTS admins_manage_emergency_contacts ON public.child_emergency_contacts;
 CREATE POLICY admins_manage_emergency_contacts ON public.child_emergency_contacts
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 -- ── child_authorized_pickups ────────────────────────────────
@@ -487,7 +487,7 @@ CREATE POLICY parents_delete_authorized_pickups ON public.child_authorized_picku
 DROP POLICY IF EXISTS admins_manage_authorized_pickups ON public.child_authorized_pickups;
 CREATE POLICY admins_manage_authorized_pickups ON public.child_authorized_pickups
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 -- ── child_medical_profiles ───────────────────────────────────
@@ -518,7 +518,7 @@ CREATE POLICY parents_delete_medical_profiles ON public.child_medical_profiles
 DROP POLICY IF EXISTS admins_manage_medical_profiles ON public.child_medical_profiles;
 CREATE POLICY admins_manage_medical_profiles ON public.child_medical_profiles
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 -- ── child_events (append-only ledger) ────────────────────────
@@ -539,7 +539,7 @@ CREATE POLICY parents_insert_child_events ON public.child_events
 DROP POLICY IF EXISTS admins_manage_child_events ON public.child_events;
 CREATE POLICY admins_manage_child_events ON public.child_events
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 -- ── child_attendance_sessions ────────────────────────────────
@@ -553,7 +553,7 @@ CREATE POLICY parents_select_attendance ON public.child_attendance_sessions
 DROP POLICY IF EXISTS admins_manage_attendance ON public.child_attendance_sessions;
 CREATE POLICY admins_manage_attendance ON public.child_attendance_sessions
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 -- ── audit_log ────────────────────────────────────────────────
@@ -564,7 +564,7 @@ CREATE POLICY parents_select_own_audit ON public.audit_log
 DROP POLICY IF EXISTS admins_manage_audit ON public.audit_log;
 CREATE POLICY admins_manage_audit ON public.audit_log
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 -- ── pickup_events ────────────────────────────────────────────
@@ -577,7 +577,7 @@ CREATE POLICY parents_select_pickup_events ON public.pickup_events
 DROP POLICY IF EXISTS admins_manage_pickup_events ON public.pickup_events;
 CREATE POLICY admins_manage_pickup_events ON public.pickup_events
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 -- ── onboarding_status check ──────────────────────────────────
@@ -629,7 +629,7 @@ CREATE POLICY parents_select_reservation_events ON public.reservation_events
 DROP POLICY IF EXISTS admins_manage_reservation_events ON public.reservation_events;
 CREATE POLICY admins_manage_reservation_events ON public.reservation_events
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 -- ── incident_reports ─────────────────────────────────────────
@@ -642,7 +642,7 @@ CREATE POLICY parents_select_incident_reports ON public.incident_reports
 DROP POLICY IF EXISTS admins_manage_incident_reports ON public.incident_reports;
 CREATE POLICY admins_manage_incident_reports ON public.incident_reports
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 -- ── center_staff_memberships ─────────────────────────────────
@@ -653,7 +653,7 @@ CREATE POLICY users_select_own_memberships ON public.center_staff_memberships
 DROP POLICY IF EXISTS admins_manage_memberships ON public.center_staff_memberships;
 CREATE POLICY admins_manage_memberships ON public.center_staff_memberships
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 -- ── pickup_verifications ─────────────────────────────────────
@@ -670,7 +670,7 @@ CREATE POLICY parents_select_pickup_verifications ON public.pickup_verifications
 DROP POLICY IF EXISTS admins_manage_pickup_verifications ON public.pickup_verifications;
 CREATE POLICY admins_manage_pickup_verifications ON public.pickup_verifications
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 -- ── incident report constraints ──────────────────────────────
@@ -844,7 +844,7 @@ CREATE POLICY centers_select_authenticated ON public.centers
 DROP POLICY IF EXISTS admins_manage_centers ON public.centers;
 CREATE POLICY admins_manage_centers ON public.centers
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 -- ── programs ──────────────────────────────────────────────────
@@ -857,7 +857,7 @@ CREATE POLICY programs_select_authenticated ON public.programs
 DROP POLICY IF EXISTS admins_manage_programs ON public.programs;
 CREATE POLICY admins_manage_programs ON public.programs
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 ALTER TABLE public.programs DROP CONSTRAINT IF EXISTS chk_programs_care_type;
@@ -876,7 +876,7 @@ CREATE POLICY program_capacity_select_authenticated ON public.program_capacity
 DROP POLICY IF EXISTS admins_manage_program_capacity ON public.program_capacity;
 CREATE POLICY admins_manage_program_capacity ON public.program_capacity
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 ALTER TABLE public.program_capacity DROP CONSTRAINT IF EXISTS chk_program_capacity_status;
@@ -913,7 +913,7 @@ CREATE POLICY parents_select_reservation_nights ON public.reservation_nights
 DROP POLICY IF EXISTS admins_manage_reservation_nights ON public.reservation_nights;
 CREATE POLICY admins_manage_reservation_nights ON public.reservation_nights
   FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND (p.role = 'admin' OR p.is_admin))
+    EXISTS (SELECT 1 FROM public.parents p WHERE p.id = auth.uid() AND p.role = 'admin')
   );
 
 ALTER TABLE public.reservation_nights DROP CONSTRAINT IF EXISTS chk_reservation_nights_status;

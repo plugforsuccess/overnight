@@ -19,7 +19,7 @@ function getUserClient(req: NextRequest) {
  * Verify the request comes from an admin user.
  * Returns the user object if admin, null otherwise.
  *
- * Admin is defined as: parents.role = 'admin' OR parents.is_admin = true
+ * Admin is defined as: parents.role = 'admin'
  */
 export async function checkAdmin(req: NextRequest): Promise<User | null> {
   const supabase = getUserClient(req);
@@ -28,11 +28,11 @@ export async function checkAdmin(req: NextRequest): Promise<User | null> {
 
   const { data: parent } = await supabaseAdmin
     .from('parents')
-    .select('id, role, is_admin')
+    .select('id, role')
     .eq('id', user.id)
     .single();
 
-  if (!parent || (parent.role !== 'admin' && !parent.is_admin)) return null;
+  if (!parent || parent.role !== 'admin') return null;
   return user;
 }
 

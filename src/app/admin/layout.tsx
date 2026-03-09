@@ -7,7 +7,7 @@ import { AdminSidebar } from '@/components/admin-sidebar';
  * Server-side auth gate for all /admin/* routes.
  * Validates:
  * 1. User is authenticated (JWT verification)
- * 2. User has admin role or is_admin flag
+ * 2. User has admin role (parents.role = 'admin')
  *
  * Renders shared admin sidebar navigation.
  */
@@ -25,11 +25,11 @@ export default async function AdminLayout({
 
   const { data: parent } = await supabaseAdmin
     .from('parents')
-    .select('id, role, is_admin')
+    .select('id, role')
     .eq('id', user.id)
     .single();
 
-  if (!parent || (parent.role !== 'admin' && !parent.is_admin)) {
+  if (!parent || parent.role !== 'admin') {
     redirect('/dashboard');
   }
 

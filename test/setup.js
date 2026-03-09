@@ -27,9 +27,9 @@ async function seedTestData(db) {
   const child3Id = crypto.randomUUID();
 
   await db('parents').insert([
-    { id: parentId, name: 'Alice', email: 'alice@test.com', phone: '+1111111111', is_admin: false },
-    { id: parent2Id, name: 'Bob', email: 'bob@test.com', phone: '+2222222222', is_admin: false },
-    { id: adminId, name: 'Admin', email: 'admin@test.com', phone: '+0000000000', is_admin: true },
+    { id: parentId, name: 'Alice', email: 'alice@test.com', phone: '+1111111111', role: 'parent' },
+    { id: parent2Id, name: 'Bob', email: 'bob@test.com', phone: '+2222222222', role: 'parent' },
+    { id: adminId, name: 'Admin', email: 'admin@test.com', phone: '+0000000000', role: 'admin' },
   ]);
 
   await db('children').insert([

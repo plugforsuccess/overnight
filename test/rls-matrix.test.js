@@ -51,9 +51,9 @@ beforeEach(async () => {
   adminUser = crypto.randomUUID();
 
   await db('parents').insert([
-    { id: parentA, first_name: 'Alice', last_name: 'A', email: 'alice@rls.test', is_admin: false },
-    { id: parentB, first_name: 'Bob', last_name: 'B', email: 'bob@rls.test', is_admin: false },
-    { id: adminUser, first_name: 'Admin', last_name: 'User', email: 'admin@rls.test', is_admin: true, role: 'admin' },
+    { id: parentA, first_name: 'Alice', last_name: 'A', email: 'alice@rls.test', role: 'parent' },
+    { id: parentB, first_name: 'Bob', last_name: 'B', email: 'bob@rls.test', role: 'parent' },
+    { id: adminUser, first_name: 'Admin', last_name: 'User', email: 'admin@rls.test', role: 'admin' },
   ]);
 
   childA = crypto.randomUUID();
@@ -257,9 +257,9 @@ describe('RLS: Cross-parent write isolation', () => {
 describe('RLS: Admin access', () => {
   test('Admin can read all children', async () => {
     const admin = await db('parents').where({ id: adminUser }).first();
-    expect(admin.is_admin).toBe(true);
+    expect(admin.role).toBe('admin');
 
-    // Admin RLS policy: EXISTS (SELECT 1 FROM parents WHERE id = auth.uid() AND is_admin)
+    // Admin RLS policy: EXISTS (SELECT 1 FROM parents WHERE id = auth.uid() AND role = 'admin')
     const allChildren = await db('children');
     expect(allChildren.length).toBe(2);
   });
@@ -285,7 +285,7 @@ describe('RLS: Admin access', () => {
     ]);
 
     const admin = await db('parents').where({ id: adminUser }).first();
-    expect(admin.is_admin).toBe(true);
+    expect(admin.role).toBe('admin');
 
     const incidents = await db('incident_reports');
     expect(incidents.length).toBe(2);
@@ -293,7 +293,7 @@ describe('RLS: Admin access', () => {
 
   test('Admin can manage attendance sessions for any child', async () => {
     const admin = await db('parents').where({ id: adminUser }).first();
-    expect(admin.is_admin).toBe(true);
+    expect(admin.role).toBe('admin');
     expect(admin.role).toBe('admin');
 
     // Admin can create session for any child

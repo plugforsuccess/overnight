@@ -23,9 +23,7 @@ const AUTH_PATTERNS = [
   /checkAdmin\s*\(/,
   /checkAdminId\s*\(/,
   /checkStaffOrAdmin\s*\(/,
-  /verifyAdmin\s*\(/,
   /supabase\.auth\.getUser\s*\(/,
-  /getUserClient\s*\(/,
 ];
 
 function findRouteFiles(dir, files = []) {
