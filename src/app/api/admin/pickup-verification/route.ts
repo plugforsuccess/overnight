@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 import { verifyPin } from '@/lib/pin-hash';
 import { rateLimit } from '@/lib/rate-limit';
 import { checkAdmin } from '@/lib/admin-auth';
+import { writeCareEvent } from '@/lib/care-events';
 
 const MAX_PIN_ATTEMPTS = 3;
 const LOCKOUT_MINUTES = 15;
@@ -158,6 +159,15 @@ export async function POST(req: NextRequest) {
       console.warn('[pickup-verification] pickup_events insert skipped (table may not exist)');
     });
 
+    await writeCareEvent({
+      eventType: 'pickup_verified',
+      actorType: 'FACILITY_ADMIN',
+      actorUserId: admin.id,
+      facilityId: admin.activeFacilityId,
+      childId: pickup.child_id,
+      metadata: { method: 'pin' },
+    });
+
     return NextResponse.json({
       verified: true,
       message: `VERIFIED - ${pickup.first_name} ${pickup.last_name} is authorized for pickup.`,
@@ -165,6 +175,14 @@ export async function POST(req: NextRequest) {
   }
 
   const attemptsRemaining = MAX_PIN_ATTEMPTS - (recentFailures ?? 0) - 1;
+  await writeCareEvent({
+    eventType: 'pickup_denied',
+    actorType: 'FACILITY_ADMIN',
+    actorUserId: admin.id,
+    facilityId: admin.activeFacilityId,
+    childId: pickup.child_id,
+    metadata: { reason: 'invalid_pin', attempts_remaining: attemptsRemaining },
+  });
   return NextResponse.json({
     verified: false,
     message: `INVALID PIN. ${attemptsRemaining} attempt${attemptsRemaining !== 1 ? 's' : ''} remaining before lockout.`,

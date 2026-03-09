@@ -172,7 +172,7 @@ export default function SafetyDashboard() {
                 {filtered.map(child => (
                   <tr key={child.child_id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
-                      <div className="font-medium text-gray-900">{child.name}</div>
+                      <div className="font-medium text-gray-900"><a className="underline" href={`/admin/children/${child.child_id}`}>{child.name}</a></div>
                       {child.parent && (
                         <div className="text-xs text-gray-500">
                           Parent: {child.parent.first_name} {child.parent.last_name}

@@ -3,6 +3,7 @@ import { authenticateRequest, unauthorized, badRequest } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { z } from 'zod';
 import { checkIdempotencyKey, saveIdempotencyResult } from '@/lib/idempotency';
+import { writeCareEvent } from '@/lib/care-events';
 
 const createVerificationSchema = z.object({
   authorized_pickup_id: z.string().uuid().optional().nullable(),
@@ -92,6 +93,17 @@ export async function POST(
     return badRequest(parsed.error.issues.map(e => e.message).join(', '));
   }
 
+  await writeCareEvent({
+    eventType: 'pickup_verification_started',
+    actorType: 'PARENT',
+    actorUserId: auth.userId,
+    facilityId: auth.activeFacilityId,
+    childId: session.child_id,
+    parentId: auth.parentId,
+    attendanceSessionId: sessionId,
+    metadata: { method: parsed.data.verification_method },
+  });
+
   const { data: verification, error } = await supabaseAdmin
     .from('pickup_verifications')
     .insert({
@@ -113,16 +125,16 @@ export async function POST(
     return badRequest(error.message);
   }
 
-  // Log to child event ledger
-  await supabaseAdmin.from('child_events').insert({
-    child_id: session.child_id,
-    event_type: 'authorized_pickup_verified',
-    event_data: {
-      session_id: sessionId,
-      verification_id: verification.id,
-      method: parsed.data.verification_method,
-    },
-    created_by: auth.userId,
+  await writeCareEvent({
+    eventType: 'pickup_verified',
+    actorType: 'PARENT',
+    actorUserId: auth.userId,
+    facilityId: auth.activeFacilityId,
+    childId: session.child_id,
+    parentId: auth.parentId,
+    attendanceSessionId: sessionId,
+    pickupVerificationId: verification.id,
+    metadata: { method: parsed.data.verification_method },
   });
 
   const responseBody = { verification };

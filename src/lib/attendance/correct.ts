@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
+import { writeCareEvent } from '@/lib/care-events';
 
 const VALID_STATUSES = ['expected', 'checked_in', 'checked_out', 'no_show', 'cancelled'] as const;
 type AttendanceStatus = typeof VALID_STATUSES[number];
@@ -69,6 +70,16 @@ export async function correctAttendanceStatus(
   if (updateError || !updated) {
     throw new Error(`Correction failed: ${updateError?.message || 'unknown error'}`);
   }
+
+  await writeCareEvent({
+    eventType: 'admin_override_used',
+    actorType: 'FACILITY_ADMIN',
+    actorUserId: input.actorUserId,
+    facilityId: updated.facility_id,
+    childId: updated.child_id,
+    reservationNightId: updated.reservation_night_id,
+    metadata: { previous_status: previousStatus, new_status: input.newStatus, reason: input.reason.trim() },
+  });
 
   // Emit correction event with full audit trail
   await supabase.from('attendance_events').insert({

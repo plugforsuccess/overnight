@@ -42,6 +42,7 @@ export default function ChildrenPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
+  const [activity, setActivity] = useState<any[]>([]);
 
   // -- Auth token helper --
   async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -108,6 +109,20 @@ export default function ChildrenPage() {
   useEffect(() => {
     if (selectedId) loadChildDetails(selectedId);
   }, [selectedId, loadChildDetails]);
+
+  useEffect(() => {
+    async function loadActivity(childId: string) {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`/api/dashboard/children/${childId}/activity`, { headers });
+        const data = await res.json();
+        if (res.ok) setActivity(data.events || []);
+      } catch {}
+    }
+    if (selectedId) loadActivity(selectedId);
+    else setActivity([]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
 
   // -- CRUD handlers --
 

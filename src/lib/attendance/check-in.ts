@@ -1,6 +1,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { ensureAttendanceRecord } from './ensure-attendance-record';
 import { OVERNIGHT_START } from '@/lib/constants';
+import { writeCareEvent } from '@/lib/care-events';
 
 export interface CheckInInput {
   reservationNightId: string;
@@ -72,6 +73,26 @@ export async function checkInChild(
       arrival_notes: input.arrivalNotes || null,
       late_arrival_minutes: lateMinutes,
     },
+  });
+
+
+  await writeCareEvent({
+    eventType: 'child_checked_in',
+    actorType: 'STAFF',
+    actorUserId: input.actorUserId,
+    facilityId: updated.facility_id,
+    childId: updated.child_id,
+    reservationNightId: input.reservationNightId,
+    metadata: { check_in_method: method, late_arrival_minutes: lateMinutes },
+  });
+
+  await writeCareEvent({
+    eventType: 'child_in_care',
+    actorType: 'SYSTEM',
+    facilityId: updated.facility_id,
+    childId: updated.child_id,
+    reservationNightId: input.reservationNightId,
+    metadata: { source: 'check_in_transition' },
   });
 
   // Emit late arrival event if applicable
