@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Calendar, Users, CreditCard, Clock, AlertCircle, Check, Shield, Moon } from 'lucide-react';
+import { Calendar, Users, CreditCard, Clock, AlertCircle, Moon } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { formatCents } from '@/lib/constants';
 import type { DashboardData } from '@/types/dashboard';
@@ -16,6 +16,7 @@ import { BillingSummaryCard } from '@/components/dashboard/BillingSummaryCard';
 import { ChildSafetyCard } from '@/components/ui/ChildSafetyCard';
 import { SafetyChipRow } from '@/components/ui/SafetyChipRow';
 import { NotificationBannerStack } from '@/components/ui/NotificationBanner';
+import { ProfileCompletionBanner } from '@/components/profile-completion-banner';
 
 /**
  * Dashboard page — client component for interactivity.
@@ -141,14 +142,6 @@ export default function DashboardPage() {
     ? selectedChild.emergency_contacts_count >= 1 && selectedChild.has_medical_profile
     : false;
 
-  // Profile completion checklist items
-  const checklistItems = hasChildren ? [
-    { label: 'Child profile added', done: true, href: '/dashboard/children' },
-    { label: 'Medical acknowledgement', done: children.some((c: typeof children[0]) => c.has_medical_profile), href: '/dashboard/children' },
-    { label: 'Emergency contact added', done: children.some((c: typeof children[0]) => c.emergency_contacts_count > 0), href: '/dashboard/children' },
-    { label: 'Authorized pickup added', done: children.some((c: typeof children[0]) => c.authorized_pickups_count > 0), href: '/dashboard/children' },
-  ] : [];
-
   return (
     <div className="py-8 sm:py-12">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -184,44 +177,8 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Profile Completion Banner */}
-        {hasChildren && profileCompleteness < 100 && (
-          <div className="card mb-6 border-l-4 border-l-accent-500">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <Shield className="h-5 w-5 text-accent-600" />
-                  <h3 className="font-semibold text-gray-900">Complete Your Profile</h3>
-                  <span className="text-sm font-medium text-accent-600">{profileCompleteness}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-2 mb-3">
-                  <div
-                    className="bg-accent-500 h-2 rounded-full transition-all"
-                    style={{ width: `${profileCompleteness}%` }}
-                  />
-                </div>
-                <ul className="space-y-1.5">
-                  {checklistItems.map(item => (
-                    <li key={item.label} className="flex items-center gap-2 text-sm">
-                      {item.done ? (
-                        <Check className="h-4 w-4 text-green-500 flex-shrink-0" />
-                      ) : (
-                        <div className="h-4 w-4 rounded-full border-2 border-gray-300 flex-shrink-0" />
-                      )}
-                      {item.done ? (
-                        <span className="text-gray-500">{item.label}</span>
-                      ) : (
-                        <Link href={item.href} className="text-accent-600 hover:text-accent-700 font-medium">
-                          {item.label}
-                        </Link>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Profile Completion Banner — centralized gating system */}
+        <ProfileCompletionBanner />
 
         {/* Notification banners */}
         {notifications.length > 0 && (
