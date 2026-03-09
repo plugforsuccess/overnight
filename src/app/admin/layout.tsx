@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase-ssr';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { AdminSidebar } from '@/components/admin-sidebar';
+import { AdminHeader } from '@/components/admin-header';
 
 /**
  * Server-side auth gate for all /admin/* routes.
@@ -9,7 +10,7 @@ import { AdminSidebar } from '@/components/admin-sidebar';
  * 1. User is authenticated (JWT verification)
  * 2. User has admin role or is_admin flag
  *
- * Renders shared admin sidebar navigation.
+ * Renders dedicated admin shell with sidebar + header (no parent nav).
  */
 export default async function AdminLayout({
   children,
@@ -36,7 +37,10 @@ export default async function AdminLayout({
   return (
     <div className="flex min-h-screen bg-gray-50">
       <AdminSidebar />
-      <main className="flex-1 min-w-0">{children}</main>
+      <div className="flex-1 min-w-0 flex flex-col">
+        <AdminHeader />
+        <main className="flex-1">{children}</main>
+      </div>
     </div>
   );
 }
