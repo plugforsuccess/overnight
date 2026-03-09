@@ -16,6 +16,8 @@ const crypto = require('crypto');
 const { setupTestDb, teardownTestDb } = require('./setup');
 
 let db;
+const DEFAULT_FACILITY_ID = '00000000-0000-0000-0000-000000000001';
+
 let parentId, parent2Id, childId, child2Id, planId, blockId, block2Id;
 
 beforeAll(async () => {
@@ -45,8 +47,8 @@ beforeEach(async () => {
 
   // Seed parents
   await db('parents').insert([
-    { id: parentId, first_name: 'Alice', last_name: 'Smith', email: 'alice@test.com', phone: '+1111111111' },
-    { id: parent2Id, first_name: 'Bob', last_name: 'Jones', email: 'bob@test.com', phone: '+2222222222' },
+    { id: parentId, first_name: 'Alice', last_name: 'Smith', email: 'alice@test.com', phone: '+1111111111', facility_id: DEFAULT_FACILITY_ID },
+    { id: parent2Id, first_name: 'Bob', last_name: 'Jones', email: 'bob@test.com', phone: '+2222222222', facility_id: DEFAULT_FACILITY_ID },
   ]);
 
   // Seed children (one per parent)
@@ -137,6 +139,7 @@ describe('Reservations — data scoping', () => {
       first_name: 'Empty',
       last_name: 'Parent',
       email: 'empty@test.com',
+      facility_id: DEFAULT_FACILITY_ID,
     });
 
     const childIds = await db('children')
@@ -362,6 +365,7 @@ describe('Settings — cascade on parent delete', () => {
       first_name: 'Temp',
       last_name: 'Parent',
       email: 'temp@test.com',
+      facility_id: DEFAULT_FACILITY_ID,
     });
     await db('parent_settings').insert({ parent_id: tempParentId });
 

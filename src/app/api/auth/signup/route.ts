@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-server';
 import { rateLimit } from '@/lib/rate-limit';
+import { resolveParentFacilityIdOrThrow } from '@/lib/facility-resolver';
 import { z } from 'zod';
-
-const DEFAULT_FACILITY_ID = '00000000-0000-0000-0000-000000000001';
 
 const signupSchema = z.object({
   email: z.string().email('Invalid email address').max(255),
@@ -60,6 +59,17 @@ export async function POST(req: NextRequest) {
   if (data.user) {
     console.log(`[api/auth/signup] Creating parent row for user ${data.user.id} (${email})`);
 
+    let facilityId: string;
+    try {
+      facilityId = await resolveParentFacilityIdOrThrow();
+    } catch (facilityResolutionError: any) {
+      console.error(`[api/auth/signup] Parent facility resolution failed: ${facilityResolutionError?.message ?? facilityResolutionError}`);
+      return NextResponse.json(
+        { error: 'Account created but parent profile failed: no active facility available.' },
+        { status: 500 },
+      );
+    }
+
     const { error: parentError } = await supabaseAdmin.from('parents').upsert({
       id: data.user.id,
       name: `${derivedFirst} ${derivedLast}`.trim() || email,
@@ -69,7 +79,7 @@ export async function POST(req: NextRequest) {
       phone: phone?.replace(/\D/g, '') || null,
       address: address || null,
       role: 'parent',
-      facility_id: DEFAULT_FACILITY_ID,
+      facility_id: facilityId,
       onboarding_status: 'parent_profile_complete',
     }, { onConflict: 'id' });
 

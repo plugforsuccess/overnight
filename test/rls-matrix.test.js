@@ -14,6 +14,8 @@
 const crypto = require('crypto');
 const { setupTestDb, teardownTestDb } = require('./setup');
 
+const DEFAULT_FACILITY_ID = '00000000-0000-0000-0000-000000000001';
+
 let db;
 let parentA, parentB, adminUser;
 let childA, childB;
@@ -51,9 +53,9 @@ beforeEach(async () => {
   adminUser = crypto.randomUUID();
 
   await db('parents').insert([
-    { id: parentA, first_name: 'Alice', last_name: 'A', email: 'alice@rls.test', is_admin: false },
-    { id: parentB, first_name: 'Bob', last_name: 'B', email: 'bob@rls.test', is_admin: false },
-    { id: adminUser, first_name: 'Admin', last_name: 'User', email: 'admin@rls.test', is_admin: true, role: 'admin' },
+    { id: parentA, first_name: 'Alice', last_name: 'A', email: 'alice@rls.test', is_admin: false, facility_id: DEFAULT_FACILITY_ID },
+    { id: parentB, first_name: 'Bob', last_name: 'B', email: 'bob@rls.test', is_admin: false, facility_id: DEFAULT_FACILITY_ID },
+    { id: adminUser, first_name: 'Admin', last_name: 'User', email: 'admin@rls.test', is_admin: true, role: 'admin', facility_id: DEFAULT_FACILITY_ID },
   ]);
 
   childA = crypto.randomUUID();

@@ -28,6 +28,8 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 import * as fs from 'fs';
 
+const SEEDED_DEFAULT_FACILITY_ID = '00000000-0000-0000-0000-000000000001';
+
 const envLocalPath = path.resolve(__dirname, '..', '.env.local');
 if (fs.existsSync(envLocalPath)) {
   dotenv.config({ path: envLocalPath });
@@ -43,6 +45,7 @@ let testChildId: string;
 let testReservationId: string;
 let testNightId: string;
 let programId: string;
+let activeFacilityId: string;
 let cleanupItems: { table: string; id: string }[] = [];
 
 const results: { step: string; status: 'pass' | 'fail'; message: string }[] = [];
@@ -66,6 +69,38 @@ function today(): string {
   return d.toISOString().split('T')[0];
 }
 
+async function resolveParentFacilityIdOrThrow(client: SupabaseClient): Promise<string> {
+  const { data: seededFacility, error: seededError } = await client
+    .from('facilities')
+    .select('id')
+    .eq('id', SEEDED_DEFAULT_FACILITY_ID)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (seededError) {
+    throw new Error(`[facility-resolution] Failed to query seeded facility: ${seededError.message}`);
+  }
+  if (seededFacility?.id) return seededFacility.id;
+
+  const { data: fallbackFacility, error: fallbackError } = await client
+    .from('facilities')
+    .select('id')
+    .eq('is_active', true)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (fallbackError) {
+    throw new Error(`[facility-resolution] Failed to query active facilities: ${fallbackError.message}`);
+  }
+  if (!fallbackFacility?.id) {
+    throw new Error('Cannot create parent profile: no active facility context could be resolved.');
+  }
+
+  return fallbackFacility.id;
+}
+
 // ─── Steps ──────────────────────────────────────────────────────────────────
 
 async function step1_createParent(): Promise<boolean> {
@@ -86,6 +121,15 @@ async function step1_createParent(): Promise<boolean> {
   testUserId = authUser.user.id;
   cleanupItems.push({ table: '__auth_user__', id: testUserId });
 
+  let facilityId: string;
+  try {
+    facilityId = await resolveParentFacilityIdOrThrow(supabase);
+  } catch (error: any) {
+    fail('create_parent', `Parent facility resolution failed: ${error?.message}`);
+    return false;
+  }
+  activeFacilityId = facilityId;
+
   // Create parent profile
   const { data: parent, error: parentError } = await supabase
     .from('parents')
@@ -95,6 +139,7 @@ async function step1_createParent(): Promise<boolean> {
       first_name: 'Smoke',
       last_name: 'Test',
       phone: '555-0000',
+      facility_id: facilityId,
     })
     .select('id')
     .single();
@@ -114,6 +159,7 @@ async function step2_createChild(): Promise<boolean> {
   const { data: child, error } = await supabase
     .from('children')
     .insert({
+      facility_id: activeFacilityId,
       parent_id: testParentId,
       first_name: 'SmokeChild',
       last_name: 'Test',
@@ -139,6 +185,7 @@ async function step3_bookNight(): Promise<boolean> {
   const { data: program } = await supabase
     .from('programs')
     .select('id')
+    .eq('facility_id', activeFacilityId)
     .eq('is_active', true)
     .limit(1)
     .single();
@@ -153,6 +200,7 @@ async function step3_bookNight(): Promise<boolean> {
   const { data: reservation, error: resError } = await supabase
     .from('reservations')
     .insert({
+      facility_id: activeFacilityId,
       parent_id: testParentId,
       child_id: testChildId,
       program_id: programId,
@@ -181,6 +229,7 @@ async function step3_bookNight(): Promise<boolean> {
   const { data: night, error: nightError } = await supabase
     .from('reservation_nights')
     .insert({
+      facility_id: activeFacilityId,
       reservation_id: testReservationId,
       child_id: testChildId,
       care_date: careDate,
@@ -216,6 +265,7 @@ async function step4_cancelNight(): Promise<boolean> {
   const { data: night, error: rebookError } = await supabase
     .from('reservation_nights')
     .insert({
+      facility_id: activeFacilityId,
       reservation_id: testReservationId,
       child_id: testChildId,
       care_date: careDate,
@@ -243,6 +293,7 @@ async function step5_checkIn(): Promise<boolean> {
   const { data: session, error: sessionError } = await supabase
     .from('child_attendance_sessions')
     .insert({
+      facility_id: activeFacilityId,
       reservation_night_id: testNightId,
       child_id: testChildId,
       session_date: careDate,

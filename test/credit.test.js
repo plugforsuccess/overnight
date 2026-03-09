@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const db = require('../src/db');
 const creditService = require('../src/services/credit');
 
+const DEFAULT_FACILITY_ID = '00000000-0000-0000-0000-000000000001';
+
 let parentId;
 
 beforeAll(async () => {
@@ -18,7 +20,7 @@ beforeEach(async () => {
 
   parentId = crypto.randomUUID();
   await db('parents').insert({
-    id: parentId, name: 'Alice', email: 'alice@test.com', phone: '+1111', is_admin: false,
+    id: parentId, name: 'Alice', email: 'alice@test.com', phone: '+1111', is_admin: false, facility_id: DEFAULT_FACILITY_ID,
   });
 });
 
