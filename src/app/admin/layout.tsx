@@ -1,46 +1,27 @@
 import { redirect } from 'next/navigation';
 import { createSupabaseServerClient } from '@/lib/supabase-ssr';
 import { supabaseAdmin } from '@/lib/supabase-server';
-import { AdminSidebar } from '@/components/admin-sidebar';
-import { AdminHeader } from '@/components/admin-header';
+import { AppShell, SidebarNav } from '@/components/ui/system';
 
-/**
- * Server-side auth gate for all /admin/* routes.
- * Validates:
- * 1. User is authenticated (JWT verification)
- * 2. User has admin role or is_admin flag
- *
- * Renders dedicated admin shell with sidebar + header (no parent nav).
- */
-export default async function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+const adminNav = [
+  { href: '/admin/operations', label: 'Operations' },
+  { href: '/admin/roster', label: 'Reservations / Roster' },
+  { href: '/admin/incidents', label: 'Incidents' },
+  { href: '/admin/tasks', label: 'Tasks' },
+  { href: '/admin/shift-roster', label: 'Shifts' },
+  { href: '/admin/plans', label: 'Plans' },
+  { href: '/admin/waitlist', label: 'Waitlist' },
+  { href: '/admin/settings', label: 'Settings' },
+];
+
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createSupabaseServerClient();
-  const { data: { user }, error } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) {
-    redirect('/login?redirect=/admin');
-  }
+  if (!user) redirect('/login?redirect=/admin');
 
-  const { data: parent } = await supabaseAdmin
-    .from('parents')
-    .select('id, role, is_admin')
-    .eq('id', user.id)
-    .single();
+  const { data: parent } = await supabaseAdmin.from('parents').select('id, role, is_admin').eq('id', user.id).single();
+  if (!parent || (parent.role !== 'admin' && !parent.is_admin)) redirect('/dashboard');
 
-  if (!parent || (parent.role !== 'admin' && !parent.is_admin)) {
-    redirect('/dashboard');
-  }
-
-  return (
-    <div className="flex min-h-screen bg-gray-50">
-      <AdminSidebar />
-      <div className="flex-1 min-w-0 flex flex-col">
-        <AdminHeader />
-        <main className="flex-1">{children}</main>
-      </div>
-    </div>
-  );
+  return <AppShell sidebar={<SidebarNav title="Facility Ops" items={adminNav} />} topbarTitle="Operations Center">{children}</AppShell>;
 }

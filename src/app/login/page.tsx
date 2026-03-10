@@ -3,7 +3,7 @@
 import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Moon } from 'lucide-react';
+import { ShieldCheck, Moon } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 
 function LoginForm() {
@@ -20,47 +20,30 @@ function LoginForm() {
     setError('');
 
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) {
-        console.log(`[login] signInWithPassword failed: ${authError.message}`);
         setError(authError.message);
         setLoading(false);
         return;
       }
 
       const { data: { session } } = await supabase.auth.getSession();
-      console.log(`[login] session after sign-in: exists=${!!session} userId=${session?.user?.id ?? 'null'}`);
-
       if (!session) {
         setError('Sign-in succeeded but session was not established. Please try again.');
         setLoading(false);
         return;
       }
 
-      const meRes = await fetch('/api/auth/me', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${session.access_token}` },
-      });
-
-      console.log(`[login] /api/auth/me response: status=${meRes.status}`);
-
+      const meRes = await fetch('/api/auth/me', { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}` } });
       if (meRes.ok) {
         const { role } = await meRes.json();
         const redirectTo = searchParams.get('redirect');
         const destination = role === 'admin' ? '/admin' : (redirectTo || '/dashboard');
-
         router.replace(destination);
         router.refresh();
       } else {
-        const body = await meRes.text();
-        console.error(`[login] /api/auth/me error: ${body}`);
         setError('Your account exists but no parent profile was found. Please contact support.');
         setLoading(false);
-        return;
       }
     } catch {
       setError('Something went wrong. Please try again.');
@@ -69,67 +52,28 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center py-12 px-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <Moon className="h-12 w-12 text-accent-500 mx-auto mb-4" />
-          <h1 className="text-3xl font-bold text-gray-900">Welcome Back</h1>
-          <p className="text-gray-600 mt-2">Sign in to your DreamWatch account</p>
-        </div>
-
-        <div className="card">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="input-field"
-                required
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input-field"
-                required
-              />
-            </div>
-            <button type="submit" className="btn-primary w-full" disabled={loading}>
-              {loading ? 'Signing in...' : 'Sign In'}
-            </button>
-          </form>
-          <div className="mt-4 text-center text-sm text-gray-600">
-            Don&apos;t have an account?{' '}
-            <Link href="/signup" className="text-accent-600 hover:text-accent-700 font-medium">
-              Sign up
-            </Link>
-          </div>
-        </div>
+    <div className="mx-auto grid min-h-[85vh] max-w-6xl items-center gap-6 px-4 py-10 md:grid-cols-2">
+      <div className="hidden rounded-3xl bg-slate-900 p-8 text-white md:block">
+        <Moon className="h-8 w-8 text-sky-300" />
+        <h1 className="mt-4 text-3xl font-semibold">Welcome back to your overnight care hub</h1>
+        <p className="mt-3 text-slate-300">Track child activity, reservations, and safety updates in one trusted parent dashboard.</p>
+        <p className="mt-6 inline-flex items-center gap-2 text-sm text-emerald-300"><ShieldCheck className="h-4 w-4" />Secure facility-first records and verified pickup flows.</p>
+      </div>
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-2xl font-semibold text-slate-900">Sign in</h2>
+        <p className="mt-1 text-sm text-slate-600">Access your parent or operations portal.</p>
+        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+          {error && <div className="rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input-field" placeholder="Email address" required />
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="input-field" placeholder="Password" required />
+          <button type="submit" className="btn-primary w-full" disabled={loading}>{loading ? 'Signing in...' : 'Sign In'}</button>
+        </form>
+        <p className="mt-4 text-sm text-slate-600">Don&apos;t have an account? <Link href="/signup" className="font-semibold text-sky-700">Create one</Link></p>
       </div>
     </div>
   );
 }
 
 export default function LoginPage() {
-  return (
-    <Suspense fallback={<div className="min-h-[80vh]" />}>
-      <LoginForm />
-    </Suspense>
-  );
+  return <Suspense fallback={<div className="min-h-[80vh]" />}><LoginForm /></Suspense>;
 }

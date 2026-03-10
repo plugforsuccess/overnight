@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase-client';
+import { EmptyState, PageHeader, SectionCard, StatusBadge } from '@/components/ui/system';
 
 export default function OperationsConsolePage() {
   const [data, setData] = useState<any>(null);
@@ -13,46 +14,42 @@ export default function OperationsConsolePage() {
       if (!session) return;
       const res = await fetch('/api/ops/dashboard', { headers: { Authorization: `Bearer ${session.access_token}` } });
       const payload = await res.json();
-      if (!res.ok) {
-        setError(payload.error || 'Failed to load operations dashboard');
-        return;
-      }
+      if (!res.ok) return setError(payload.error || 'Failed to load operations dashboard');
       setData(payload);
     }
     load();
   }, []);
 
-  return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Operations Console</h1>
-      {error && <div className="text-red-600">{error}</div>}
-      {!data ? <div className="card p-4">Loading...</div> : (
-        <div className="grid md:grid-cols-2 gap-4">
-          <Section title="Children in Care" items={data.childrenInCare} />
-          <Section title="Expected Arrivals" items={data.expectedArrivals} />
-          <Section title="Ready for Pickup" items={data.readyForPickup} />
-          <Section title="Pickup Verification Queue" items={data.pickupVerificationQueue} />
-          <Section title="Open Incidents" items={data.openIncidents} />
-          <Section title="Active Shift Roster" items={data.activeShifts} />
-          <Section title="Shift Handoff Notes" items={data.handoffNotes} />
-          <Section title="Open Tasks" items={data.openTasks} />
-        </div>
-      )}
-    </div>
-  );
-}
+  const cards = [
+    ['Children In Care', data?.childrenInCare],
+    ['Expected Arrivals', data?.expectedArrivals],
+    ['Ready for Pickup', data?.readyForPickup],
+    ['Pickup Verification Queue', data?.pickupVerificationQueue],
+    ['Open Incident Alerts', data?.openIncidents],
+    ['Active Staff', data?.activeShifts],
+    ['Open Tasks', data?.openTasks],
+    ['Shift Handoff Notes', data?.handoffNotes],
+  ];
 
-function Section({ title, items }: { title: string; items: any[] }) {
   return (
-    <div className="card p-4">
-      <h2 className="font-semibold mb-3">{title}</h2>
-      {items?.length ? (
-        <ul className="text-sm space-y-2">
-          {items.slice(0, 8).map((item: any) => (
-            <li key={item.id} className="border-b border-gray-100 pb-2">{JSON.stringify(item)}</li>
-          ))}
-        </ul>
-      ) : <p className="text-sm text-gray-500">No items</p>}
+    <div>
+      <PageHeader title="Operations Console" subtitle="Live center control room for tonight's care execution" actions={<StatusBadge tone="blue">Live feed</StatusBadge>} />
+      {error && <div className="mb-4 rounded-lg bg-rose-50 p-3 text-rose-700">{error}</div>}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {cards.map(([title, items]) => (
+          <SectionCard key={title as string} title={title as string} subtitle={`${Array.isArray(items) ? items.length : 0} records`}>
+            {Array.isArray(items) && items.length > 0 ? (
+              <ul className="space-y-2 text-sm">
+                {items.slice(0, 6).map((item: any) => (
+                  <li key={item.id ?? JSON.stringify(item)} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-700">{item.child_name || item.staff_name || item.note || item.description || JSON.stringify(item)}</li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState title={`No ${String(title).toLowerCase()}`} description="Queue is currently clear." />
+            )}
+          </SectionCard>
+        ))}
+      </div>
     </div>
   );
 }
