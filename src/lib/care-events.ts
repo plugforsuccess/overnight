@@ -30,7 +30,14 @@ export type CareEventType =
   | 'parent_notified'
   | 'admin_override_used'
   | 'record_archived'
-  | 'record_restored';
+  | 'record_restored'
+  | 'staff_shift_created'
+  | 'child_assignment_created'
+  | 'child_assignment_released'
+  | 'shift_handoff_note_created'
+  | 'staff_task_created'
+  | 'staff_task_completed'
+  | 'staff_task_cancelled';
 
 export type ActorType = 'PARENT' | 'STAFF' | 'FACILITY_ADMIN' | 'ORG_ADMIN' | 'PLATFORM_ADMIN' | 'SYSTEM';
 

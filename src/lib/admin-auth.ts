@@ -27,3 +27,17 @@ export async function checkOrgReadAccess(req: NextRequest) {
   if (checkPlatformAdmin(session) || checkPlatformSupport(session) || checkOrganizationSupport(session) || checkFacilityAdmin(session)) return session;
   return null;
 }
+
+export async function checkOpsReadAccess(req: NextRequest) {
+  const session = await authenticateParentForFacility(req);
+  if (!session) return null;
+  if (checkPlatformAdmin(session) || checkPlatformSupport(session) || checkFacilityStaff(session) || checkOrganizationSupport(session)) return session;
+  return null;
+}
+
+export async function checkOpsWriteAccess(req: NextRequest) {
+  const session = await authenticateParentForFacility(req);
+  if (!session) return null;
+  if (checkPlatformAdmin(session) || checkFacilityStaff(session) || checkOrganizationAdmin(session)) return session;
+  return null;
+}
