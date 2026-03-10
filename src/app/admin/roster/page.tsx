@@ -2,13 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { ArrowLeft, ChevronLeft, ChevronRight, UserX, Phone, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { DEFAULT_CAPACITY, DEFAULT_OPERATING_NIGHTS, DAY_LABELS } from '@/lib/constants';
-import { getWeekNights, getCurrentWeekStart, cn } from '@/lib/utils';
+import { getWeekNights, getCurrentWeekStart } from '@/lib/utils';
 import { Reservation, AdminSettings, DayOfWeek, OvernightBlock, Profile } from '@/types/database';
-import { format, addDays, subDays } from 'date-fns';
+import { format, addDays } from 'date-fns';
+import { ChildCard, EmptyState, FilterBar, PageHeader, SectionCard, StatusBadge } from '@/components/ui/system';
 
 export default function RosterPage() {
   const router = useRouter();
@@ -21,24 +20,19 @@ export default function RosterPage() {
   const weekStart = addDays(getCurrentWeekStart(), weekOffset * 7);
   const operatingNights = (settings?.operating_nights ?? DEFAULT_OPERATING_NIGHTS) as DayOfWeek[];
   const capacity = settings?.max_capacity ?? DEFAULT_CAPACITY;
+  const weekNights = getWeekNights(weekStart, operatingNights);
 
   async function getAuthHeaders() {
     const { data: { session } } = await supabase.auth.getSession();
-    return {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session?.access_token || ''}` ,
-    };
+    return { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` };
   }
-  const weekNights = getWeekNights(weekStart, operatingNights);
 
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
-
       const { data: profile } = await supabase.from('parents').select('role').eq('id', user.id).single();
       if (profile?.role !== 'admin') { router.push('/dashboard'); return; }
-
       const { data: s } = await supabase.from('admin_settings').select('*').limit(1).single();
       if (s) setSettings(s as AdminSettings);
       setLoading(false);
@@ -57,118 +51,49 @@ export default function RosterPage() {
     loadRoster();
   }, [selectedDate]);
 
-  // Auto-select first night of current week
   useEffect(() => {
-    if (weekNights.length > 0 && !selectedDate) {
-      setSelectedDate(weekNights[0].dateStr);
-    }
+    if (weekNights.length > 0 && !selectedDate) setSelectedDate(weekNights[0].dateStr);
   }, [weekNights, selectedDate]);
 
   async function cancelReservation(id: string) {
     if (!confirm('Cancel this reservation?')) return;
-    await fetch('/api/admin', {
-      method: 'PUT',
-      headers: await getAuthHeaders(),
-      body: JSON.stringify({ action: 'cancel_reservation', reservationId: id }),
-    });
-    setReservations(prev => prev.filter(r => r.id !== id));
+    await fetch('/api/admin', { method: 'PUT', headers: await getAuthHeaders(), body: JSON.stringify({ action: 'cancel_reservation', reservationId: id }) });
+    setReservations((prev) => prev.filter((r) => r.id !== id));
   }
 
   if (loading) return <div className="min-h-[60vh] flex items-center justify-center text-gray-500">Loading...</div>;
 
   return (
-    <div className="py-12">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-4 mb-8">
-          <Link href="/admin" className="text-gray-500 hover:text-gray-700"><ArrowLeft className="h-5 w-5" /></Link>
-          <h1 className="text-3xl font-bold text-gray-900">Nightly Roster</h1>
-        </div>
-
-        {/* Week Navigation */}
-        <div className="flex items-center justify-between mb-6">
-          <button onClick={() => { setWeekOffset(w => w - 1); setSelectedDate(''); }} className="btn-secondary flex items-center gap-1">
-            <ChevronLeft className="h-4 w-4" /> Previous Week
-          </button>
-          <span className="font-semibold text-gray-900">
-            Week of {format(weekStart, 'MMM d, yyyy')}
-          </span>
-          <button onClick={() => { setWeekOffset(w => w + 1); setSelectedDate(''); }} className="btn-secondary flex items-center gap-1">
-            Next Week <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
-
-        {/* Night Tabs */}
-        <div className="flex gap-2 mb-6 overflow-x-auto">
+    <div className="space-y-6">
+      <PageHeader title="Nightly Roster" subtitle={`Week of ${format(weekStart, 'MMM d, yyyy')} · ${reservations.length}/${capacity} assigned`} actions={<div className="flex gap-2"><button onClick={() => { setWeekOffset((w) => w - 1); setSelectedDate(''); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">Previous</button><button onClick={() => { setWeekOffset((w) => w + 1); setSelectedDate(''); }} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">Next</button></div>} />
+      <SectionCard title="Night Filters">
+        <FilterBar>
           {weekNights.map(({ day, dateStr }) => (
-            <button
-              key={dateStr}
-              onClick={() => setSelectedDate(dateStr)}
-              className={cn(
-                'px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors',
-                selectedDate === dateStr ? 'bg-navy-700 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-              )}
-            >
-              {DAY_LABELS[day]}<br />
-              <span className="text-xs">{dateStr}</span>
-            </button>
+            <button key={dateStr} onClick={() => setSelectedDate(dateStr)} className={`rounded-lg px-3 py-1.5 text-sm ${selectedDate === dateStr ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}`}>{DAY_LABELS[day]} {dateStr.slice(5)}</button>
           ))}
-        </div>
+        </FilterBar>
+        <StatusBadge tone={reservations.length >= capacity ? 'red' : 'green'}>{reservations.length >= capacity ? 'full' : `${capacity - reservations.length} spots available`}</StatusBadge>
+      </SectionCard>
 
-        {/* Roster */}
-        {selectedDate && (
-          <div className="card">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">
-                {selectedDate} — {reservations.length}/{capacity} children
-              </h2>
-              <span className={reservations.length >= capacity ? 'badge-red' : 'badge-green'}>
-                {reservations.length >= capacity ? 'Full' : `${capacity - reservations.length} spots available`}
-              </span>
-            </div>
-
-            {reservations.length === 0 ? (
-              <p className="text-gray-500 py-8 text-center">No reservations for this night.</p>
-            ) : (
-              <div className="space-y-4">
-                {reservations.map(r => {
-                  const child = r.child;
-                  const block = r.overnight_block as OvernightBlock & { parent?: Profile } | undefined;
-                  const parent = block?.parent;
-                  return (
-                    <div key={r.id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className="font-semibold text-gray-900 text-lg">{child?.first_name} {child?.last_name}</h3>
-                          <p className="text-sm text-gray-500">DOB: {child?.date_of_birth}</p>
-                        </div>
-                        <button onClick={() => cancelReservation(r.id)} className="text-red-500 hover:text-red-700 p-1" title="Cancel reservation">
-                          <UserX className="h-5 w-5" />
-                        </button>
-                      </div>
-                      <div className="grid sm:grid-cols-2 gap-3 mt-3 text-sm">
-                        <div>
-                          <span className="text-gray-500">Parent:</span>{' '}
-                          <span className="text-gray-900">{parent?.first_name} {parent?.last_name}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Phone className="h-3 w-3 text-gray-400" />
-                          <span className="text-gray-900">{parent?.phone || 'N/A'}</span>
-                        </div>
-                        {child?.allergies && (
-                          <div className="flex items-center gap-1 text-red-600">
-                            <AlertTriangle className="h-3 w-3" />
-                            Allergies: {child.allergies}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+      <SectionCard title="Child Roster" subtitle="Child-centric scan view for operations">
+        {reservations.length === 0 ? <EmptyState title="No reservations for this night" description="Children will appear here once reservations are confirmed." /> : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {reservations.map((r) => {
+              const child = r.child;
+              const block = r.overnight_block as OvernightBlock & { parent?: Profile } | undefined;
+              const parent = block?.parent;
+              return (
+                <ChildCard
+                  key={r.id}
+                  name={`${child?.first_name || 'Child'} ${child?.last_name || ''}`}
+                  status={<StatusBadge tone="blue">{r.status}</StatusBadge>}
+                  details={<div className="space-y-1 text-xs"><p>Parent: {parent?.first_name || '—'} {parent?.last_name || ''}</p><p>Booking: {block?.id ? 'assigned' : '—'}</p><button onClick={() => cancelReservation(r.id)} className="rounded border border-rose-200 bg-rose-50 px-2 py-1 text-rose-700">Cancel reservation</button></div>}
+                />
+              );
+            })}
           </div>
         )}
-      </div>
+      </SectionCard>
     </div>
   );
 }

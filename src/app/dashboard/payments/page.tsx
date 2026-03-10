@@ -2,12 +2,19 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { ArrowLeft, CreditCard } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { formatCentsDecimal } from '@/lib/constants';
 import { formatDate } from '@/lib/utils';
 import { Payment } from '@/types/database';
+import { EmptyState, MetricCard, PageHeader, SectionCard, StatusBadge } from '@/components/ui/system';
+
+function paymentTone(status: string): 'green' | 'yellow' | 'red' | 'blue' | 'gray' {
+  if (status === 'succeeded') return 'green';
+  if (status === 'pending') return 'yellow';
+  if (status === 'failed') return 'red';
+  if (status === 'refunded' || status === 'comped') return 'blue';
+  return 'gray';
+}
 
 export default function PaymentsPage() {
   const router = useRouter();
@@ -19,13 +26,7 @@ export default function PaymentsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
 
-      // parents.id = auth user ID
-      const { data: parentRow } = await supabase
-        .from('parents')
-        .select('id')
-        .eq('id', user.id)
-        .single();
-
+      const { data: parentRow } = await supabase.from('parents').select('id').eq('id', user.id).single();
       const parentId = parentRow?.id ?? user.id;
 
       const { data } = await supabase
@@ -42,61 +43,38 @@ export default function PaymentsPage() {
 
   if (loading) return <div className="min-h-[60vh] flex items-center justify-center text-gray-500">Loading...</div>;
 
-  const statusBadge = (status: string) => {
-    switch (status) {
-      case 'succeeded': return 'badge-green';
-      case 'failed': return 'badge-red';
-      case 'pending': return 'badge-yellow';
-      case 'refunded': return 'badge-blue';
-      case 'comped': return 'badge-blue';
-      default: return 'badge';
-    }
-  };
+  const failedCount = payments.filter((p) => p.status === 'failed').length;
+  const pendingCount = payments.filter((p) => p.status === 'pending').length;
 
   return (
-    <div className="py-12">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-4 mb-8">
-          <Link href="/dashboard" className="text-gray-500 hover:text-gray-700">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Payment History</h1>
-            <p className="text-gray-600">View your payment and billing history</p>
-          </div>
-        </div>
+    <div className="space-y-6">
+      <PageHeader title="Payments" subtitle="Billing status, invoices, and payment history" />
+      <div className="grid gap-4 md:grid-cols-3">
+        <MetricCard label="Total Payments" value={payments.length} tone="blue" />
+        <MetricCard label="Pending" value={pendingCount} tone={pendingCount > 0 ? 'yellow' : 'green'} />
+        <MetricCard label="Action Needed" value={failedCount} tone={failedCount > 0 ? 'red' : 'green'} />
+      </div>
 
+      <SectionCard title="Recent Invoices" subtitle="Latest transactions and statuses">
         {payments.length === 0 ? (
-          <div className="card text-center py-12">
-            <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No payments yet</h3>
-            <p className="text-gray-500">Your payment history will appear here once you subscribe to a plan.</p>
-          </div>
+          <EmptyState title="No payments yet" description="Your billing history will appear here after your first booking." />
         ) : (
-          <div className="card overflow-hidden p-0">
-            <table className="w-full">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="text-left px-6 py-3 text-sm font-medium text-gray-500">Date</th>
-                  <th className="text-left px-6 py-3 text-sm font-medium text-gray-500">Description</th>
-                  <th className="text-left px-6 py-3 text-sm font-medium text-gray-500">Amount</th>
-                  <th className="text-left px-6 py-3 text-sm font-medium text-gray-500">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {payments.map(p => (
-                  <tr key={p.id}>
-                    <td className="px-6 py-4 text-sm text-gray-900">{formatDate(p.created_at)}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{p.description || 'Payment'}</td>
-                    <td className="px-6 py-4 text-sm font-semibold text-gray-900">{formatCentsDecimal(p.amount_cents)}</td>
-                    <td className="px-6 py-4"><span className={statusBadge(p.status)}>{p.status}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-3">
+            {payments.map((payment) => (
+              <div key={payment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div>
+                  <p className="font-medium text-slate-900">{payment.description || 'Overnight care payment'}</p>
+                  <p className="text-xs text-slate-500">{formatDate(payment.created_at)}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <p className="font-semibold text-slate-900">{formatCentsDecimal(payment.amount_cents)}</p>
+                  <StatusBadge tone={paymentTone(payment.status)}>{payment.status.replace('_', ' ')}</StatusBadge>
+                </div>
+              </div>
+            ))}
           </div>
         )}
-      </div>
+      </SectionCard>
     </div>
   );
 }

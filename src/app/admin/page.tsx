@@ -3,30 +3,18 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Calendar, Users, DollarSign, Clock, List, CreditCard, ShieldCheck, Moon, TrendingUp, BarChart3, Ban, Activity } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
-import { formatCents, DEFAULT_CAPACITY, DEFAULT_OPERATING_NIGHTS, DAY_LABELS } from '@/lib/constants';
-import { getWeekNights, getCurrentWeekStart } from '@/lib/utils';
-import { DayOfWeek, AdminSettings } from '@/types/database';
+import { formatCents } from '@/lib/constants';
+import { AlertCard, MetricCard, PageHeader, SectionCard, StatusBadge } from '@/components/ui/system';
 
 export default function AdminPage() {
   const router = useRouter();
-  const [stats, setStats] = useState({ activePlansCount: 0, totalChildren: 0, weeklyRevenue: 0 });
-  const [nightCounts, setNightCounts] = useState<Record<string, { day: DayOfWeek; count: number }>>({});
-  const [paymentStats, setPaymentStats] = useState({ succeeded: 0, pending: 0, failed: 0 });
-  const [waitlistCount, setWaitlistCount] = useState(0);
-  const [settings, setSettings] = useState<AdminSettings | null>(null);
+  const [stats, setStats] = useState({ activePlansCount: 0, totalChildren: 0, weeklyRevenue: 0, waitlistedCount: 0, openIncidents: 0, activeStaff: 0 });
   const [loading, setLoading] = useState(true);
-
-  const capacity = settings?.max_capacity ?? DEFAULT_CAPACITY;
-  const operatingNights = (settings?.operating_nights ?? DEFAULT_OPERATING_NIGHTS) as DayOfWeek[];
 
   async function getAuthHeaders() {
     const { data: { session } } = await supabase.auth.getSession();
-    return {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session?.access_token || ''}`,
-    };
+    return { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token || ''}` };
   }
 
   useEffect(() => {
@@ -37,14 +25,6 @@ export default function AdminPage() {
       const { data: profile } = await supabase.from('parents').select('role').eq('id', user.id).single();
       if (profile?.role !== 'admin') { router.push('/dashboard'); return; }
 
-      // Fetch settings
-      const { data: s } = await supabase.from('admin_settings').select('*').limit(1).single();
-      if (s) setSettings(s as AdminSettings);
-
-      const currentCapacity = s?.max_capacity ?? DEFAULT_CAPACITY;
-      const currentNights = (s?.operating_nights ?? DEFAULT_OPERATING_NIGHTS) as DayOfWeek[];
-
-      // Fetch scoped summary stats from admin API
       const summaryRes = await fetch('/api/admin', { headers: await getAuthHeaders() });
       const summary = await summaryRes.json();
       if (!summaryRes.ok) throw new Error(summary.error || 'Failed to load admin summary');
@@ -53,31 +33,10 @@ export default function AdminPage() {
         activePlansCount: summary.activePlansCount ?? 0,
         totalChildren: summary.totalChildren ?? 0,
         weeklyRevenue: summary.weeklyRevenue ?? 0,
+        waitlistedCount: summary.waitlistedCount ?? 0,
+        openIncidents: summary.openIncidents ?? 0,
+        activeStaff: summary.activeStaff ?? 0,
       });
-      setWaitlistCount(summary.waitlistedCount ?? 0);
-      setPaymentStats(summary.paymentStats ?? { succeeded: 0, pending: 0, failed: 0 });
-
-      // Fetch capacity for current week nights
-      const weekStart = getCurrentWeekStart();
-      const weekNights = getWeekNights(weekStart, currentNights);
-      const nightDates = weekNights.map(n => n.dateStr);
-
-      const { data: reservations } = await supabase
-        .from('reservations')
-        .select('date')
-        .in('date', nightDates)
-        .eq('status', 'confirmed');
-
-      const counts: Record<string, { day: DayOfWeek; count: number }> = {};
-      weekNights.forEach(n => counts[n.dateStr] = { day: n.day, count: 0 });
-      reservations?.forEach(r => {
-        if (counts[r.date]) {
-          counts[r.date].count += 1;
-        }
-      });
-      setNightCounts(counts);
-
-
       setLoading(false);
     }
     load();
@@ -86,139 +45,36 @@ export default function AdminPage() {
   if (loading) return <div className="min-h-[60vh] flex items-center justify-center text-gray-500">Loading...</div>;
 
   return (
-    <div className="py-12">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Dashboard</h1>
-        <p className="text-gray-600 mb-8">Manage your DreamWatch Overnight program</p>
-
-        {/* Stats */}
-        <div className="grid sm:grid-cols-4 gap-4 mb-8">
-          <div className="card flex items-center gap-3">
-            <Users className="h-8 w-8 text-navy-600" />
-            <div>
-              <div className="text-2xl font-bold">{stats.activePlansCount}</div>
-              <div className="text-sm text-gray-500">Active Plans</div>
-            </div>
-          </div>
-          <div className="card flex items-center gap-3">
-            <Users className="h-8 w-8 text-navy-700" />
-            <div>
-              <div className="text-2xl font-bold">{stats.totalChildren}</div>
-              <div className="text-sm text-gray-500">Total Children</div>
-            </div>
-          </div>
-          <div className="card flex items-center gap-3">
-            <DollarSign className="h-8 w-8 text-green-600" />
-            <div>
-              <div className="text-2xl font-bold">{formatCents(stats.weeklyRevenue)}</div>
-              <div className="text-sm text-gray-500">Weekly Revenue</div>
-            </div>
-          </div>
-          <div className="card flex items-center gap-3">
-            <Clock className="h-8 w-8 text-yellow-600" />
-            <div>
-              <div className="text-2xl font-bold">{waitlistCount}</div>
-              <div className="text-sm text-gray-500">Waitlisted</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Capacity View — This Week */}
-        <div className="card mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">This Week&apos;s Capacity</h2>
-          <div className="grid grid-cols-5 gap-4">
-            {Object.entries(nightCounts).map(([dateStr, { day, count }]) => {
-              const remaining = capacity - count;
-              const isFull = remaining <= 0;
-              const fillPct = Math.min((count / capacity) * 100, 100);
-              return (
-                <div key={dateStr} className="text-center">
-                  <div className="text-sm font-bold text-gray-900 mb-1">{DAY_LABELS[day]}</div>
-                  <div className="text-xs text-gray-400 mb-2">{dateStr.slice(5)}</div>
-                  <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
-                    <div
-                      className={`h-3 rounded-full transition-all ${isFull ? 'bg-red-500' : count > capacity * 0.7 ? 'bg-yellow-500' : 'bg-green-500'}`}
-                      style={{ width: `${fillPct}%` }}
-                    />
-                  </div>
-                  <div className={`text-sm font-semibold ${isFull ? 'text-red-600' : 'text-gray-700'}`}>
-                    {count}/{capacity}
-                  </div>
-                  {isFull && <div className="text-xs text-red-500 font-medium">Full</div>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Payments Status */}
-        <div className="card mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Payments Overview</h2>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="bg-green-50 rounded-lg p-4 text-center">
-              <div className="text-2xl font-bold text-green-700">{paymentStats.succeeded}</div>
-              <div className="text-sm text-green-600">Succeeded</div>
-            </div>
-            <div className="bg-yellow-50 rounded-lg p-4 text-center">
-              <div className="text-2xl font-bold text-yellow-700">{paymentStats.pending}</div>
-              <div className="text-sm text-yellow-600">Pending</div>
-            </div>
-            <div className="bg-red-50 rounded-lg p-4 text-center">
-              <div className="text-2xl font-bold text-red-700">{paymentStats.failed}</div>
-              <div className="text-sm text-red-600">Failed</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Admin Cards — 3×3 Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Link href="/admin/tonight" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-navy-600">
-            <Moon className="h-10 w-10 text-navy-700 mx-auto mb-3" />
-            <div className="font-semibold text-gray-900">Tonight&apos;s Attendance</div>
-            <div className="text-sm text-gray-500">Check-ins, no-shows, alerts</div>
-          </Link>
-          <Link href="/admin/waitlist-ops" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-amber-500">
-            <TrendingUp className="h-10 w-10 text-amber-600 mx-auto mb-3" />
-            <div className="font-semibold text-gray-900">Waitlist Queue</div>
-            <div className="text-sm text-gray-500">Demand pressure & promotions</div>
-          </Link>
-          <Link href="/admin/capacity" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-green-500">
-            <BarChart3 className="h-10 w-10 text-green-600 mx-auto mb-3" />
-            <div className="font-semibold text-gray-900">Capacity Planner</div>
-            <div className="text-sm text-gray-500">4-week utilization view</div>
-          </Link>
-          <Link href="/admin/closures" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-red-500">
-            <Ban className="h-10 w-10 text-red-600 mx-auto mb-3" />
-            <div className="font-semibold text-gray-900">Closures &amp; Capacity</div>
-            <div className="text-sm text-gray-500">Close, reduce, reopen nights</div>
-          </Link>
-          <Link href="/admin/health" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-purple-500">
-            <Activity className="h-10 w-10 text-purple-600 mx-auto mb-3" />
-            <div className="font-semibold text-gray-900">System Health</div>
-            <div className="text-sm text-gray-500">Data integrity &amp; reconciliation</div>
-          </Link>
-          <Link href="/admin/roster" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-navy-500">
-            <Calendar className="h-10 w-10 text-navy-700 mx-auto mb-3" />
-            <div className="font-semibold text-gray-900">Nightly Roster</div>
-            <div className="text-sm text-gray-500">View children by night</div>
-          </Link>
-          <Link href="/admin/plans" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-navy-400">
-            <List className="h-10 w-10 text-navy-600 mx-auto mb-3" />
-            <div className="font-semibold text-gray-900">Active Plans</div>
-            <div className="text-sm text-gray-500">View & manage plans</div>
-          </Link>
-          <Link href="/admin/waitlist" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-yellow-500">
-            <Clock className="h-10 w-10 text-yellow-600 mx-auto mb-3" />
-            <div className="font-semibold text-gray-900">Waitlist</div>
-            <div className="text-sm text-gray-500">Manage waitlisted families</div>
-          </Link>
-          <Link href="/admin/pickup-verification" className="card hover:shadow-md transition-shadow text-center border-l-4 border-l-green-400">
-            <ShieldCheck className="h-10 w-10 text-green-600 mx-auto mb-3" />
-            <div className="font-semibold text-gray-900">Pickup Verification</div>
-            <div className="text-sm text-gray-500">Verify pickup PIN codes</div>
-          </Link>
-        </div>
+    <div className="space-y-6">
+      <PageHeader title="Facility Overview" subtitle="Tonight's occupancy, safety risk, waitlist pressure, and revenue at a glance" />
+      <div className="grid gap-4 md:grid-cols-5">
+        <MetricCard label="Active Plans" value={stats.activePlansCount} tone="blue" />
+        <MetricCard label="Children" value={stats.totalChildren} tone="gray" />
+        <MetricCard label="Weekly Revenue" value={formatCents(stats.weeklyRevenue)} tone="green" />
+        <MetricCard label="Waitlist" value={stats.waitlistedCount} tone={stats.waitlistedCount > 0 ? 'yellow' : 'green'} />
+        <MetricCard label="Open Incidents" value={stats.openIncidents} tone={stats.openIncidents > 0 ? 'red' : 'green'} />
       </div>
+
+      {(stats.waitlistedCount > 0 || stats.openIncidents > 0) && (
+        <AlertCard tone={stats.openIncidents > 0 ? 'red' : 'yellow'} title="Operational attention needed">
+          {stats.openIncidents > 0 ? `${stats.openIncidents} incidents need review.` : `${stats.waitlistedCount} waitlist entries need promotion decisions.`}
+        </AlertCard>
+      )}
+
+      <SectionCard title="Control Center" subtitle="Jump to operational queues and management views">
+        <div className="grid gap-3 md:grid-cols-3">
+          {[
+            ['/admin/roster', 'Roster'], ['/admin/incidents', 'Incidents'], ['/admin/pickup-verification', 'Pickup Verification'], ['/admin/waitlist', 'Waitlist'], ['/admin/compliance', 'Compliance'], ['/admin/safety', 'Safety'], ['/admin/health', 'Health'], ['/admin/revenue', 'Revenue'], ['/admin/capacity', 'Capacity'],
+          ].map(([href, label]) => (
+            <Link key={href} href={href} className="rounded-xl border border-slate-200 bg-slate-50 p-3 hover:bg-white">
+              <div className="flex items-center justify-between">
+                <p className="font-medium text-slate-900">{label}</p>
+                <StatusBadge tone="blue">open</StatusBadge>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </SectionCard>
     </div>
   );
 }

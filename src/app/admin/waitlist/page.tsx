@@ -2,11 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import { ArrowLeft, UserCheck, XCircle, Bell } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { formatDate } from '@/lib/utils';
 import { WaitlistEntry } from '@/types/database';
+import { ActionBar, EmptyState, PageHeader, SectionCard, StatusBadge } from '@/components/ui/system';
 
 export default function AdminWaitlistPage() {
   const router = useRouter();
@@ -17,7 +16,6 @@ export default function AdminWaitlistPage() {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { router.push('/login'); return; }
-
       const { data: profile } = await supabase.from('parents').select('role').eq('id', user.id).single();
       if (profile?.role !== 'admin') { router.push('/dashboard'); return; }
 
@@ -35,110 +33,57 @@ export default function AdminWaitlistPage() {
   }, [router]);
 
   async function promoteEntry(entry: WaitlistEntry) {
-    // Find the active overnight_block for this child and parent
-    const { data: block } = await supabase
-      .from('overnight_blocks')
-      .select('id')
-      .eq('child_id', entry.child_id)
-      .eq('parent_id', entry.parent_id)
-      .eq('status', 'active')
-      .limit(1)
-      .single();
-
-    if (!block) {
-      alert('No active booking found for this child. Cannot promote.');
-      return;
-    }
-
-    // Create reservation linked to overnight_block
-    await supabase.from('reservations').insert({
-      child_id: entry.child_id,
-      overnight_block_id: block.id,
-      date: entry.date,
-      status: 'confirmed',
-    });
-
-    // Update waitlist
+    const { data: block } = await supabase.from('overnight_blocks').select('id').eq('child_id', entry.child_id).eq('parent_id', entry.parent_id).eq('status', 'active').limit(1).single();
+    if (!block) return;
+    await supabase.from('reservations').insert({ child_id: entry.child_id, overnight_block_id: block.id, date: entry.date, status: 'confirmed' });
     await supabase.from('waitlist').update({ status: 'accepted' }).eq('id', entry.id);
-    setEntries(prev => prev.filter(e => e.id !== entry.id));
+    setEntries((prev) => prev.filter((e) => e.id !== entry.id));
   }
 
   async function offerSpot(entry: WaitlistEntry) {
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24);
-
-    await supabase.from('waitlist').update({
-      status: 'offered',
-      offered_at: new Date().toISOString(),
-      expires_at: expiresAt.toISOString(),
-    }).eq('id', entry.id);
-
-    setEntries(prev => prev.map(e =>
-      e.id === entry.id ? { ...e, status: 'offered' as const, offered_at: new Date().toISOString(), expires_at: expiresAt.toISOString() } : e
-    ));
+    await supabase.from('waitlist').update({ status: 'offered', offered_at: new Date().toISOString(), expires_at: expiresAt.toISOString() }).eq('id', entry.id);
+    setEntries((prev) => prev.map((e) => (e.id === entry.id ? { ...e, status: 'offered' as const, offered_at: new Date().toISOString(), expires_at: expiresAt.toISOString() } : e)));
   }
 
   async function cancelEntry(id: string) {
     await supabase.from('waitlist').update({ status: 'removed' }).eq('id', id);
-    setEntries(prev => prev.filter(e => e.id !== id));
+    setEntries((prev) => prev.filter((e) => e.id !== id));
   }
 
   if (loading) return <div className="min-h-[60vh] flex items-center justify-center text-gray-500">Loading...</div>;
 
   return (
-    <div className="py-12">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-4 mb-8">
-          <Link href="/admin" className="text-gray-500 hover:text-gray-700"><ArrowLeft className="h-5 w-5" /></Link>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Waitlist Management</h1>
-            <p className="text-gray-600">{entries.length} entries waiting</p>
-          </div>
-        </div>
-
+    <div className="space-y-6 pb-20">
+      <PageHeader title="Waitlist Queue" subtitle="Prioritize requests and promote children into open capacity" />
+      <SectionCard title="Active Waitlist" subtitle={`${entries.length} entries needing action`}>
         {entries.length === 0 ? (
-          <div className="card text-center py-12">
-            <p className="text-gray-500 text-lg">No one on the waitlist right now.</p>
-          </div>
+          <EmptyState title="Waitlist is clear" description="No children are currently waiting for placement." />
         ) : (
-          <div className="space-y-4">
-            {entries.map(entry => (
-              <div key={entry.id} className="card">
-                <div className="flex justify-between items-start">
+          <div className="space-y-3">
+            {entries.map((entry) => (
+              <div key={entry.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h3 className="font-semibold text-gray-900">{entry.child?.first_name} {entry.child?.last_name}</h3>
-                    <p className="text-sm text-gray-500">Parent: {entry.parent?.first_name} {entry.parent?.last_name}</p>
-                    <p className="text-sm text-gray-500">Night: {formatDate(entry.date)}</p>
-                    {entry.status === 'offered' && (
-                      <p className="text-sm text-yellow-600 font-medium mt-1">
-                        Offer sent — expires {entry.expires_at ? formatDate(entry.expires_at) : 'N/A'}
-                      </p>
-                    )}
+                    <p className="font-semibold text-slate-900">{entry.child?.first_name} {entry.child?.last_name}</p>
+                    <p className="text-xs text-slate-500">Requested night: {formatDate(entry.date)} · Parent: {entry.parent?.first_name} {entry.parent?.last_name}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className={entry.status === 'offered' ? 'badge-yellow' : 'badge-blue'}>
-                      {entry.status}
-                    </span>
-                    <div className="flex gap-1">
-                      {entry.status === 'waiting' && (
-                        <button onClick={() => offerSpot(entry)} className="p-1 text-blue-600 hover:text-blue-800" title="Offer spot">
-                          <Bell className="h-5 w-5" />
-                        </button>
-                      )}
-                      <button onClick={() => promoteEntry(entry)} className="p-1 text-green-600 hover:text-green-800" title="Confirm & add to roster">
-                        <UserCheck className="h-5 w-5" />
-                      </button>
-                      <button onClick={() => cancelEntry(entry.id)} className="p-1 text-red-600 hover:text-red-800" title="Remove from waitlist">
-                        <XCircle className="h-5 w-5" />
-                      </button>
-                    </div>
-                  </div>
+                  <StatusBadge tone={entry.status === 'offered' ? 'yellow' : 'blue'}>{entry.status}</StatusBadge>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {entry.status === 'waiting' && <button onClick={() => offerSpot(entry)} className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1 text-sm text-sky-700">Offer 24h hold</button>}
+                  <button onClick={() => promoteEntry(entry)} className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm text-emerald-700">Promote to reservation</button>
+                  <button onClick={() => cancelEntry(entry.id)} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1 text-sm text-rose-700">Remove</button>
                 </div>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </SectionCard>
+      <ActionBar>
+        <p className="text-sm text-slate-600">Prioritize <strong>offered</strong> entries before expiration, then promote by urgency.</p>
+      </ActionBar>
     </div>
   );
 }
