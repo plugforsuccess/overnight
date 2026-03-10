@@ -3,13 +3,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import {
-  ArrowLeft, AlertTriangle, CheckCircle, Info, RefreshCw,
-  Clock, Shield, Activity, ChevronDown, ChevronUp, XCircle,
-} from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase-client';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
+import { AlertCard, EmptyState, FilterBar, MetricCard, PageHeader, SectionCard, StatusBadge, TaskRow, Timeline, TimelineItem } from '@/components/ui/system';
 
 type IssueSeverity = 'critical' | 'warning' | 'info';
 type IssueStatus = 'open' | 'reviewed' | 'resolved' | 'ignored';
@@ -170,10 +168,8 @@ export default function HealthPage() {
     return true;
   });
 
-  // Overall health status
-  const healthStatus = criticalCount > 0 ? 'critical' : warningCount > 0 ? 'warning' : 'healthy';
 
-  if (loading) return <div className="min-h-[60vh] flex items-center justify-center text-gray-500">Loading...</div>;
+  if (loading) return <div className="min-h-[60vh] flex items-center justify-center text-slate-500">Loading...</div>;
 
   const tabs: { key: FilterTab; label: string; count: number }[] = [
     { key: 'all', label: 'All', count: issues.length },
@@ -185,150 +181,85 @@ export default function HealthPage() {
   ];
 
   return (
-    <div className="py-12">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <Link href="/admin" className="text-gray-500 hover:text-gray-700"><ArrowLeft className="h-5 w-5" /></Link>
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold text-gray-900">System Health</h1>
-            <p className="text-gray-500">Data integrity, drift detection, and operational health</p>
-          </div>
-          <button
-            onClick={handleRunChecks}
-            disabled={runningCheck}
-            className="btn-primary flex items-center gap-2 text-sm disabled:opacity-50"
-          >
-            <RefreshCw className={cn('h-4 w-4', runningCheck && 'animate-spin')} />
-            {runningCheck ? 'Running...' : 'Run Checks'}
-          </button>
-        </div>
-
-        {/* Health Status Banner */}
-        <div className={cn(
-          'rounded-lg px-4 py-3 mb-6 flex items-center gap-3',
-          healthStatus === 'critical' ? 'bg-red-50 border border-red-200' :
-          healthStatus === 'warning' ? 'bg-amber-50 border border-amber-200' :
-          'bg-green-50 border border-green-200'
-        )}>
-          {healthStatus === 'critical' ? (
-            <><AlertTriangle className="h-5 w-5 text-red-600" /><span className="font-medium text-red-700">Critical action needed — {criticalCount} critical issue{criticalCount !== 1 ? 's' : ''} detected</span></>
-          ) : healthStatus === 'warning' ? (
-            <><AlertTriangle className="h-5 w-5 text-amber-600" /><span className="font-medium text-amber-700">Needs review — {warningCount} warning{warningCount !== 1 ? 's' : ''} detected</span></>
-          ) : (
-            <><CheckCircle className="h-5 w-5 text-green-600" /><span className="font-medium text-green-700">All systems healthy</span></>
-          )}
-          {lastRun && (
-            <span className="text-xs text-gray-500 ml-auto">
-              Last check: {format(new Date(lastRun.started_at), 'MMM d, h:mm a')}
-            </span>
-          )}
-        </div>
-
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
-          <div className="card text-center">
-            <AlertTriangle className="h-5 w-5 text-red-600 mx-auto mb-1" />
-            <div className="text-xl font-bold text-red-700">{criticalCount}</div>
-            <div className="text-xs text-gray-500">Critical</div>
-          </div>
-          <div className="card text-center">
-            <AlertTriangle className="h-5 w-5 text-amber-500 mx-auto mb-1" />
-            <div className="text-xl font-bold text-amber-600">{warningCount}</div>
-            <div className="text-xs text-gray-500">Warnings</div>
-          </div>
-          <div className="card text-center">
-            <Activity className="h-5 w-5 text-blue-500 mx-auto mb-1" />
-            <div className="text-xl font-bold text-blue-600">{attendanceIssues}</div>
-            <div className="text-xs text-gray-500">Attendance</div>
-          </div>
-          <div className="card text-center">
-            <Shield className="h-5 w-5 text-navy-600 mx-auto mb-1" />
-            <div className="text-xl font-bold text-navy-700">{capacityIssues}</div>
-            <div className="text-xs text-gray-500">Capacity</div>
-          </div>
-          <div className="card text-center">
-            <Clock className="h-5 w-5 text-gray-500 mx-auto mb-1" />
-            <div className="text-xl font-bold text-gray-600">{runs.length}</div>
-            <div className="text-xs text-gray-500">Checks run</div>
-          </div>
-        </div>
-
-        {/* Filter Tabs */}
-        <div className="flex gap-2 mb-6 overflow-x-auto">
-          {tabs.map(tab => (
+    <div className="space-y-6">
+      <PageHeader
+        title="Operational Health"
+        subtitle="Scan integrity issues quickly, resolve them, and keep nightly operations stable."
+        actions={
+          <div className="flex items-center gap-2">
+            <Link href="/admin" className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50">Back</Link>
             <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={cn(
-                'px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-colors flex items-center gap-2',
-                activeTab === tab.key
-                  ? 'bg-navy-700 text-white'
-                  : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50',
-              )}
+              onClick={handleRunChecks}
+              disabled={runningCheck}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
             >
-              {tab.label}
-              <span className={cn(
-                'inline-flex items-center justify-center h-5 min-w-[20px] rounded-full text-xs font-bold',
-                activeTab === tab.key ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600',
-              )}>
-                {tab.count}
-              </span>
+              <RefreshCw className={cn('h-4 w-4', runningCheck && 'animate-spin')} />
+              {runningCheck ? 'Running…' : 'Run checks'}
             </button>
-          ))}
-        </div>
-
-        {/* Issue List */}
-        {filteredIssues.length === 0 ? (
-          <div className="card text-center py-12">
-            <CheckCircle className="h-12 w-12 text-green-300 mx-auto mb-3" />
-            <p className="text-gray-500">
-              {issues.length === 0 ? 'No issues detected. Run a health check to scan for issues.' : 'No issues in this category.'}
-            </p>
           </div>
-        ) : (
-          <div className="space-y-2 mb-6">
-            {filteredIssues.map(issue => {
-              const isExpanded = expandedIssue === issue.id;
-              return (
-                <div key={issue.id} className={cn(
-                  'card border-l-4',
-                  issue.severity === 'critical' ? 'border-l-red-500' :
-                  issue.severity === 'warning' ? 'border-l-amber-400' :
-                  'border-l-blue-300'
-                )}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setExpandedIssue(isExpanded ? null : issue.id)}>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {issue.severity === 'critical' ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700"><AlertTriangle className="h-3 w-3" /> Critical</span>
-                        ) : issue.severity === 'warning' ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700"><AlertTriangle className="h-3 w-3" /> Warning</span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700"><Info className="h-3 w-3" /> Info</span>
-                        )}
-                        <span className="font-medium text-gray-900">{ISSUE_TYPE_LABELS[issue.issue_type] || issue.issue_type}</span>
-                        {issue.care_date && (
-                          <span className="text-sm text-gray-500">{issue.care_date}</span>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">{RECOMMENDED_ACTIONS[issue.issue_type] || 'Review and investigate'}</p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <button onClick={() => handleResolve(issue.id, 'resolved')}
-                        className="btn-secondary text-xs px-2 py-1">Resolve</button>
-                      <button onClick={() => handleResolve(issue.id, 'ignored')}
-                        className="text-xs text-gray-400 hover:text-gray-600 px-1">Ignore</button>
-                      {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
-                    </div>
-                  </div>
+        }
+      />
 
+      <AlertCard tone={criticalCount > 0 ? 'red' : warningCount > 0 ? 'yellow' : 'green'} title={criticalCount > 0 ? 'Critical action needed' : warningCount > 0 ? 'Review needed' : 'All systems healthy'}>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span>{criticalCount} critical · {warningCount} warnings</span>
+          {lastRun && <span className="text-slate-600">Last run: {format(new Date(lastRun.started_at), 'MMM d, h:mm a')}</span>}
+        </div>
+      </AlertCard>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <MetricCard label="Critical" value={criticalCount} tone="red" />
+        <MetricCard label="Warnings" value={warningCount} tone="yellow" />
+        <MetricCard label="Attendance" value={attendanceIssues} tone="blue" />
+        <MetricCard label="Capacity" value={capacityIssues} tone="gray" />
+        <MetricCard label="Checks run" value={runs.length} tone="green" />
+      </div>
+
+      <FilterBar>
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={cn(
+              'inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm',
+              activeTab === tab.key ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-700',
+            )}
+          >
+            {tab.label}
+            <StatusBadge tone={activeTab === tab.key ? 'gray' : 'blue'}>{tab.count}</StatusBadge>
+          </button>
+        ))}
+      </FilterBar>
+
+      <SectionCard title="Open issues" subtitle="Actionable integrity checks for staff and admin review.">
+        {filteredIssues.length === 0 ? (
+          <EmptyState
+            title={issues.length === 0 ? 'No issues detected' : 'No issues in this filter'}
+            description={issues.length === 0 ? 'Run a health check to scan for new issues.' : 'Try another filter to review remaining items.'}
+          />
+        ) : (
+          <div className="space-y-2">
+            {filteredIssues.map((issue) => {
+              const isExpanded = expandedIssue === issue.id;
+              const tone = issue.severity === 'critical' ? 'red' : issue.severity === 'warning' ? 'yellow' : 'blue';
+              return (
+                <div key={issue.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                  <TaskRow
+                    title={ISSUE_TYPE_LABELS[issue.issue_type] || issue.issue_type}
+                    meta={`${RECOMMENDED_ACTIONS[issue.issue_type] || 'Review and investigate'}${issue.care_date ? ` • ${issue.care_date}` : ''}`}
+                    status={<StatusBadge tone={tone}>{issue.severity}</StatusBadge>}
+                    actions={
+                      <>
+                        <button onClick={() => handleResolve(issue.id, 'resolved')} className="rounded-md border border-slate-200 px-2 py-1 text-xs">Resolve</button>
+                        <button onClick={() => handleResolve(issue.id, 'ignored')} className="rounded-md px-2 py-1 text-xs text-slate-500">Ignore</button>
+                        <button onClick={() => setExpandedIssue(isExpanded ? null : issue.id)} className="rounded-md px-2 py-1 text-xs text-slate-500">{isExpanded ? 'Hide' : 'Details'}</button>
+                      </>
+                    }
+                  />
                   {isExpanded && (
-                    <div className="mt-3 pt-3 border-t border-gray-100">
-                      <div className="text-xs text-gray-500 mb-2">Detected: {format(new Date(issue.detected_at), 'MMM d, h:mm a')}</div>
-                      <pre className="bg-gray-50 rounded-lg p-3 text-xs text-gray-700 overflow-x-auto">
-                        {JSON.stringify(issue.metadata, null, 2)}
-                      </pre>
+                    <div className="mt-2 rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
+                      <p className="mb-2 text-slate-500">Detected: {format(new Date(issue.detected_at), 'MMM d, h:mm a')}</p>
+                      <pre className="overflow-x-auto">{JSON.stringify(issue.metadata, null, 2)}</pre>
                     </div>
                   )}
                 </div>
@@ -336,45 +267,33 @@ export default function HealthPage() {
             })}
           </div>
         )}
+      </SectionCard>
 
-        {/* Run History */}
-        <div className="card">
-          <button onClick={() => setShowRuns(!showRuns)}
-            className="flex items-center justify-between w-full text-left">
-            <h2 className="text-lg font-semibold text-gray-900">Check History</h2>
-            {showRuns ? <ChevronUp className="h-5 w-5 text-gray-400" /> : <ChevronDown className="h-5 w-5 text-gray-400" />}
-          </button>
-          {showRuns && (
-            <div className="mt-4 space-y-2">
-              {runs.length === 0 ? (
-                <p className="text-sm text-gray-500">No health checks have been run yet.</p>
-              ) : runs.map(run => (
-                <div key={run.id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg text-sm">
-                  <div className="flex items-center gap-2">
-                    {run.status === 'completed' ? (
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                    ) : run.status === 'failed' ? (
-                      <XCircle className="h-4 w-4 text-red-500" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4 text-blue-500 animate-spin" />
-                    )}
-                    <span className="text-gray-700 capitalize">{run.run_type}</span>
-                    <span className="text-gray-400">{format(new Date(run.started_at), 'MMM d, h:mm a')}</span>
-                  </div>
-                  {run.summary && typeof run.summary === 'object' && run.summary.total !== undefined && (
-                    <div className="flex items-center gap-2 text-xs">
-                      {run.summary.critical > 0 && <span className="text-red-600 font-medium">{run.summary.critical} critical</span>}
-                      {run.summary.warning > 0 && <span className="text-amber-600 font-medium">{run.summary.warning} warning</span>}
-                      {run.summary.info > 0 && <span className="text-blue-600">{run.summary.info} info</span>}
-                      {run.summary.total === 0 && <span className="text-green-600">All clear</span>}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      <SectionCard
+        title="Check history"
+        subtitle="Recent runs and summary counts."
+        actions={<button onClick={() => setShowRuns(!showRuns)} className="rounded-md border border-slate-200 px-2 py-1 text-xs">{showRuns ? 'Collapse' : 'Expand'}</button>}
+      >
+        {!showRuns ? (
+          <p className="text-sm text-slate-500">Expand to view past runs.</p>
+        ) : runs.length === 0 ? (
+          <EmptyState title="No runs yet" description="Run health checks to generate a history log." />
+        ) : (
+          <Timeline>
+            {runs.map((run) => (
+              <TimelineItem
+                key={run.id}
+                title={`${run.run_type} • ${run.status}`}
+                time={format(new Date(run.started_at), 'MMM d, h:mm a')}
+                tone={run.status === 'failed' ? 'red' : run.status === 'completed' ? 'green' : 'blue'}
+                description={run.summary && typeof run.summary === 'object' && run.summary.total !== undefined
+                  ? `${run.summary.total} total • ${run.summary.critical || 0} critical • ${run.summary.warning || 0} warning`
+                  : undefined}
+              />
+            ))}
+          </Timeline>
+        )}
+      </SectionCard>
     </div>
   );
 }
