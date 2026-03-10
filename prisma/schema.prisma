@@ -112,11 +112,23 @@ enum CareEventType {
   incident_updated
   incident_resolved
   incident_acknowledged_by_parent
+  parent_notified
   admin_override_used
   record_archived
   record_restored
 
   @@map("care_event_type")
+}
+
+
+enum IncidentCaseStatus {
+  OPEN
+  UNDER_REVIEW
+  PARENT_NOTIFIED
+  RESOLVED
+  CLOSED
+
+  @@map("incident_case_status")
 }
 
 enum ActorType {
@@ -334,6 +346,7 @@ model Parent {
   settings             ParentSettings?
   staff_memberships    CenterStaffMembership[]
   billing_ledger       BillingLedger[]
+  incident_case_files  IncidentCaseFile[]
 
   @@index([facility_id], map: "idx_parents_facility_id")
   @@map("parents")
@@ -382,6 +395,7 @@ model Child {
   documents                 ChildDocument[]
   immunization_record       ChildImmunizationRecord?
   medication_authorizations MedicationAuthorization[]
+  incident_case_files       IncidentCaseFile[]
 
   @@index([parent_id], map: "idx_children_parent_id")
   @@index([facility_id], map: "idx_children_facility_id")
@@ -742,6 +756,7 @@ model ReservationEvent {
 // CHECK: status IN (open, investigating, resolved, closed)
 model IncidentReport {
   care_events         CareEvent[]
+  case_file           IncidentCaseFile?
   id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   facility_id           String   @map("facility_id") @db.Uuid
   facility              Facility @relation(fields: [facility_id], references: [id], onDelete: Restrict)
@@ -772,6 +787,84 @@ model IncidentReport {
   @@index([severity], map: "idx_incident_reports_severity")
   @@index([facility_id], map: "idx_incident_reports_facility_id")
   @@map("incident_reports")
+}
+
+
+model IncidentCaseFile {
+  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id      String             @db.Uuid
+  facility_id          String             @db.Uuid
+  incident_id          String             @unique @db.Uuid
+  child_id             String             @db.Uuid
+  parent_id            String?            @db.Uuid
+  status               IncidentCaseStatus @default(OPEN)
+  severity             String?
+  category             String?
+  parent_notified      Boolean            @default(false)
+  parent_notified_at   DateTime?          @db.Timestamptz(6)
+  parent_acknowledged  Boolean            @default(false)
+  parent_acknowledged_at DateTime?        @db.Timestamptz(6)
+  resolved_at          DateTime?          @db.Timestamptz(6)
+  closed_at            DateTime?          @db.Timestamptz(6)
+  resolution_summary   String?
+  created_by           String?            @db.Uuid
+  created_at           DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime           @default(now()) @updatedAt @db.Timestamptz(6)
+
+  organization Organization  @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  facility     Facility      @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  incident     IncidentReport @relation(fields: [incident_id], references: [id], onDelete: Cascade)
+  child        Child         @relation(fields: [child_id], references: [id], onDelete: Restrict)
+  parent       Parent?       @relation(fields: [parent_id], references: [id], onDelete: SetNull)
+  notes        IncidentCaseNote[]
+  actions      IncidentCaseAction[]
+
+  @@index([organization_id, created_at(sort: Desc)], map: "idx_incident_case_files_org_created_at_desc")
+  @@index([facility_id, created_at(sort: Desc)], map: "idx_incident_case_files_facility_created_at_desc")
+  @@index([incident_id], map: "idx_incident_case_files_incident_id")
+  @@index([child_id, created_at(sort: Desc)], map: "idx_incident_case_files_child_created_at_desc")
+  @@index([status, created_at(sort: Desc)], map: "idx_incident_case_files_status_created_at_desc")
+  @@map("incident_case_files")
+}
+
+model IncidentCaseNote {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String  @db.Uuid
+  facility_id    String   @db.Uuid
+  case_file_id   String   @db.Uuid
+  author_user_id String?  @db.Uuid
+  note_type      String
+  note_body      String
+  is_internal    Boolean  @default(true)
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  facility     Facility     @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  case_file    IncidentCaseFile @relation(fields: [case_file_id], references: [id], onDelete: Cascade)
+
+  @@index([case_file_id, created_at], map: "idx_incident_case_notes_case_file_created_at_asc")
+  @@index([facility_id, created_at(sort: Desc)], map: "idx_incident_case_notes_facility_created_at_desc")
+  @@map("incident_case_notes")
+}
+
+model IncidentCaseAction {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String   @db.Uuid
+  facility_id     String   @db.Uuid
+  case_file_id    String   @db.Uuid
+  action_type     String
+  action_label    String
+  action_metadata Json     @default("{}") @db.JsonB
+  performed_by    String?  @db.Uuid
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  facility     Facility     @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  case_file    IncidentCaseFile @relation(fields: [case_file_id], references: [id], onDelete: Cascade)
+
+  @@index([case_file_id, created_at], map: "idx_incident_case_actions_case_file_created_at_asc")
+  @@index([facility_id, created_at(sort: Desc)], map: "idx_incident_case_actions_facility_created_at_desc")
+  @@map("incident_case_actions")
 }
 
 // ─── center_staff_memberships ──────────────────────────────────────────────
@@ -1211,6 +1304,9 @@ model Facility {
   attendanceEvents        AttendanceEvent[]
   healthCheckRuns         HealthCheckRun[]
   healthIssues            HealthIssue[]
+  incidentCaseFiles        IncidentCaseFile[]
+  incidentCaseNotes        IncidentCaseNote[]
+  incidentCaseActions      IncidentCaseAction[]
 
   @@index([subscriptionStatus], map: "idx_facilities_subscription_status")
   @@index([isActive], map: "idx_facilities_is_active")
@@ -1232,6 +1328,9 @@ model Organization {
 
   facilities  Facility[]
   memberships OrganizationMembership[]
+  incidentCaseFiles IncidentCaseFile[]
+  incidentCaseNotes IncidentCaseNote[]
+  incidentCaseActions IncidentCaseAction[]
 
   @@index([status], map: "idx_organizations_status")
   @@index([ownerUserId], map: "idx_organizations_owner_user_id")

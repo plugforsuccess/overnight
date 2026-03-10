@@ -27,6 +27,7 @@ export type CareEventType =
   | 'incident_updated'
   | 'incident_resolved'
   | 'incident_acknowledged_by_parent'
+  | 'parent_notified'
   | 'admin_override_used'
   | 'record_archived'
   | 'record_restored';
