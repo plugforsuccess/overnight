@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
   if (!auth) return unauthorized();
   if (!auth.activeFacilityId) return unauthorized();
 
-  const { parentId } = auth;
+  const { parentId, activeFacilityId } = auth;
 
   const [profileRes, settingsRes] = await Promise.all([
     supabaseAdmin
@@ -63,6 +63,7 @@ export async function GET(req: NextRequest) {
       .from('parent_settings')
       .select('*')
       .eq('parent_id', parentId)
+      .eq('facility_id', activeFacilityId)
       .single(),
   ]);
 
@@ -103,7 +104,7 @@ export async function PATCH(req: NextRequest) {
   if (!auth) return unauthorized();
   if (!auth.activeFacilityId) return unauthorized();
 
-  const { parentId, supabase } = auth;
+  const { parentId, activeFacilityId, supabase } = auth;
 
   let body;
   try {
@@ -180,6 +181,7 @@ export async function PATCH(req: NextRequest) {
       const { error } = await supabaseAdmin
         .from('parent_settings')
         .upsert({
+          facility_id: activeFacilityId,
           parent_id: parentId,
           ...parsed.data,
           updated_at: new Date().toISOString(),
@@ -206,6 +208,7 @@ export async function PATCH(req: NextRequest) {
       const { error } = await supabaseAdmin
         .from('parent_settings')
         .upsert({
+          facility_id: activeFacilityId,
           parent_id: parentId,
           ...parsed.data,
           updated_at: new Date().toISOString(),
@@ -232,6 +235,7 @@ export async function PATCH(req: NextRequest) {
       const { error } = await supabaseAdmin
         .from('parent_settings')
         .upsert({
+          facility_id: activeFacilityId,
           parent_id: parentId,
           ...parsed.data,
           updated_at: new Date().toISOString(),
