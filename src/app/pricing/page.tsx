@@ -1,114 +1,38 @@
 import Link from 'next/link';
-import { Check } from 'lucide-react';
-import { DEFAULT_PRICING_TIERS, formatCents, pricePerNight, OVERNIGHT_START, OVERNIGHT_END } from '@/lib/constants';
 
-export const metadata = {
-  title: 'Pricing | DreamWatch Overnight',
-  description: 'Affordable weekly overnight childcare plans. Starting at $300/week for 3 nights.',
-};
+const tiers = [
+  { name: 'Starter Nights', nights: '1-2 nights / week', price: '$95+', tone: 'bg-sky-50 border-sky-200' },
+  { name: 'Core Care', nights: '3-4 nights / week', price: '$220+', tone: 'bg-emerald-50 border-emerald-200' },
+  { name: 'Full Week', nights: '5 nights / week', price: '$320+', tone: 'bg-amber-50 border-amber-200' },
+];
 
 export default function PricingPage() {
-  const tiers = DEFAULT_PRICING_TIERS;
-  const bestValue = 4; // 4-night plan is best value per PRD
-
   return (
-    <div className="py-16 md:py-24">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="text-center mb-16">
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
-            Simple, Transparent Pricing
-          </h1>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Weekly plans reserve your spot&mdash;paid weekly in advance. The more nights you book, the more you save.
-            All plans include overnight care from {OVERNIGHT_START} to {OVERNIGHT_END}.
-          </p>
-        </div>
-
-        {/* Pricing Cards */}
-        <div className="grid md:grid-cols-3 gap-6 mb-16 max-w-4xl mx-auto">
-          {tiers.map((tier, i) => {
-            const perNight = pricePerNight(tier);
-            const isBest = tier.nights === bestValue;
-            return (
-              <div
-                key={tier.nights}
-                className={`card relative ${isBest ? 'border-accent-600 border-2 shadow-soft-lg scale-105' : ''}`}
-              >
-                {isBest && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-accent-600 text-white text-xs font-bold px-3 py-1 rounded-full">
-                    Best Value
-                  </div>
-                )}
-                <div className="text-center">
-                  <div className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-1">
-                    {tier.nights} Night{tier.nights > 1 ? 's' : ''} / Week
-                  </div>
-                  <div className="text-4xl font-bold text-gray-900 mb-1">
-                    {formatCents(tier.price_cents)}
-                  </div>
-                  <div className="text-sm text-gray-500 mb-4">
-                    per week ({formatCents(perNight)}/night)
-                  </div>
-                  {i > 0 && (
-                    <div className="text-xs text-green-600 font-medium mb-4">
-                      Save {formatCents(tiers[0].price_cents * tier.nights - tier.price_cents)} vs single-night rate
-                    </div>
-                  )}
-                  <Link href="/signup" className={`w-full block text-center py-2.5 px-4 rounded-lg font-semibold transition-colors ${isBest ? 'bg-accent-600 hover:bg-accent-700 text-white shadow-soft-sm' : 'btn-secondary'}`}>
-                    Get Started
-                  </Link>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* What's Included */}
-        <div className="max-w-3xl mx-auto">
-          <h2 className="text-2xl font-bold text-gray-900 text-center mb-8">
-            Every Plan Includes
-          </h2>
-          <div className="grid sm:grid-cols-2 gap-4">
-            {[
-              'Licensed FCCLH facility',
-              'Background-checked caregivers',
-              'Small group size (max 6 children)',
-              'Bedtime routine & storytime',
-              'Comfortable sleeping arrangements',
-              'Snack provided',
-              'Online parent dashboard',
-              'Flexible night selection each week',
-              'Emergency contact protocols',
-              'Weekly billing (no long-term contracts)',
-            ].map((item) => (
-              <div key={item} className="flex items-center gap-3">
-                <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
-                <span className="text-gray-700">{item}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Multi-Child Discount */}
-        <div className="mt-16 card max-w-3xl mx-auto bg-green-50 border-green-200">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Multi-Child Discount</h3>
-          <p className="text-gray-700">
-            Families enrolling multiple children receive a <strong>10% discount on the second child</strong>.
-            For example, if Child 1 is on the 4-night plan ($360), Child 2 would be $324/week.
-          </p>
-        </div>
-
-        {/* Billing Info */}
-        <div className="mt-8 card max-w-3xl mx-auto">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3">Billing Details</h3>
-          <ul className="space-y-2 text-gray-600">
-            <li>&#8226; Payment is charged weekly in advance (Friday at 12:00 PM for the upcoming week).</li>
-            <li>&#8226; You select your specific nights each week before the billing cutoff.</li>
-            <li>&#8226; Plans can be paused or cancelled at any time, effective the next billing cycle.</li>
-            <li>&#8226; If a night is canceled due to low enrollment, you receive an automatic credit.</li>
-            <li>&#8226; Payments are processed securely through Stripe.</li>
-          </ul>
+    <div className="mx-auto max-w-7xl px-4 py-14">
+      <div className="mb-10 text-center">
+        <h1 className="text-4xl font-semibold text-slate-900">Transparent overnight pricing</h1>
+        <p className="mt-3 text-slate-600">Simple weekly tiers with clear expectations for attendance, pickup verification, and policy alignment.</p>
+      </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        {tiers.map((tier) => (
+          <article key={tier.name} className={`rounded-2xl border p-6 ${tier.tone}`}>
+            <p className="text-sm font-semibold text-slate-600">{tier.name}</p>
+            <p className="mt-2 text-3xl font-semibold text-slate-900">{tier.price}</p>
+            <p className="mt-1 text-sm text-slate-700">{tier.nights}</p>
+            <ul className="mt-4 space-y-2 text-sm text-slate-700">
+              <li>• Care timeline updates</li>
+              <li>• Authorized pickup workflows</li>
+              <li>• Incident communication trail</li>
+            </ul>
+          </article>
+        ))}
+      </div>
+      <div className="mt-10 rounded-2xl border border-slate-200 bg-white p-6">
+        <h2 className="font-semibold text-slate-900">Need policy details before enrolling?</h2>
+        <p className="mt-2 text-sm text-slate-600">Review operating nights, health/safety guidelines, and overnight program standards.</p>
+        <div className="mt-4 flex gap-3">
+          <Link href="/policies" className="btn-secondary">Policies</Link>
+          <Link href="/signup" className="btn-primary">Start enrollment</Link>
         </div>
       </div>
     </div>
