@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase-server';
 import { z } from 'zod';
 import { checkIdempotencyKey, saveIdempotencyResult } from '@/lib/idempotency';
 import { writeCareEvent } from '@/lib/care-events';
+import { ensureIncidentCaseFile } from '@/lib/incident-case-files';
 
 const createIncidentSchema = z.object({
   attendance_session_id: z.string().uuid().optional().nullable(),
@@ -115,6 +116,8 @@ export async function POST(
 
   if (error) return badRequest(error.message);
 
+  await ensureIncidentCaseFile(incident.id);
+
   await writeCareEvent({
     eventType: 'incident_created',
     actorType: 'PARENT',
@@ -138,6 +141,8 @@ const updateIncidentSchema = z.object({
   summary: z.string().min(1).max(500).optional(),
   details: z.string().max(5000).optional().nullable(),
   status: z.enum(['open','investigating','resolved','closed']).optional(),
+  severity: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+  category: z.string().min(1).max(100).optional(),
 });
 
 export async function PATCH(
@@ -157,6 +162,8 @@ export async function PATCH(
   if (parsed.data.summary !== undefined) updates.summary = parsed.data.summary;
   if (parsed.data.details !== undefined) updates.details = parsed.data.details;
   if (parsed.data.status !== undefined) updates.status = parsed.data.status;
+  if (parsed.data.severity !== undefined) updates.severity = parsed.data.severity;
+  if (parsed.data.category !== undefined) updates.category = parsed.data.category;
 
   const { data: incident, error } = await supabaseAdmin
     .from('incident_reports')
@@ -168,6 +175,13 @@ export async function PATCH(
     .single();
 
   if (error || !incident) return badRequest('Failed to update incident');
+
+  await ensureIncidentCaseFile(incident.id);
+  await supabaseAdmin
+    .from('incident_case_files')
+    .update({ severity: incident.severity, category: incident.category })
+    .eq('incident_id', incident.id)
+    .eq('facility_id', auth.activeFacilityId);
 
   await writeCareEvent({
     eventType: parsed.data.status === 'resolved' ? 'incident_resolved' : 'incident_updated',
