@@ -72,7 +72,7 @@ export default function CalendarSelector({
   const pageEnd = addDays(startOfWeek(addWeeks(pageStart, 3), { weekStartsOn: 0 }), 6);
   const startMonth = format(pageStart, 'MMMM yyyy');
   const endMonth = format(pageEnd, 'MMMM yyyy');
-  const monthLabel = startMonth === endMonth ? startMonth : `${format(pageStart, 'MMM')} \u2013 ${endMonth}`;
+  const monthLabel = startMonth === endMonth ? startMonth : `${format(pageStart, 'MMM')} – ${endMonth}`;
 
   return (
     <div>

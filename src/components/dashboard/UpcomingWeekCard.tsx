@@ -95,7 +95,7 @@ export function UpcomingWeekCard({ nights }: Props) {
         {Array.from(weekGroups.entries()).map(([weekKey, weekNights]) => {
           const weekStart = parseISO(weekKey);
           const weekEnd = addDays(weekStart, 6);
-          const weekLabel = `${format(weekStart, 'MMM d')} \u2013 ${format(weekEnd, 'MMM d')}`;
+          const weekLabel = `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d')}`;
 
           return (
             <div key={weekKey}>

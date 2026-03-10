@@ -95,7 +95,7 @@ export function getUpcomingWeeks(count: number, bookingWindowDays: number): Date
  */
 export function formatWeekRange(weekStart: Date): string {
   const weekEnd = addDays(weekStart, 6);
-  return `${format(weekStart, 'MMM d')} \u2013 ${format(weekEnd, 'MMM d')}`;
+  return `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d')}`;
 }
 
 /**
