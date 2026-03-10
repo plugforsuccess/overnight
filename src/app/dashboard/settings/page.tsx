@@ -33,6 +33,22 @@ interface SettingsData {
   language_preference: string | null;
 }
 
+const DEFAULT_SETTINGS: SettingsData = {
+  email_notifications: true,
+  sms_notifications: false,
+  reservation_reminders: true,
+  billing_reminders: true,
+  emergency_alerts: true,
+  require_pickup_pin: true,
+  notify_on_check_in_out: true,
+  notify_on_pickup_changes: true,
+  emergency_contact_reminder: true,
+  preferred_contact_method: null,
+  preferred_reminder_timing: null,
+  staff_notes: null,
+  language_preference: null,
+};
+
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -83,20 +99,23 @@ export default function SettingsPage() {
       try {
         const headers = await getAuthHeaders();
         const res = await fetch('/api/settings', { headers });
+        const json = await res.json().catch(() => ({}));
 
-        if (!res.ok) throw new Error('Failed to load settings');
+        if (!res.ok) throw new Error(json.error || 'Failed to load settings');
+        if (!json.profile) throw new Error('Failed to load profile');
 
-        const json = await res.json();
+        const mergedSettings: SettingsData = { ...DEFAULT_SETTINGS, ...(json.settings || {}) };
+
         setProfile(json.profile);
-        setSettings(json.settings);
+        setSettings(mergedSettings);
 
         // Initialize form state
         setFirstName(json.profile.first_name);
         setLastName(json.profile.last_name);
         setPhone(json.profile.phone || '');
-        setPreferredContact(json.settings.preferred_contact_method || '');
-        setReminderTiming(json.settings.preferred_reminder_timing || '');
-        setStaffNotes(json.settings.staff_notes || '');
+        setPreferredContact(mergedSettings.preferred_contact_method || '');
+        setReminderTiming(mergedSettings.preferred_reminder_timing || '');
+        setStaffNotes(mergedSettings.staff_notes || '');
       } catch (err: any) {
         setError(err.message);
       } finally {

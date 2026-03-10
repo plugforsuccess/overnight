@@ -42,6 +42,50 @@ const preferencesSchema = z.object({
   language_preference: z.string().max(20).nullable().optional(),
 });
 
+const defaultSettings = {
+  email_notifications: true,
+  sms_notifications: false,
+  reservation_reminders: true,
+  billing_reminders: true,
+  emergency_alerts: true,
+  require_pickup_pin: true,
+  notify_on_check_in_out: true,
+  notify_on_pickup_changes: true,
+  emergency_contact_reminder: true,
+  preferred_contact_method: null,
+  preferred_reminder_timing: null,
+  staff_notes: null,
+  language_preference: null,
+};
+
+async function ensureParentSettingsRow(parentId: string, facilityId: string) {
+  const settingsRes = await supabaseAdmin
+    .from('parent_settings')
+    .select('*')
+    .eq('parent_id', parentId)
+    .maybeSingle();
+
+  if (settingsRes.error) {
+    return { data: null, error: settingsRes.error };
+  }
+
+  if (settingsRes.data) {
+    return { data: settingsRes.data, error: null };
+  }
+
+  const created = await supabaseAdmin
+    .from('parent_settings')
+    .insert({
+      parent_id: parentId,
+      facility_id: facilityId,
+      ...defaultSettings,
+    })
+    .select('*')
+    .single();
+
+  return created;
+}
+
 /**
  * GET /api/settings
  * Returns profile and settings for the authenticated parent.
@@ -51,7 +95,7 @@ export async function GET(req: NextRequest) {
   if (!auth) return unauthorized();
   if (!auth.activeFacilityId) return unauthorized();
 
-  const { parentId } = auth;
+  const { parentId, activeFacilityId } = auth;
 
   const [profileRes, settingsRes] = await Promise.all([
     supabaseAdmin
@@ -59,37 +103,21 @@ export async function GET(req: NextRequest) {
       .select('first_name, last_name, email, phone, address, created_at')
       .eq('id', parentId)
       .single(),
-    supabaseAdmin
-      .from('parent_settings')
-      .select('*')
-      .eq('parent_id', parentId)
-      .single(),
+    ensureParentSettingsRow(parentId, activeFacilityId),
   ]);
 
   if (profileRes.error || !profileRes.data) {
     return NextResponse.json({ error: 'Failed to load profile' }, { status: 500 });
   }
 
-  // If no settings row exists, return defaults
-  const defaultSettings = {
-    email_notifications: true,
-    sms_notifications: false,
-    reservation_reminders: true,
-    billing_reminders: true,
-    emergency_alerts: true,
-    require_pickup_pin: true,
-    notify_on_check_in_out: true,
-    notify_on_pickup_changes: true,
-    emergency_contact_reminder: true,
-    preferred_contact_method: null,
-    preferred_reminder_timing: null,
-    staff_notes: null,
-    language_preference: null,
-  };
+  if (settingsRes.error) {
+    console.error('[api/settings] settings load error:', settingsRes.error);
+    return NextResponse.json({ error: 'Failed to load settings' }, { status: 500 });
+  }
 
   return NextResponse.json({
     profile: profileRes.data,
-    settings: settingsRes.data || defaultSettings,
+    settings: settingsRes.data,
   });
 }
 
@@ -103,7 +131,7 @@ export async function PATCH(req: NextRequest) {
   if (!auth) return unauthorized();
   if (!auth.activeFacilityId) return unauthorized();
 
-  const { parentId, supabase } = auth;
+  const { parentId, supabase, activeFacilityId } = auth;
 
   let body;
   try {
@@ -181,6 +209,7 @@ export async function PATCH(req: NextRequest) {
         .from('parent_settings')
         .upsert({
           parent_id: parentId,
+          facility_id: activeFacilityId,
           ...parsed.data,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'parent_id' });
@@ -207,6 +236,7 @@ export async function PATCH(req: NextRequest) {
         .from('parent_settings')
         .upsert({
           parent_id: parentId,
+          facility_id: activeFacilityId,
           ...parsed.data,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'parent_id' });
@@ -233,6 +263,7 @@ export async function PATCH(req: NextRequest) {
         .from('parent_settings')
         .upsert({
           parent_id: parentId,
+          facility_id: activeFacilityId,
           ...parsed.data,
           updated_at: new Date().toISOString(),
         }, { onConflict: 'parent_id' });
