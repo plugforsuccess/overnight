@@ -1,93 +1,57 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase-client';
+import { AlertCard, MetricCard, PageHeader, SectionCard, StatusBadge } from '@/components/ui/system';
 
-type ComplianceRow = {
-  childId: string;
-  childName: string;
-  guardian: string;
-  bookingEligibility: boolean;
-  immunizationStatus: string;
-  allergyPlanStatus: boolean;
-  physicianInfoStatus: boolean;
-  medicationStatus: boolean;
-  documentStatus: string;
-  blockers: string[];
-  warnings: string[];
-  updatedAt: string;
-};
-
-const FILTERS = [
-  { key: '', label: 'All' },
-  { key: 'missing_emergency_contact', label: 'Missing emergency contact' },
-  { key: 'missing_pickup', label: 'Missing pickup' },
-  { key: 'missing_medical_profile', label: 'Missing medical profile' },
-  { key: 'missing_physician_info', label: 'Missing physician info' },
-  { key: 'missing_immunization', label: 'Missing immunization' },
-  { key: 'expired_immunization', label: 'Expired immunization' },
-  { key: 'missing_allergy_plan', label: 'Missing allergy plan' },
-  { key: 'expired_medication_auth', label: 'Expired medication auth' },
-  { key: 'unverified_documents', label: 'Unverified documents' },
-];
+interface CompliancePayload {
+  compliantChildren: number;
+  expiringDocuments: number;
+  incidentRate: number;
+  attendanceAnomalies: number;
+}
 
 export default function AdminCompliancePage() {
-  const [rows, setRows] = useState<ComplianceRow[]>([]);
-  const [filter, setFilter] = useState('');
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<CompliancePayload>({ compliantChildren: 0, expiringDocuments: 0, incidentRate: 0, attendanceAnomalies: 0 });
 
   useEffect(() => {
-    const q = filter ? `?filter=${filter}` : '';
-    fetch(`/api/admin/compliance${q}`).then(r => r.json()).then(d => setRows(d.children || []));
-  }, [filter]);
+    async function load() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { router.push('/login'); return; }
 
-  const totals = useMemo(() => ({
-    ready: rows.filter((r) => r.bookingEligibility).length,
-    blocked: rows.filter((r) => !r.bookingEligibility).length,
-  }), [rows]);
+      const { data: profile } = await supabase.from('parents').select('role').eq('id', user.id).single();
+      if (profile?.role !== 'admin') { router.push('/dashboard'); return; }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const res = await fetch('/api/admin/compliance', { headers: { Authorization: `Bearer ${sessionData.session?.access_token || ''}` } });
+      if (res.ok) setData(await res.json());
+      setLoading(false);
+    }
+    load();
+  }, [router]);
+
+  if (loading) return <div className="min-h-[60vh] flex items-center justify-center text-gray-500">Loading...</div>;
 
   return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-semibold">Compliance Audit</h1>
-      <div className="flex flex-wrap gap-2">
-        {FILTERS.map((f) => (
-          <button key={f.key} onClick={() => setFilter(f.key)} className={`px-3 py-1 rounded border text-sm ${filter === f.key ? 'bg-navy-700 text-white' : 'bg-white'}`}>
-            {f.label}
-          </button>
-        ))}
+    <div className="space-y-6">
+      <PageHeader title="Compliance Overview" subtitle="Document health, incident trend, and attendance anomalies" />
+      <div className="grid gap-4 md:grid-cols-4">
+        <MetricCard label="Compliant Children" value={data.compliantChildren} tone="green" />
+        <MetricCard label="Expiring Docs" value={data.expiringDocuments} tone={data.expiringDocuments > 0 ? 'yellow' : 'green'} />
+        <MetricCard label="Incident Rate" value={`${data.incidentRate}%`} tone={data.incidentRate > 5 ? 'red' : 'blue'} />
+        <MetricCard label="Attendance Anomalies" value={data.attendanceAnomalies} tone={data.attendanceAnomalies > 0 ? 'yellow' : 'green'} />
       </div>
-      <p className="text-sm text-gray-600">Ready: {totals.ready} • Blocked: {totals.blocked}</p>
 
-      <div className="border rounded-lg overflow-x-auto">
-        <table className="w-full text-sm min-w-[900px]">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="text-left p-2">Child</th>
-              <th className="text-left p-2">Guardian</th>
-              <th className="text-left p-2">Ready to Book</th>
-              <th className="text-left p-2">Immunization</th>
-              <th className="text-left p-2">Allergy Plan</th>
-              <th className="text-left p-2">Physician</th>
-              <th className="text-left p-2">Medication</th>
-              <th className="text-left p-2">Docs</th>
-              <th className="text-left p-2">Blockers</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.childId} className="border-t align-top">
-                <td className="p-2">{r.childName}</td>
-                <td className="p-2">{r.guardian}</td>
-                <td className="p-2">{r.bookingEligibility ? 'Yes' : 'No'}</td>
-                <td className="p-2">{r.immunizationStatus}</td>
-                <td className="p-2">{r.allergyPlanStatus ? 'OK' : 'Missing'}</td>
-                <td className="p-2">{r.physicianInfoStatus ? 'OK' : 'Missing'}</td>
-                <td className="p-2">{r.medicationStatus ? 'OK' : 'Missing/Expired'}</td>
-                <td className="p-2">{r.documentStatus}</td>
-                <td className="p-2">{r.blockers.join(', ') || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <SectionCard title="Risk and Attention Surface" subtitle="Prioritize upcoming compliance work">
+        <div className="space-y-3">
+          {data.expiringDocuments > 0 && <AlertCard tone="yellow" title="Documents expiring soon">{data.expiringDocuments} child profiles have documentation nearing expiration.</AlertCard>}
+          {data.attendanceAnomalies > 0 && <AlertCard tone="blue" title="Attendance anomalies">Review flagged attendance transitions for correction and audit readiness.</AlertCard>}
+          <div className="flex items-center gap-2"><StatusBadge tone={data.incidentRate > 5 ? 'red' : 'green'}>{data.incidentRate > 5 ? 'elevated incident rate' : 'incident rate stable'}</StatusBadge></div>
+        </div>
+      </SectionCard>
     </div>
   );
 }
