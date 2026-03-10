@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { UserPlus, ArrowLeft, Trash2, AlertCircle } from 'lucide-react';
+import { UserPlus, Plus, Trash2, AlertCircle, ShieldCheck, HeartHandshake } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase-client';
+import { AlertCard, ChildCard, EmptyState, PageHeader, SectionCard, StatusBadge, Timeline, TimelineItem } from '@/components/ui/system';
 import type {
   ChildRow,
   ChildWithDetails,
@@ -488,69 +489,86 @@ export default function ChildrenPage() {
   }
 
   return (
-    <div className="py-12">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <Link href="/dashboard" className="text-gray-500 hover:text-gray-700">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold text-gray-900">Manage Children</h1>
-            <p className="text-gray-600">Add and manage your children&apos;s profiles</p>
+    <div className="space-y-6">
+      <PageHeader
+        title="Your Children"
+        subtitle="Keep each child profile complete so check-in, pickups, and care notes stay trusted and smooth."
+        actions={(
+          <div className="flex items-center gap-2">
+            <Link href="/dashboard" className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50">Back</Link>
+            <button onClick={handleAddChild} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-60">
+              <Plus className="h-4 w-4" /> Add child
+            </button>
           </div>
-          <button onClick={handleAddChild} disabled={saving} className="btn-primary flex items-center gap-2">
-            <UserPlus className="h-4 w-4" /> Add Child
-          </button>
-        </div>
+        )}
+      />
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <SectionCard title="Family trust" subtitle="What staff rely on every night.">
+          <div className="flex items-center justify-between text-sm text-slate-600">
+            <span>Children in profile</span>
+            <StatusBadge tone={children.length > 0 ? 'green' : 'gray'}>{children.length}</StatusBadge>
+          </div>
+          <p className="mt-3 text-sm text-slate-600">Emergency contacts, pickup permissions, and medications are kept per child so care stays accurate.</p>
+        </SectionCard>
+        <SectionCard title="Safety-first records" subtitle="Maintain up-to-date medical and pickup info.">
+          <div className="flex items-center gap-2 text-sm text-slate-700"><ShieldCheck className="h-4 w-4 text-emerald-600" />Profiles are tied to secure account auth.</div>
+          <div className="mt-2 flex items-center gap-2 text-sm text-slate-700"><HeartHandshake className="h-4 w-4 text-sky-600" />Staff see your latest approved details on duty.</div>
+        </SectionCard>
+        <SectionCard title="Typical setup flow" subtitle="Most families complete profiles in this order.">
+          <Timeline>
+            <TimelineItem title="Add basic info" tone="blue" />
+            <TimelineItem title="Set emergency and pickup contacts" tone="yellow" />
+            <TimelineItem title="Upload medical docs and meds" tone="green" />
+          </Timeline>
+        </SectionCard>
+      </div>
 
         {/* Toast */}
-        {toast && (
+      {toast && (
           <div className="fixed top-4 right-4 z-50 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium">
             {toast}
           </div>
-        )}
+      )}
 
         {/* Global Error */}
-        {error && (
-          <div className="bg-red-50 text-red-700 px-4 py-3 rounded-lg mb-6 flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-            {error}
-            <button onClick={() => setError('')} className="ml-auto text-red-500 hover:text-red-700">&times;</button>
+      {error && (
+        <AlertCard tone="red" title="We couldn’t update this profile yet">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+            <span>{error}</span>
+            <button onClick={() => setError('')} className="ml-auto">Dismiss</button>
           </div>
-        )}
+        </AlertCard>
+      )}
 
         {/* Empty state */}
-        {children.length === 0 ? (
-          <div className="card text-center py-12">
-            <UserPlus className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No children added yet</h3>
-            <p className="text-gray-500 mb-4">Add your child&apos;s profile to start booking nights.</p>
-            <button onClick={handleAddChild} disabled={saving} className="btn-primary">
-              Add Your First Child
-            </button>
-          </div>
-        ) : (
-          <div className="flex gap-6">
+      {children.length === 0 ? (
+        <EmptyState
+          title="No child profiles yet"
+          description="Start with your first child profile to unlock booking and complete safety records."
+          action={<button onClick={handleAddChild} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white"><UserPlus className="h-4 w-4" />Add your first child</button>}
+        />
+      ) : (
+        <div className="flex gap-6">
             {/* Left pane: children list */}
-            <div className="w-72 flex-shrink-0 space-y-3">
+            <div className="w-80 flex-shrink-0 space-y-3">
               {children.map(child => (
                 <div
                   key={child.id}
                   onClick={() => { setSelectedId(child.id); setActiveTab('basics'); }}
-                  className={`card cursor-pointer transition-all ${
+                  className={`cursor-pointer rounded-2xl border bg-white p-3 shadow-sm transition-all ${
                     selectedId === child.id
-                      ? 'ring-2 ring-accent-500 border-accent-300'
-                      : 'hover:border-gray-300'
+                      ? 'ring-2 ring-sky-400 border-sky-300'
+                      : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h3 className="font-semibold text-gray-900">
-                        {child.first_name} {child.last_name}
-                      </h3>
-                      <p className="text-xs text-gray-500">DOB: {child.date_of_birth}</p>
-                    </div>
+                  <div className="flex justify-between items-start gap-2">
+                    <ChildCard
+                      name={`${child.first_name} ${child.last_name}`}
+                      details={<span>DOB: {child.date_of_birth}</span>}
+                      status={<StatusBadge tone={selectedId === child.id ? 'blue' : 'gray'}>{selectedId === child.id ? 'Open' : 'Ready'}</StatusBadge>}
+                    />
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDeleteChild(child.id); }}
                       className="p-1 text-gray-400 hover:text-red-500"
@@ -563,21 +581,21 @@ export default function ChildrenPage() {
             </div>
 
             {/* Right pane: detail editor */}
-            <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0">
               {!selectedId ? (
                 <div className="card text-center py-12 text-gray-500">
                   Select a child to view and edit their profile
                 </div>
               ) : detailLoading ? (
-                <div className="card">
+                <SectionCard title="Loading child profile" subtitle="Fetching latest details.">
                   <div className="animate-pulse space-y-4">
                     <div className="h-8 bg-gray-200 rounded w-48" />
                     <div className="h-4 bg-gray-200 rounded w-full" />
                     <div className="h-4 bg-gray-200 rounded w-3/4" />
                   </div>
-                </div>
+                </SectionCard>
               ) : selectedChild ? (
-                <div className="card">
+                <SectionCard title={`${selectedChild.first_name} ${selectedChild.last_name}`} subtitle="Profile details and care records">
                   {/* Tabs */}
                   <div className="flex border-b mb-6 -mt-2 gap-1 overflow-x-auto">
                     {TABS.map(tab => (
@@ -671,12 +689,11 @@ export default function ChildrenPage() {
                       onDeleted={handleDocumentDeleted}
                     />
                   )}
-                </div>
+                </SectionCard>
               ) : null}
-            </div>
           </div>
-        )}
-      </div>
+          </div>
+      )}
     </div>
   );
 }
