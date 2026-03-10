@@ -84,6 +84,37 @@ enum OrganizationRole {
   @@map("organization_role")
 }
 
+enum StaffShiftRole {
+  DIRECTOR
+  STAFF
+  CAREGIVER
+  SUPERVISOR
+
+  @@map("staff_shift_role")
+}
+
+enum StaffTaskStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  CANCELLED
+
+  @@map("staff_task_status")
+}
+
+enum StaffTaskType {
+  CHECKIN
+  CHECKOUT
+  PICKUP
+  INCIDENT_FOLLOWUP
+  DOCUMENT_REVIEW
+  MEDICATION
+  HANDOFF
+  GENERAL
+
+  @@map("staff_task_type")
+}
+
 
 enum CareEventType {
   child_created
@@ -116,6 +147,13 @@ enum CareEventType {
   admin_override_used
   record_archived
   record_restored
+  staff_shift_created
+  child_assignment_created
+  child_assignment_released
+  shift_handoff_note_created
+  staff_task_created
+  staff_task_completed
+  staff_task_cancelled
 
   @@map("care_event_type")
 }
@@ -396,6 +434,8 @@ model Child {
   immunization_record       ChildImmunizationRecord?
   medication_authorizations MedicationAuthorization[]
   incident_case_files       IncidentCaseFile[]
+  child_assignments         ChildAssignment[]
+  staff_tasks               StaffTask[]
 
   @@index([parent_id], map: "idx_children_parent_id")
   @@index([facility_id], map: "idx_children_facility_id")
@@ -1307,6 +1347,10 @@ model Facility {
   incidentCaseFiles        IncidentCaseFile[]
   incidentCaseNotes        IncidentCaseNote[]
   incidentCaseActions      IncidentCaseAction[]
+  staffShifts              StaffShift[]
+  childAssignments         ChildAssignment[]
+  shiftHandoffNotes        ShiftHandoffNote[]
+  staffTasks               StaffTask[]
 
   @@index([subscriptionStatus], map: "idx_facilities_subscription_status")
   @@index([isActive], map: "idx_facilities_is_active")
@@ -1331,6 +1375,10 @@ model Organization {
   incidentCaseFiles IncidentCaseFile[]
   incidentCaseNotes IncidentCaseNote[]
   incidentCaseActions IncidentCaseAction[]
+  staffShifts       StaffShift[]
+  childAssignments  ChildAssignment[]
+  shiftHandoffNotes ShiftHandoffNote[]
+  staffTasks        StaffTask[]
 
   @@index([status], map: "idx_organizations_status")
   @@index([ownerUserId], map: "idx_organizations_owner_user_id")
@@ -1742,4 +1790,88 @@ model CareEvent {
   @@index([incident_id, created_at(sort: Desc)], map: "idx_care_events_incident_created_at_desc")
   @@index([event_type, created_at(sort: Desc)], map: "idx_care_events_type_created_at_desc")
   @@map("care_events")
+}
+
+model StaffShift {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String         @db.Uuid
+  facility_id     String         @db.Uuid
+  staff_user_id   String         @db.Uuid
+  shift_role      StaffShiftRole
+  shift_start     DateTime       @db.Timestamptz(6)
+  shift_end       DateTime       @db.Timestamptz(6)
+  is_active       Boolean        @default(true)
+  created_at      DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime       @default(now()) @db.Timestamptz(6)
+
+  organization Organization      @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  facility     Facility          @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  handoffNotes ShiftHandoffNote[]
+
+  @@index([facility_id, shift_start(sort: Desc)], map: "idx_staff_shifts_facility_shift_start_desc")
+  @@index([staff_user_id, shift_start(sort: Desc)], map: "idx_staff_shifts_staff_shift_start_desc")
+  @@index([organization_id, facility_id, shift_start(sort: Desc)], map: "idx_staff_shifts_org_facility_shift_start_desc")
+  @@map("staff_shifts")
+}
+
+model ChildAssignment {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String    @db.Uuid
+  facility_id     String    @db.Uuid
+  child_id        String    @db.Uuid
+  staff_user_id   String    @db.Uuid
+  assigned_at     DateTime  @default(now()) @db.Timestamptz(6)
+  released_at     DateTime? @db.Timestamptz(6)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  facility     Facility     @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  child        Child        @relation(fields: [child_id], references: [id], onDelete: Cascade)
+
+  @@index([facility_id, child_id, assigned_at(sort: Desc)], map: "idx_child_assignments_facility_child_assigned_at_desc")
+  @@index([facility_id, staff_user_id, assigned_at(sort: Desc)], map: "idx_child_assignments_facility_staff_assigned_at_desc")
+  @@map("child_assignments")
+}
+
+model ShiftHandoffNote {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String   @db.Uuid
+  facility_id     String   @db.Uuid
+  shift_id        String   @db.Uuid
+  staff_user_id   String   @db.Uuid
+  note            String
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  facility     Facility     @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  shift        StaffShift   @relation(fields: [shift_id], references: [id], onDelete: Cascade)
+
+  @@index([shift_id, created_at], map: "idx_shift_handoff_notes_shift_created_at_asc")
+  @@index([facility_id, created_at(sort: Desc)], map: "idx_shift_handoff_notes_facility_created_at_desc")
+  @@map("shift_handoff_notes")
+}
+
+model StaffTask {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String          @db.Uuid
+  facility_id     String          @db.Uuid
+  child_id        String?         @db.Uuid
+  assigned_to     String?         @db.Uuid
+  task_type       StaffTaskType
+  description     String
+  status          StaffTaskStatus @default(OPEN)
+  due_at          DateTime?       @db.Timestamptz(6)
+  metadata        Json            @default("{}") @db.JsonB
+  created_by      String?         @db.Uuid
+  created_at      DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime        @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  facility     Facility     @relation(fields: [facility_id], references: [id], onDelete: Restrict)
+  child        Child?       @relation(fields: [child_id], references: [id], onDelete: SetNull)
+
+  @@index([facility_id, status, created_at(sort: Desc)], map: "idx_staff_tasks_facility_status_created_at_desc")
+  @@index([assigned_to, status, created_at(sort: Desc)], map: "idx_staff_tasks_assigned_status_created_at_desc")
+  @@index([child_id, created_at(sort: Desc)], map: "idx_staff_tasks_child_created_at_desc")
+  @@map("staff_tasks")
 }
