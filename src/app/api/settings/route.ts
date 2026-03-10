@@ -42,6 +42,47 @@ const preferencesSchema = z.object({
   language_preference: z.string().max(20).nullable().optional(),
 });
 
+
+async function upsertParentSettingsForActiveFacility(
+  parentId: string,
+  activeFacilityId: string,
+  updates: Record<string, unknown>,
+) {
+  const { data: existingSettings, error: existingSettingsError } = await supabaseAdmin
+    .from('parent_settings')
+    .select('id, facility_id')
+    .eq('parent_id', parentId)
+    .maybeSingle();
+
+  if (existingSettingsError) {
+    return {
+      error: existingSettingsError,
+      scopeMismatch: false,
+    } as const;
+  }
+
+  if (existingSettings && existingSettings.facility_id !== activeFacilityId) {
+    return {
+      error: null,
+      scopeMismatch: true,
+    } as const;
+  }
+
+  const { error } = await supabaseAdmin
+    .from('parent_settings')
+    .upsert({
+      facility_id: activeFacilityId,
+      parent_id: parentId,
+      ...updates,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'parent_id' });
+
+  return {
+    error,
+    scopeMismatch: false,
+  } as const;
+}
+
 /**
  * GET /api/settings
  * Returns profile and settings for the authenticated parent.
@@ -58,7 +99,7 @@ export async function GET(req: NextRequest) {
       .from('parents')
       .select('first_name, last_name, email, phone, address, created_at')
       .eq('id', parentId)
-      .single(),
+      .maybeSingle(),
     supabaseAdmin
       .from('parent_settings')
       .select('*')
@@ -69,6 +110,11 @@ export async function GET(req: NextRequest) {
 
   if (profileRes.error || !profileRes.data) {
     return NextResponse.json({ error: 'Failed to load profile' }, { status: 500 });
+  }
+
+  if (settingsRes.error) {
+    console.error('[api/settings] settings load error:', settingsRes.error);
+    return NextResponse.json({ error: 'Failed to load settings' }, { status: 500 });
   }
 
   // If no settings row exists, return defaults
@@ -104,7 +150,7 @@ export async function PATCH(req: NextRequest) {
   if (!auth) return unauthorized();
   if (!auth.activeFacilityId) return unauthorized();
 
-  const { parentId, activeFacilityId, supabase } = auth;
+  const { parentId, activeFacilityId } = auth;
 
   let body;
   try {
@@ -178,14 +224,15 @@ export async function PATCH(req: NextRequest) {
         }, { status: 400 });
       }
 
-      const { error } = await supabaseAdmin
-        .from('parent_settings')
-        .upsert({
-          facility_id: activeFacilityId,
-          parent_id: parentId,
-          ...parsed.data,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'parent_id' });
+      const { error, scopeMismatch } = await upsertParentSettingsForActiveFacility(
+        parentId,
+        activeFacilityId,
+        parsed.data,
+      );
+
+      if (scopeMismatch) {
+        return NextResponse.json({ error: 'Unauthorized for active facility settings scope' }, { status: 403 });
+      }
 
       if (error) {
         console.error('[api/settings] notifications update error:', error);
@@ -205,14 +252,15 @@ export async function PATCH(req: NextRequest) {
         }, { status: 400 });
       }
 
-      const { error } = await supabaseAdmin
-        .from('parent_settings')
-        .upsert({
-          facility_id: activeFacilityId,
-          parent_id: parentId,
-          ...parsed.data,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'parent_id' });
+      const { error, scopeMismatch } = await upsertParentSettingsForActiveFacility(
+        parentId,
+        activeFacilityId,
+        parsed.data,
+      );
+
+      if (scopeMismatch) {
+        return NextResponse.json({ error: 'Unauthorized for active facility settings scope' }, { status: 403 });
+      }
 
       if (error) {
         console.error('[api/settings] safety update error:', error);
@@ -232,14 +280,15 @@ export async function PATCH(req: NextRequest) {
         }, { status: 400 });
       }
 
-      const { error } = await supabaseAdmin
-        .from('parent_settings')
-        .upsert({
-          facility_id: activeFacilityId,
-          parent_id: parentId,
-          ...parsed.data,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'parent_id' });
+      const { error, scopeMismatch } = await upsertParentSettingsForActiveFacility(
+        parentId,
+        activeFacilityId,
+        parsed.data,
+      );
+
+      if (scopeMismatch) {
+        return NextResponse.json({ error: 'Unauthorized for active facility settings scope' }, { status: 403 });
+      }
 
       if (error) {
         console.error('[api/settings] preferences update error:', error);
