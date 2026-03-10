@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Moon, ArrowRight } from 'lucide-react';
+import { formatSchedule } from '@/lib/formatSchedule';
 
 interface Props {
   canReserve: boolean;
@@ -9,6 +10,8 @@ interface Props {
 }
 
 export function BookOvernightCTA({ canReserve, childName }: Props) {
+  const schedule = formatSchedule(['Sun', 'Mon', 'Tue', 'Wed', 'Thu'], '9 PM', '7 AM');
+
   return (
     <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-navy-700 via-navy-800 to-navy-900 p-6 shadow-soft-md">
       {/* Decorative stars */}
@@ -24,7 +27,7 @@ export function BookOvernightCTA({ canReserve, childName }: Props) {
           </div>
           <div>
             <h3 className="text-lg font-semibold text-white">Book Overnight Care</h3>
-            <p className="text-sm text-navy-300">Sun\u2013Thu, 9 PM \u2013 7 AM</p>
+            <p className="text-sm text-navy-300">{schedule}</p>
           </div>
         </div>
 
